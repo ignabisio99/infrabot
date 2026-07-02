@@ -23,6 +23,8 @@ services:
       DATABASE_URL: ${DATABASE_URL}
     ports:
       - "${BACKEND_PORT}:8000"
+    volumes:
+      - ./backend:/app
     depends_on:
       - db
 
