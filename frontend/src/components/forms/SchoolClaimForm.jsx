@@ -1,7 +1,13 @@
-import { TextInput, Textarea, Button, Stack, Container, Select } from '@mantine/core';
+import { useState } from 'react';
+import { TextInput, Textarea, Button, Stack, Container, Select, Alert } from '@mantine/core';
 import { useForm } from '@mantine/form';
+import { crearReclamo } from '../../api/reclamos';
 
 export function SchoolClaimForm() {
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState(null);
+  const [enviadoOk, setEnviadoOk] = useState(false);
+
   const form = useForm({
     initialValues: {
       schoolName: '',
@@ -19,15 +25,43 @@ export function SchoolClaimForm() {
     },
   });
 
-  const handleSubmit = (values) => {
-    console.log('Form submitted:', values);
-    // Logic to handle submission will go here
+  const handleSubmit = async (values) => {
+    setError(null);
+    setEnviadoOk(false);
+    setEnviando(true);
+    try {
+      await crearReclamo({
+        nombre_escuela: values.schoolName,
+        sector: values.sector,
+        prioridad: values.priority,
+        categoria: values.category,
+        descripcion: values.description,
+      });
+      form.reset();
+      setEnviadoOk(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setEnviando(false);
+    }
   };
 
   return (
     <Container size="sm" py="xl">
       <form onSubmit={form.onSubmit(handleSubmit)}>
         <Stack>
+          {error && (
+            <Alert color="red" title="No se pudo enviar el reclamo">
+              {error}
+            </Alert>
+          )}
+
+          {enviadoOk && (
+            <Alert color="green" title="Reclamo enviado">
+              Tu reclamo fue registrado correctamente.
+            </Alert>
+          )}
+
           <TextInput
             label="Nombre de escuela"
             placeholder="Ejemplo: Escuela N° 123"
@@ -46,9 +80,9 @@ export function SchoolClaimForm() {
             label="Prioridad"
             placeholder="Seleccione una opción"
             data={[
-              { value: 'Baja', label: 'Baja' },
-              { value: 'Media', label: 'Media' },
-              { value: 'Alta', label: 'Alta' },
+              { value: 'BAJA', label: 'Baja' },
+              { value: 'MEDIA', label: 'Media' },
+              { value: 'ALTA', label: 'Alta' },
             ]}
             key={form.key('priority')}
             {...form.getInputProps('priority')}
@@ -70,7 +104,7 @@ export function SchoolClaimForm() {
             {...form.getInputProps('description')}
           />
 
-          <Button type="submit" mt="md">
+          <Button type="submit" mt="md" loading={enviando}>
             Enviar Reclamo
           </Button>
         </Stack>

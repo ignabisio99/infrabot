@@ -1,6 +1,29 @@
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from api.reclamos import router as reclamos_router
+from core.database import Base, engine
+from models import reclamo  # noqa: F401 - registra el modelo antes de create_all
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(reclamos_router)
 
 @app.get("/")
 def read_root():
