@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Alert, Badge, Container, Loader, Table, Text, Title } from '@mantine/core';
+import { useNavigate } from 'react-router-dom';
+import { Alert, Badge, Button, Container, Group, Loader, Table, Text, Title } from '@mantine/core';
 
-import { listarReclamos } from '../api/reclamos';
+import { eliminarReclamo, listarReclamos } from '../api/reclamos';
 
 const colorPorPrioridad = {
   ALTA: 'red',
@@ -10,9 +11,11 @@ const colorPorPrioridad = {
 };
 
 export function ClaimsListPage() {
+  const navigate = useNavigate();
   const [reclamos, setReclamos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
+  const [eliminandoId, setEliminandoId] = useState(null);
 
   useEffect(() => {
     listarReclamos()
@@ -20,6 +23,21 @@ export function ClaimsListPage() {
       .catch((err) => setError(err.message))
       .finally(() => setCargando(false));
   }, []);
+
+  const handleEliminar = async (id) => {
+    if (!window.confirm('¿Seguro que querés eliminar este reclamo?')) return;
+
+    setError(null);
+    setEliminandoId(id);
+    try {
+      await eliminarReclamo(id);
+      setReclamos((actuales) => actuales.filter((reclamo) => reclamo.id !== id));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setEliminandoId(null);
+    }
+  };
 
   return (
     <Container size="lg" py="xl">
@@ -30,16 +48,16 @@ export function ClaimsListPage() {
       {cargando && <Loader />}
 
       {error && (
-        <Alert color="red" title="No se pudo cargar el listado">
+        <Alert color="red" title="Ocurrió un error" mb="md">
           {error}
         </Alert>
       )}
 
-      {!cargando && !error && reclamos.length === 0 && (
+      {!cargando && reclamos.length === 0 && (
         <Text c="dimmed">Todavía no hay reclamos registrados.</Text>
       )}
 
-      {!cargando && !error && reclamos.length > 0 && (
+      {!cargando && reclamos.length > 0 && (
         <Table striped highlightOnHover>
           <Table.Thead>
             <Table.Tr>
@@ -49,6 +67,7 @@ export function ClaimsListPage() {
               <Table.Th>Categoría</Table.Th>
               <Table.Th>Descripción</Table.Th>
               <Table.Th>Fecha</Table.Th>
+              <Table.Th />
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -60,8 +79,32 @@ export function ClaimsListPage() {
                   <Badge color={colorPorPrioridad[reclamo.prioridad]}>{reclamo.prioridad}</Badge>
                 </Table.Td>
                 <Table.Td>{reclamo.categoria}</Table.Td>
-                <Table.Td>{reclamo.descripcion}</Table.Td>
+                <Table.Td>
+                  <Text truncate="end" maw={280} title={reclamo.descripcion}>
+                    {reclamo.descripcion}
+                  </Text>
+                </Table.Td>
                 <Table.Td>{new Date(reclamo.creado_en).toLocaleString('es-AR')}</Table.Td>
+                <Table.Td>
+                  <Group gap="xs" wrap="nowrap">
+                    <Button
+                      variant="subtle"
+                      size="xs"
+                      onClick={() => navigate(`/reclamos/${reclamo.id}/editar`)}
+                    >
+                      Editar
+                    </Button>
+                    <Button
+                      color="red"
+                      variant="subtle"
+                      size="xs"
+                      loading={eliminandoId === reclamo.id}
+                      onClick={() => handleEliminar(reclamo.id)}
+                    >
+                      Eliminar
+                    </Button>
+                  </Group>
+                </Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>

@@ -1,21 +1,22 @@
-import { useState } from 'react';
-import { TextInput, Textarea, Button, Stack, Select, Alert } from '@mantine/core';
+import { TextInput, Textarea, Button, Stack, Select } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { crearReclamo } from '../../api/reclamos';
 
-export function SchoolClaimForm() {
-  const [enviando, setEnviando] = useState(false);
-  const [error, setError] = useState(null);
-  const [enviadoOk, setEnviadoOk] = useState(false);
+const valoresPorDefecto = {
+  schoolName: '',
+  sector: '',
+  priority: '',
+  category: '',
+  description: '',
+};
 
+export function SchoolClaimForm({
+  initialValues = valoresPorDefecto,
+  onSubmit,
+  submitting = false,
+  submitLabel = 'Enviar Reclamo',
+}) {
   const form = useForm({
-    initialValues: {
-      schoolName: '',
-      sector: '',
-      priority: '',
-      category: '',
-      description: '',
-    },
+    initialValues,
     validate: {
       schoolName: (value) => (value.length < 3 ? 'Ingrese el nombre de la escuela' : null),
       sector: (value) => (value.length < 2 ? 'Ingrese el sector' : null),
@@ -25,42 +26,19 @@ export function SchoolClaimForm() {
     },
   });
 
-  const handleSubmit = async (values) => {
-    setError(null);
-    setEnviadoOk(false);
-    setEnviando(true);
-    try {
-      await crearReclamo({
-        nombre_escuela: values.schoolName,
-        sector: values.sector,
-        prioridad: values.priority,
-        categoria: values.category,
-        descripcion: values.description,
-      });
-      form.reset();
-      setEnviadoOk(true);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setEnviando(false);
-    }
+  const handleSubmit = (values) => {
+    onSubmit({
+      nombre_escuela: values.schoolName,
+      sector: values.sector,
+      prioridad: values.priority,
+      categoria: values.category,
+      descripcion: values.description,
+    });
   };
 
   return (
     <form onSubmit={form.onSubmit(handleSubmit)}>
       <Stack>
-        {error && (
-          <Alert color="red" title="No se pudo enviar el reclamo">
-            {error}
-          </Alert>
-        )}
-
-        {enviadoOk && (
-          <Alert color="green" title="Reclamo enviado">
-            Tu reclamo fue registrado correctamente.
-          </Alert>
-        )}
-
         <TextInput
           label="Nombre de escuela"
           placeholder="Ejemplo: Escuela N° 123"
@@ -103,8 +81,8 @@ export function SchoolClaimForm() {
           {...form.getInputProps('description')}
         />
 
-        <Button type="submit" mt="md" loading={enviando}>
-          Enviar Reclamo
+        <Button type="submit" mt="md" loading={submitting}>
+          {submitLabel}
         </Button>
       </Stack>
     </form>
