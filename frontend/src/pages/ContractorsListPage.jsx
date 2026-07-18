@@ -34,7 +34,7 @@ export function ContractorsListPage() {
   };
 
   return (
-    <Container size="lg" py="xl">
+    <Container fluid py="xl">
       <Group justify="space-between" mb="md">
         <Title order={2}>Contratistas</Title>
         <Button onClick={() => navigate('/contratistas/nuevo')}>+ Nuevo Contratista</Button>
