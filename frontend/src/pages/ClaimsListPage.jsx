@@ -66,7 +66,7 @@ export function ClaimsListPage() {
     return reclamos.filter((reclamo) => {
       if (prioridadFiltro && reclamo.prioridad !== prioridadFiltro) return false;
 
-      const fecha = new Date(reclamo.creado_en);
+      const fecha = new Date(reclamo.fecha_creacion);
 
       if (desde && fecha < desde) return false;
 
@@ -168,10 +168,11 @@ export function ClaimsListPage() {
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Escuela</Table.Th>
-              <Table.Th>Sector</Table.Th>
+              <Table.Th>Ubicación</Table.Th>
               <Table.Th>Prioridad</Table.Th>
               <Table.Th>Categoría</Table.Th>
               <Table.Th>Descripción</Table.Th>
+              <Table.Th>Observaciones</Table.Th>
               <Table.Th>Fecha</Table.Th>
               <Table.Th />
             </Table.Tr>
@@ -180,7 +181,7 @@ export function ClaimsListPage() {
             {reclamosPagina.map((reclamo) => (
               <Table.Tr key={reclamo.id}>
                 <Table.Td>{reclamo.nombre_escuela}</Table.Td>
-                <Table.Td>{reclamo.sector}</Table.Td>
+                <Table.Td>{reclamo.ubicacion}</Table.Td>
                 <Table.Td>
                   <Badge color={colorPorPrioridad[reclamo.prioridad]}>{reclamo.prioridad}</Badge>
                 </Table.Td>
@@ -190,7 +191,16 @@ export function ClaimsListPage() {
                     {reclamo.descripcion}
                   </Text>
                 </Table.Td>
-                <Table.Td>{new Date(reclamo.creado_en).toLocaleString('es-AR')}</Table.Td>
+                <Table.Td>
+                  {reclamo.observaciones ? (
+                    <Text truncate="end" maw={200} title={reclamo.observaciones}>
+                      {reclamo.observaciones}
+                    </Text>
+                  ) : (
+                    <Text c="dimmed">—</Text>
+                  )}
+                </Table.Td>
+                <Table.Td>{new Date(reclamo.fecha_creacion).toLocaleString('es-AR')}</Table.Td>
                 <Table.Td>
                   <Group gap="xs" wrap="nowrap">
                     <Button

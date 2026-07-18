@@ -19,7 +19,7 @@ def crear_reclamo(reclamo: ReclamoCreate, db: Session = Depends(get_db)):
 
 @router.get("", response_model=list[ReclamoOut])
 def listar_reclamos(db: Session = Depends(get_db)):
-    return db.query(Reclamo).order_by(Reclamo.creado_en.desc()).all()
+    return db.query(Reclamo).order_by(Reclamo.fecha_creacion.desc()).all()
 
 
 @router.get("/{reclamo_id}", response_model=ReclamoOut)

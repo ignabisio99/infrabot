@@ -21,10 +21,11 @@ export function EditClaimPage() {
       .then((reclamo) =>
         setInitialValues({
           schoolName: reclamo.nombre_escuela,
-          sector: reclamo.sector,
+          sector: reclamo.ubicacion,
           priority: reclamo.prioridad,
           category: reclamo.categoria,
           description: reclamo.descripcion,
+          observations: reclamo.observaciones ?? '',
         }),
       )
       .catch((err) => setErrorCarga(err.message))

@@ -7,6 +7,7 @@ const valoresPorDefecto = {
   priority: '',
   category: '',
   description: '',
+  observations: '',
 };
 
 export function SchoolClaimForm({
@@ -19,7 +20,7 @@ export function SchoolClaimForm({
     initialValues,
     validate: {
       schoolName: (value) => (value.length < 3 ? 'Ingrese el nombre de la escuela' : null),
-      sector: (value) => (value.length < 2 ? 'Ingrese el sector' : null),
+      sector: (value) => (value.length < 2 ? 'Ingrese la ubicación' : null),
       priority: (value) => (value === '' ? 'Seleccione una prioridad' : null),
       category: (value) => (value === '' ? 'Ingrese una categoría' : null),
       description: (value) => (value.length < 10 ? 'Describa el problema en detalle' : null),
@@ -29,10 +30,11 @@ export function SchoolClaimForm({
   const handleSubmit = (values) => {
     onSubmit({
       nombre_escuela: values.schoolName,
-      sector: values.sector,
+      ubicacion: values.sector,
       prioridad: values.priority,
       categoria: values.category,
       descripcion: values.description,
+      observaciones: values.observations.trim() === '' ? null : values.observations,
     });
   };
 
@@ -47,7 +49,7 @@ export function SchoolClaimForm({
         />
 
         <TextInput
-          label="Sector"
+          label="Ubicación"
           placeholder="Ejemplo: Cocina, Baño, Aula 10"
           key={form.key('sector')}
           {...form.getInputProps('sector')}
@@ -79,6 +81,15 @@ export function SchoolClaimForm({
           autosize
           key={form.key('description')}
           {...form.getInputProps('description')}
+        />
+
+        <Textarea
+          label="Observaciones"
+          placeholder="Notas adicionales (opcional)..."
+          minRows={2}
+          autosize
+          key={form.key('observations')}
+          {...form.getInputProps('observations')}
         />
 
         <Button type="submit" mt="md" loading={submitting}>

@@ -13,12 +13,13 @@ class PrioridadReclamo(str, enum.Enum):
 
 
 class Reclamo(Base):
-    __tablename__ = "reclamos"
+    __tablename__ = "reclamo"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     nombre_escuela = Column(String(255), nullable=False)
-    sector = Column(String(255), nullable=False)
+    ubicacion = Column(String(255), nullable=False)
     prioridad = Column(Enum(PrioridadReclamo, name="prioridad_reclamo"), nullable=False)
     categoria = Column(String(255), nullable=False)
     descripcion = Column(Text, nullable=False)
-    creado_en = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    observaciones = Column(Text, nullable=True)
+    fecha_creacion = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
