@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { TextInput, Textarea, Button, Stack, Container, Select, Alert } from '@mantine/core';
+import { TextInput, Textarea, Button, Stack, Select, Alert } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { crearReclamo } from '../../api/reclamos';
 
@@ -47,68 +47,66 @@ export function SchoolClaimForm() {
   };
 
   return (
-    <Container size="sm" py="xl">
-      <form onSubmit={form.onSubmit(handleSubmit)}>
-        <Stack>
-          {error && (
-            <Alert color="red" title="No se pudo enviar el reclamo">
-              {error}
-            </Alert>
-          )}
+    <form onSubmit={form.onSubmit(handleSubmit)}>
+      <Stack>
+        {error && (
+          <Alert color="red" title="No se pudo enviar el reclamo">
+            {error}
+          </Alert>
+        )}
 
-          {enviadoOk && (
-            <Alert color="green" title="Reclamo enviado">
-              Tu reclamo fue registrado correctamente.
-            </Alert>
-          )}
+        {enviadoOk && (
+          <Alert color="green" title="Reclamo enviado">
+            Tu reclamo fue registrado correctamente.
+          </Alert>
+        )}
 
-          <TextInput
-            label="Nombre de escuela"
-            placeholder="Ejemplo: Escuela N° 123"
-            key={form.key('schoolName')}
-            {...form.getInputProps('schoolName')}
-          />
+        <TextInput
+          label="Nombre de escuela"
+          placeholder="Ejemplo: Escuela N° 123"
+          key={form.key('schoolName')}
+          {...form.getInputProps('schoolName')}
+        />
 
-          <TextInput
-            label="Sector"
-            placeholder="Ejemplo: Cocina, Baño, Aula 10"
-            key={form.key('sector')}
-            {...form.getInputProps('sector')}
-          />
+        <TextInput
+          label="Sector"
+          placeholder="Ejemplo: Cocina, Baño, Aula 10"
+          key={form.key('sector')}
+          {...form.getInputProps('sector')}
+        />
 
-          <Select
-            label="Prioridad"
-            placeholder="Seleccione una opción"
-            data={[
-              { value: 'BAJA', label: 'Baja' },
-              { value: 'MEDIA', label: 'Media' },
-              { value: 'ALTA', label: 'Alta' },
-            ]}
-            key={form.key('priority')}
-            {...form.getInputProps('priority')}
-          />
+        <Select
+          label="Prioridad"
+          placeholder="Seleccione una opción"
+          data={[
+            { value: 'BAJA', label: 'Baja' },
+            { value: 'MEDIA', label: 'Media' },
+            { value: 'ALTA', label: 'Alta' },
+          ]}
+          key={form.key('priority')}
+          {...form.getInputProps('priority')}
+        />
 
-          <TextInput
-            label="Categoría"
-            placeholder="Ejemplo: Gas, Electricidad..."
-            key={form.key('category')}
-            {...form.getInputProps('category')}
-          />
+        <TextInput
+          label="Categoría"
+          placeholder="Ejemplo: Gas, Electricidad..."
+          key={form.key('category')}
+          {...form.getInputProps('category')}
+        />
 
-          <Textarea
-            label="Descripción"
-            placeholder="Describa detalladamente la situación o problema detectado..."
-            minRows={4}
-            autosize
-            key={form.key('description')}
-            {...form.getInputProps('description')}
-          />
+        <Textarea
+          label="Descripción"
+          placeholder="Describa detalladamente la situación o problema detectado..."
+          minRows={4}
+          autosize
+          key={form.key('description')}
+          {...form.getInputProps('description')}
+        />
 
-          <Button type="submit" mt="md" loading={enviando}>
-            Enviar Reclamo
-          </Button>
-        </Stack>
-      </form>
-    </Container>
+        <Button type="submit" mt="md" loading={enviando}>
+          Enviar Reclamo
+        </Button>
+      </Stack>
+    </form>
   );
 }

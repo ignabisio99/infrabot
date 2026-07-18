@@ -1,10 +1,18 @@
-import { SchoolClaimForm } from './components/forms/SchoolClaimForm';
+import { Navigate, Route, Routes } from 'react-router-dom';
+
+import { AppLayout } from './layout/AppLayout';
+import { ClaimsListPage } from './pages/ClaimsListPage';
+import { NewClaimPage } from './pages/NewClaimPage';
 
 function App() {
   return (
-    <div>
-      <SchoolClaimForm />
-    </div>
+    <Routes>
+      <Route element={<AppLayout />}>
+        <Route index element={<Navigate to="/reclamos/nuevo" replace />} />
+        <Route path="/reclamos/nuevo" element={<NewClaimPage />} />
+        <Route path="/reclamos" element={<ClaimsListPage />} />
+      </Route>
+    </Routes>
   );
 }
 
