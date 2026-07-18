@@ -15,3 +15,8 @@ def crear_reclamo(reclamo: ReclamoCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(nuevo_reclamo)
     return nuevo_reclamo
+
+
+@router.get("", response_model=list[ReclamoOut])
+def listar_reclamos(db: Session = Depends(get_db)):
+    return db.query(Reclamo).order_by(Reclamo.creado_en.desc()).all()

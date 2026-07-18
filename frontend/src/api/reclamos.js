@@ -15,3 +15,13 @@ export async function crearReclamo(reclamo) {
 
   return response.json();
 }
+
+export async function listarReclamos() {
+  const response = await fetch(`${API_URL}/reclamos`);
+
+  if (!response.ok) {
+    throw new Error('No se pudo obtener el listado de reclamos.');
+  }
+
+  return response.json();
+}
