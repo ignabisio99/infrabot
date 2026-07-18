@@ -11,6 +11,7 @@ import {
   Select,
   Table,
   Text,
+  TextInput,
   Title,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
@@ -41,6 +42,18 @@ function parsearFechaFiltro(valor) {
   return new Date(anio, mes - 1, dia);
 }
 
+function formatearIdReclamo(id) {
+  return `REC-${String(id).padStart(8, '0')}`;
+}
+
+// Acepta "34", "0034", "REC-00000034", etc: se queda solo con los dígitos
+// escritos y busca esa subcadena dentro del ID completo (con ceros a la izquierda).
+function idCoincideConBusqueda(id, busqueda) {
+  const digitos = busqueda.replace(/\D/g, '');
+  if (!digitos) return true;
+  return String(id).padStart(8, '0').includes(digitos);
+}
+
 export function ClaimsListPage() {
   const navigate = useNavigate();
   const [reclamos, setReclamos] = useState([]);
@@ -50,6 +63,7 @@ export function ClaimsListPage() {
 
   const [prioridadFiltro, setPrioridadFiltro] = useState('');
   const [rangoFechas, setRangoFechas] = useState([null, null]);
+  const [busquedaId, setBusquedaId] = useState('');
   const [pagina, setPagina] = useState(1);
 
   useEffect(() => {
@@ -66,6 +80,8 @@ export function ClaimsListPage() {
     return reclamos.filter((reclamo) => {
       if (prioridadFiltro && reclamo.prioridad !== prioridadFiltro) return false;
 
+      if (!idCoincideConBusqueda(reclamo.id, busquedaId)) return false;
+
       const fecha = new Date(reclamo.fecha_creacion);
 
       if (desde && fecha < desde) return false;
@@ -78,17 +94,21 @@ export function ClaimsListPage() {
 
       return true;
     });
-  }, [reclamos, prioridadFiltro, rangoFechas]);
+  }, [reclamos, prioridadFiltro, rangoFechas, busquedaId]);
 
   const hayFiltrosActivos =
-    prioridadFiltro !== '' || rangoFechas[0] !== null || rangoFechas[1] !== null;
+    prioridadFiltro !== '' ||
+    rangoFechas[0] !== null ||
+    rangoFechas[1] !== null ||
+    busquedaId !== '';
 
   const limpiarFiltros = () => {
     setPrioridadFiltro('');
     setRangoFechas([null, null]);
+    setBusquedaId('');
   };
 
-  const filtroActual = `${prioridadFiltro}|${rangoFechas[0]}|${rangoFechas[1]}`;
+  const filtroActual = `${prioridadFiltro}|${rangoFechas[0]}|${rangoFechas[1]}|${busquedaId}`;
   const [filtroPrevio, setFiltroPrevio] = useState(filtroActual);
   if (filtroActual !== filtroPrevio) {
     setFiltroPrevio(filtroActual);
@@ -122,6 +142,13 @@ export function ClaimsListPage() {
 
       {!cargando && reclamos.length > 0 && (
         <Group mb="md" align="flex-end">
+          <TextInput
+            label="ID"
+            placeholder="Ej: REC-00000034 o 34"
+            value={busquedaId}
+            onChange={(event) => setBusquedaId(event.currentTarget.value)}
+            w={180}
+          />
           <Select
             label="Prioridad"
             data={opcionesPrioridad}
@@ -168,6 +195,7 @@ export function ClaimsListPage() {
         <Table striped highlightOnHover>
           <Table.Thead>
             <Table.Tr>
+              <Table.Th>ID</Table.Th>
               <Table.Th>Escuela</Table.Th>
               <Table.Th>Ubicación</Table.Th>
               <Table.Th>Prioridad</Table.Th>
@@ -181,6 +209,9 @@ export function ClaimsListPage() {
           <Table.Tbody>
             {reclamosPagina.map((reclamo) => (
               <Table.Tr key={reclamo.id}>
+                <Table.Td>
+                  <Text ff="monospace">{formatearIdReclamo(reclamo.id)}</Text>
+                </Table.Td>
                 <Table.Td>{reclamo.nombre_escuela}</Table.Td>
                 <Table.Td>{reclamo.ubicacion}</Table.Td>
                 <Table.Td>
