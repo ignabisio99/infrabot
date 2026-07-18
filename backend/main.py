@@ -3,9 +3,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.contratistas import router as contratistas_router
 from api.reclamos import router as reclamos_router
 from core.database import Base, engine
-from models import reclamo  # noqa: F401 - registra el modelo antes de create_all
+from models import contratista, reclamo  # noqa: F401 - registra los modelos antes de create_all
 
 
 @asynccontextmanager
@@ -24,6 +25,7 @@ app.add_middleware(
 )
 
 app.include_router(reclamos_router)
+app.include_router(contratistas_router)
 
 @app.get("/")
 def read_root():

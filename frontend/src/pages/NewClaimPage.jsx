@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Alert, Container } from '@mantine/core';
+import { Link } from 'react-router-dom';
+import { Alert, Anchor, Container } from '@mantine/core';
 
 import { SchoolClaimForm } from '../components/forms/SchoolClaimForm';
 import { crearReclamo } from '../api/reclamos';
@@ -27,6 +28,10 @@ export function NewClaimPage() {
 
   return (
     <Container size="sm" py="xl">
+      <Anchor component={Link} to="/reclamos" mb="md" display="inline-block">
+        ← Volver a Reclamos
+      </Anchor>
+
       {error && (
         <Alert color="red" title="No se pudo enviar el reclamo" mb="md">
           {error}

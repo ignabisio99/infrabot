@@ -1,13 +1,7 @@
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
-
-function extraerMensajeError(detail, mensajePorDefecto) {
-  if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail) && detail[0]?.msg) return detail[0].msg;
-  return mensajePorDefecto;
-}
+import { API_URL, extraerMensajeError } from './apiClient';
 
 export async function crearReclamo(reclamo) {
-  const response = await fetch(`${API_URL}/reclamos/crear`, {
+  const response = await fetch(`${API_URL}/reclamos`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(reclamo),

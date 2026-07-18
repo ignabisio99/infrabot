@@ -115,9 +115,10 @@ export function ClaimsListPage() {
 
   return (
     <Container size="lg" py="xl">
-      <Title order={2} mb="md">
-        Reclamos
-      </Title>
+      <Group justify="space-between" mb="md">
+        <Title order={2}>Reclamos</Title>
+        <Button onClick={() => navigate('/reclamos/nuevo')}>+ Nuevo Reclamo</Button>
+      </Group>
 
       {!cargando && reclamos.length > 0 && (
         <Group mb="md" align="flex-end">

@@ -8,7 +8,7 @@ from schemas.reclamo import ReclamoCreate, ReclamoOut
 router = APIRouter(prefix="/reclamos", tags=["reclamos"])
 
 
-@router.post("/crear", response_model=ReclamoOut, status_code=201)
+@router.post("", response_model=ReclamoOut, status_code=201)
 def crear_reclamo(reclamo: ReclamoCreate, db: Session = Depends(get_db)):
     nuevo_reclamo = Reclamo(**reclamo.model_dump())
     db.add(nuevo_reclamo)

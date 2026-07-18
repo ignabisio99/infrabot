@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Alert, Container, Loader, Title } from '@mantine/core';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Alert, Anchor, Container, Loader, Title } from '@mantine/core';
 
 import { SchoolClaimForm } from '../components/forms/SchoolClaimForm';
 import { actualizarReclamo, obtenerReclamo } from '../api/reclamos';
@@ -47,6 +47,10 @@ export function EditClaimPage() {
 
   return (
     <Container size="sm" py="xl">
+      <Anchor component={Link} to="/reclamos" mb="md" display="inline-block">
+        ← Volver a Reclamos
+      </Anchor>
+
       <Title order={2} mb="md">
         Editar Reclamo
       </Title>

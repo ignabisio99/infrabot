@@ -3,8 +3,8 @@ import { useDisclosure } from '@mantine/hooks';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 const links = [
-  { label: 'Nuevo Reclamo', path: '/reclamos/nuevo' },
   { label: 'Reclamos', path: '/reclamos' },
+  { label: 'Contratistas', path: '/contratistas' },
 ];
 
 export function AppLayout() {
@@ -30,7 +30,7 @@ export function AppLayout() {
           <NavLink
             key={link.path}
             label={link.label}
-            active={location.pathname === link.path}
+            active={location.pathname.startsWith(link.path)}
             onClick={() => navigate(link.path)}
           />
         ))}
