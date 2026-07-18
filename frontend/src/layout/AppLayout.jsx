@@ -4,6 +4,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   IconClipboardList,
   IconTruck,
+  IconReceipt2,
   IconChevronLeft,
   IconChevronRight,
 } from '@tabler/icons-react';
@@ -11,6 +12,7 @@ import {
 const links = [
   { label: 'Reclamos', path: '/reclamos', icon: IconClipboardList },
   { label: 'Contratistas', path: '/contratistas', icon: IconTruck },
+  { label: 'Presupuestos', path: '/presupuestos', icon: IconReceipt2 },
 ];
 
 const NAVBAR_WIDTH_EXPANDIDO = 260;

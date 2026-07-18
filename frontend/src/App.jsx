@@ -1,10 +1,13 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { AppLayout } from './layout/AppLayout';
+import { BudgetsListPage } from './pages/BudgetsListPage';
 import { ClaimsListPage } from './pages/ClaimsListPage';
 import { ContractorsListPage } from './pages/ContractorsListPage';
+import { EditBudgetPage } from './pages/EditBudgetPage';
 import { EditClaimPage } from './pages/EditClaimPage';
 import { EditContractorPage } from './pages/EditContractorPage';
+import { NewBudgetPage } from './pages/NewBudgetPage';
 import { NewClaimPage } from './pages/NewClaimPage';
 import { NewContractorPage } from './pages/NewContractorPage';
 
@@ -19,6 +22,9 @@ function App() {
         <Route path="/contratistas/nuevo" element={<NewContractorPage />} />
         <Route path="/contratistas" element={<ContractorsListPage />} />
         <Route path="/contratistas/:id/editar" element={<EditContractorPage />} />
+        <Route path="/presupuestos/nuevo" element={<NewBudgetPage />} />
+        <Route path="/presupuestos" element={<BudgetsListPage />} />
+        <Route path="/presupuestos/:id/editar" element={<EditBudgetPage />} />
       </Route>
     </Routes>
   );

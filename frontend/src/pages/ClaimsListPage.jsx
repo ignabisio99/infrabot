@@ -17,6 +17,7 @@ import {
 import { DatePickerInput } from '@mantine/dates';
 
 import { eliminarReclamo, listarReclamos } from '../api/reclamos';
+import { formatearIdReclamo } from '../utils/ids';
 
 const colorPorPrioridad = {
   ALTA: 'red',
@@ -40,10 +41,6 @@ function parsearFechaFiltro(valor) {
   if (!valor) return null;
   const [anio, mes, dia] = valor.split('-').map(Number);
   return new Date(anio, mes - 1, dia);
-}
-
-function formatearIdReclamo(id) {
-  return `REC-${String(id).padStart(8, '0')}`;
 }
 
 // Acepta "34", "0034", "REC-00000034", etc: se queda solo con los dígitos
