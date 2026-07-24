@@ -75,7 +75,10 @@ export function crearRecursoApi({ recursoPlural, recursoSingular }) {
     const response = await fetch(`${base}/${id}`, { method: 'DELETE' });
 
     if (!response.ok) {
-      throw new Error(`No se pudo eliminar el ${recursoSingular}.`);
+      const error = await response.json().catch(() => null);
+      throw new Error(
+        extraerMensajeError(error?.detail, `No se pudo eliminar el ${recursoSingular}.`),
+      );
     }
   }
 

@@ -18,6 +18,7 @@ import { DatePickerInput } from '@mantine/dates';
 
 import { eliminarReclamo, listarReclamos } from '../api/reclamos';
 import { formatearIdReclamo } from '../utils/ids';
+import { notifyError } from '../utils/notifications';
 
 const colorPorPrioridad = {
   ALTA: 'red',
@@ -118,13 +119,12 @@ export function ClaimsListPage() {
   const handleEliminar = async (id) => {
     if (!window.confirm('¿Seguro que querés eliminar este reclamo?')) return;
 
-    setError(null);
     setEliminandoId(id);
     try {
       await eliminarReclamo(id);
       setReclamos((actuales) => actuales.filter((reclamo) => reclamo.id !== id));
-    } catch (err) {
-      setError(err.message);
+    } catch (error) {
+      notifyError(error?.message);
     } finally {
       setEliminandoId(null);
     }

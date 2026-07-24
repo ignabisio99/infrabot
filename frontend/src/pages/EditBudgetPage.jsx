@@ -6,6 +6,7 @@ import { BudgetForm } from '../components/forms/BudgetForm';
 import { actualizarPresupuesto, obtenerPresupuesto } from '../api/presupuestos';
 import { listarReclamos } from '../api/reclamos';
 import { listarContratistas } from '../api/contratistas';
+import { notifyError } from '../utils/notifications';
 
 export function EditBudgetPage() {
   const { id } = useParams();
@@ -18,7 +19,6 @@ export function EditBudgetPage() {
   const [errorCarga, setErrorCarga] = useState(null);
 
   const [guardando, setGuardando] = useState(false);
-  const [errorGuardado, setErrorGuardado] = useState(null);
 
   useEffect(() => {
     Promise.all([obtenerPresupuesto(id), listarReclamos(), listarContratistas()])
@@ -41,13 +41,12 @@ export function EditBudgetPage() {
   }, [id]);
 
   const handleSubmit = async (payload) => {
-    setErrorGuardado(null);
     setGuardando(true);
     try {
       await actualizarPresupuesto(id, payload);
       navigate('/presupuestos');
-    } catch (err) {
-      setErrorGuardado(err.message);
+    } catch (error) {
+      notifyError(error?.message);
     } finally {
       setGuardando(false);
     }
@@ -73,11 +72,6 @@ export function EditBudgetPage() {
 
       {!cargando && !errorCarga && initialValues && (
         <>
-          {errorGuardado && (
-            <Alert color="red" title="No se pudo guardar" mb="md">
-              {errorGuardado}
-            </Alert>
-          )}
           <BudgetForm
             reclamosDisponibles={reclamos}
             contratistasDisponibles={contratistas}

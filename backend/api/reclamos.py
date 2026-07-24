@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from core.database import get_db
+from models.presupuesto import Presupuesto
 from models.reclamo import Reclamo
 from schemas.reclamo import ReclamoCreate, ReclamoOut
 
@@ -47,5 +48,12 @@ def eliminar_reclamo(reclamo_id: int, db: Session = Depends(get_db)):
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    tiene_presupuestos = (
+        db.query(Presupuesto).filter(Presupuesto.reclamo_id == reclamo_id).first() is not None
+    )
+    if tiene_presupuestos:
+        raise HTTPException(
+            status_code=409, detail="No se puede eliminar el reclamo: tiene presupuestos asociados"
+        )
     db.delete(reclamo)
     db.commit()

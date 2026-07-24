@@ -4,6 +4,7 @@ import { Alert, Anchor, Container, Loader, Title } from '@mantine/core';
 
 import { SchoolClaimForm } from '../components/forms/SchoolClaimForm';
 import { actualizarReclamo, obtenerReclamo } from '../api/reclamos';
+import { notifyError } from '../utils/notifications';
 
 export function EditClaimPage() {
   const { id } = useParams();
@@ -14,7 +15,6 @@ export function EditClaimPage() {
   const [errorCarga, setErrorCarga] = useState(null);
 
   const [guardando, setGuardando] = useState(false);
-  const [errorGuardado, setErrorGuardado] = useState(null);
 
   useEffect(() => {
     obtenerReclamo(id)
@@ -33,13 +33,12 @@ export function EditClaimPage() {
   }, [id]);
 
   const handleSubmit = async (payload) => {
-    setErrorGuardado(null);
     setGuardando(true);
     try {
       await actualizarReclamo(id, payload);
       navigate('/reclamos');
-    } catch (err) {
-      setErrorGuardado(err.message);
+    } catch (error) {
+      notifyError(error?.message);
     } finally {
       setGuardando(false);
     }
@@ -65,11 +64,6 @@ export function EditClaimPage() {
 
       {!cargando && !errorCarga && initialValues && (
         <>
-          {errorGuardado && (
-            <Alert color="red" title="No se pudo guardar" mb="md">
-              {errorGuardado}
-            </Alert>
-          )}
           <SchoolClaimForm
             initialValues={initialValues}
             onSubmit={handleSubmit}

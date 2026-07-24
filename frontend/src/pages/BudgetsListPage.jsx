@@ -4,6 +4,7 @@ import { Alert, Button, Container, Group, Loader, Table, Text, Title } from '@ma
 
 import { eliminarPresupuesto, listarPresupuestos } from '../api/presupuestos';
 import { formatearIdReclamo } from '../utils/ids';
+import { notifyError } from '../utils/notifications';
 
 const formatoMoneda = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
 
@@ -24,13 +25,12 @@ export function BudgetsListPage() {
   const handleEliminar = async (id) => {
     if (!window.confirm('¿Seguro que querés eliminar este presupuesto?')) return;
 
-    setError(null);
     setEliminandoId(id);
     try {
       await eliminarPresupuesto(id);
       setPresupuestos((actuales) => actuales.filter((presupuesto) => presupuesto.id !== id));
-    } catch (err) {
-      setError(err.message);
+    } catch (error) {
+      notifyError(error?.message);
     } finally {
       setEliminandoId(null);
     }

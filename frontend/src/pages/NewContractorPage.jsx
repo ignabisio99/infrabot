@@ -4,23 +4,22 @@ import { Alert, Anchor, Container } from '@mantine/core';
 
 import { ContractorForm } from '../components/forms/ContractorForm';
 import { crearContratista } from '../api/contratistas';
+import { notifyError } from '../utils/notifications';
 
 export function NewContractorPage() {
   const [enviando, setEnviando] = useState(false);
-  const [error, setError] = useState(null);
   const [enviadoOk, setEnviadoOk] = useState(false);
   const [formKey, setFormKey] = useState(0);
 
   const handleSubmit = async (payload) => {
-    setError(null);
     setEnviadoOk(false);
     setEnviando(true);
     try {
       await crearContratista(payload);
       setEnviadoOk(true);
       setFormKey((key) => key + 1);
-    } catch (err) {
-      setError(err.message);
+    } catch (error) {
+      notifyError(error?.message);
     } finally {
       setEnviando(false);
     }
@@ -31,12 +30,6 @@ export function NewContractorPage() {
       <Anchor component={Link} to="/contratistas" mb="md" display="inline-block">
         ← Volver a Contratistas
       </Anchor>
-
-      {error && (
-        <Alert color="red" title="No se pudo guardar el contratista" mb="md">
-          {error}
-        </Alert>
-      )}
 
       {enviadoOk && (
         <Alert color="green" title="Contratista guardado" mb="md">

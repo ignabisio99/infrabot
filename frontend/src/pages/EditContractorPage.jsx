@@ -4,6 +4,7 @@ import { Alert, Anchor, Container, Loader, Title } from '@mantine/core';
 
 import { ContractorForm } from '../components/forms/ContractorForm';
 import { actualizarContratista, obtenerContratista } from '../api/contratistas';
+import { notifyError } from '../utils/notifications';
 
 export function EditContractorPage() {
   const { id } = useParams();
@@ -14,7 +15,6 @@ export function EditContractorPage() {
   const [errorCarga, setErrorCarga] = useState(null);
 
   const [guardando, setGuardando] = useState(false);
-  const [errorGuardado, setErrorGuardado] = useState(null);
 
   useEffect(() => {
     obtenerContratista(id)
@@ -32,13 +32,12 @@ export function EditContractorPage() {
   }, [id]);
 
   const handleSubmit = async (payload) => {
-    setErrorGuardado(null);
     setGuardando(true);
     try {
       await actualizarContratista(id, payload);
       navigate('/contratistas');
-    } catch (err) {
-      setErrorGuardado(err.message);
+    } catch (error) {
+      notifyError(error?.message);
     } finally {
       setGuardando(false);
     }
@@ -64,11 +63,6 @@ export function EditContractorPage() {
 
       {!cargando && !errorCarga && initialValues && (
         <>
-          {errorGuardado && (
-            <Alert color="red" title="No se pudo guardar" mb="md">
-              {errorGuardado}
-            </Alert>
-          )}
           <ContractorForm
             initialValues={initialValues}
             onSubmit={handleSubmit}

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Alert, Button, Container, Group, Loader, Table, Text, Title } from '@mantine/core';
 
 import { eliminarContratista, listarContratistas } from '../api/contratistas';
+import { notifyError } from '../utils/notifications';
 
 export function ContractorsListPage() {
   const navigate = useNavigate();
@@ -21,13 +22,12 @@ export function ContractorsListPage() {
   const handleEliminar = async (id) => {
     if (!window.confirm('¿Seguro que querés eliminar este contratista?')) return;
 
-    setError(null);
     setEliminandoId(id);
     try {
       await eliminarContratista(id);
       setContratistas((actuales) => actuales.filter((contratista) => contratista.id !== id));
-    } catch (err) {
-      setError(err.message);
+    } catch (error) {
+      notifyError(error?.message);
     } finally {
       setEliminandoId(null);
     }
