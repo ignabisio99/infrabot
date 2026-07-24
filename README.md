@@ -10,3 +10,22 @@ Para ejecutar este proyecto localmente:
    ```bash
    docker compose up
    ```
+
+Una vez levantado, los servicios quedan disponibles en:
+
+- Frontend: http://localhost:3000
+- Backend (API): http://localhost:8000
+- Documentación interactiva de la API (Swagger UI): http://localhost:8000/docs
+
+## Stack
+
+- Backend: FastAPI + SQLAlchemy (ORM) + Postgres.
+- Frontend: React 19 + Vite + Mantine + React Router.
+
+## Enlaces útiles
+
+- [FastAPI - Documentación](https://fastapi.tiangolo.com/)
+- [SQLAlchemy - Documentación](https://docs.sqlalchemy.org/)
+- [React - Documentación](https://react.dev/)
+- [Mantine - Documentación de componentes](https://mantine.dev/)
+- [Tabler Icons (React)](https://tabler.io/icons)
