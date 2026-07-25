@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  ActionIcon,
   Alert,
   Badge,
   Button,
@@ -15,10 +16,12 @@ import {
   Title,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
+import { IconEye } from '@tabler/icons-react';
 
 import { eliminarReclamo, listarReclamos } from '../../api/reclamos';
 import { formatearIdReclamo } from '../../utils/ids';
 import { notifyError, notifySuccess } from '../../utils/notifications';
+import { ClaimDetailDrawer } from './ClaimDetailDrawer';
 
 const colorPorPrioridad = {
   ALTA: 'red',
@@ -58,6 +61,7 @@ export function ClaimsListPage() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [eliminandoId, setEliminandoId] = useState(null);
+  const [reclamoSeleccionado, setReclamoSeleccionado] = useState(null);
 
   const [prioridadFiltro, setPrioridadFiltro] = useState('');
   const [rangoFechas, setRangoFechas] = useState([null, null]);
@@ -193,6 +197,7 @@ export function ClaimsListPage() {
         <Table striped highlightOnHover>
           <Table.Thead>
             <Table.Tr>
+              <Table.Th />
               <Table.Th>ID</Table.Th>
               <Table.Th>Escuela</Table.Th>
               <Table.Th>Ubicación</Table.Th>
@@ -206,7 +211,16 @@ export function ClaimsListPage() {
           </Table.Thead>
           <Table.Tbody>
             {reclamosPagina.map((reclamo) => (
-              <Table.Tr key={reclamo.id}>
+              <Table.Tr
+                key={reclamo.id}
+                onClick={() => setReclamoSeleccionado(reclamo)}
+                style={{ cursor: 'pointer' }}
+              >
+                <Table.Td w={40}>
+                  <ActionIcon variant="subtle" size="sm" aria-label="Ver detalle">
+                    <IconEye size={16} />
+                  </ActionIcon>
+                </Table.Td>
                 <Table.Td>
                   <Text ff="monospace">{formatearIdReclamo(reclamo.id)}</Text>
                 </Table.Td>
@@ -232,7 +246,7 @@ export function ClaimsListPage() {
                 </Table.Td>
                 <Table.Td>{new Date(reclamo.fecha_creacion).toLocaleString('es-AR')}</Table.Td>
                 <Table.Td>
-                  <Group gap="xs" wrap="nowrap">
+                  <Group gap="xs" wrap="nowrap" onClick={(event) => event.stopPropagation()}>
                     <Button
                       variant="subtle"
                       size="xs"
@@ -262,6 +276,11 @@ export function ClaimsListPage() {
           <Pagination total={totalPaginas} value={pagina} onChange={setPagina} />
         </Group>
       )}
+
+      <ClaimDetailDrawer
+        reclamo={reclamoSeleccionado}
+        onClose={() => setReclamoSeleccionado(null)}
+      />
     </Container>
   );
 }
