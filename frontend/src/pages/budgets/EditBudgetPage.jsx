@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Alert, Anchor, Container, Loader, Title } from '@mantine/core';
 
-import { BudgetForm } from '../components/forms/BudgetForm';
-import { actualizarPresupuesto, obtenerPresupuesto } from '../api/presupuestos';
-import { listarReclamos } from '../api/reclamos';
-import { listarContratistas } from '../api/contratistas';
-import { notifyError } from '../utils/notifications';
+import { BudgetForm } from './BudgetForm';
+import { actualizarPresupuesto, obtenerPresupuesto } from '../../api/presupuestos';
+import { listarReclamos } from '../../api/reclamos';
+import { listarContratistas } from '../../api/contratistas';
+import { notifyError } from '../../utils/notifications';
 
 export function EditBudgetPage() {
   const { id } = useParams();

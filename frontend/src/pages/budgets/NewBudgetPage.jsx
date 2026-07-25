@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Anchor, Container, Loader } from '@mantine/core';
 
-import { BudgetForm } from '../components/forms/BudgetForm';
-import { crearPresupuesto } from '../api/presupuestos';
-import { listarReclamos } from '../api/reclamos';
-import { listarContratistas } from '../api/contratistas';
-import { notifyError } from '../utils/notifications';
+import { BudgetForm } from './BudgetForm';
+import { crearPresupuesto } from '../../api/presupuestos';
+import { listarReclamos } from '../../api/reclamos';
+import { listarContratistas } from '../../api/contratistas';
+import { notifyError } from '../../utils/notifications';
 
 export function NewBudgetPage() {
   const [reclamos, setReclamos] = useState([]);

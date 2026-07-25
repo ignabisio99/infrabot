@@ -11,6 +11,7 @@ import {
 import { useForm } from '@mantine/form';
 
 import { formatearIdReclamo } from '../../utils/ids';
+import { formatoMoneda } from '../../utils/formatters';
 
 const valoresPorDefecto = {
   claimId: '',
@@ -18,8 +19,6 @@ const valoresPorDefecto = {
   notes: '',
   items: [{ description: '', quantity: '', unitCost: '' }],
 };
-
-const formatoMoneda = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
 
 export function BudgetForm({
   reclamosDisponibles,

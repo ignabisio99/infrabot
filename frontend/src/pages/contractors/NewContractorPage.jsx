@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Anchor, Container } from '@mantine/core';
 
-import { SchoolClaimForm } from '../components/forms/SchoolClaimForm';
-import { crearReclamo } from '../api/reclamos';
-import { notifyError } from '../utils/notifications';
+import { ContractorForm } from './ContractorForm';
+import { crearContratista } from '../../api/contratistas';
+import { notifyError } from '../../utils/notifications';
 
-export function NewClaimPage() {
+export function NewContractorPage() {
   const [enviando, setEnviando] = useState(false);
   const [enviadoOk, setEnviadoOk] = useState(false);
   const [formKey, setFormKey] = useState(0);
@@ -15,7 +15,7 @@ export function NewClaimPage() {
     setEnviadoOk(false);
     setEnviando(true);
     try {
-      await crearReclamo(payload);
+      await crearContratista(payload);
       setEnviadoOk(true);
       setFormKey((key) => key + 1);
     } catch (error) {
@@ -27,17 +27,17 @@ export function NewClaimPage() {
 
   return (
     <Container size="sm" py="xl">
-      <Anchor component={Link} to="/reclamos" mb="md" display="inline-block">
-        ← Volver a Reclamos
+      <Anchor component={Link} to="/contratistas" mb="md" display="inline-block">
+        ← Volver a Contratistas
       </Anchor>
 
       {enviadoOk && (
-        <Alert color="green" title="Reclamo enviado" mb="md">
-          Tu reclamo fue registrado correctamente.
+        <Alert color="green" title="Contratista guardado" mb="md">
+          El contratista fue registrado correctamente.
         </Alert>
       )}
 
-      <SchoolClaimForm key={formKey} onSubmit={handleSubmit} submitting={enviando} />
+      <ContractorForm key={formKey} onSubmit={handleSubmit} submitting={enviando} />
     </Container>
   );
 }

@@ -16,9 +16,9 @@ import {
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 
-import { eliminarReclamo, listarReclamos } from '../api/reclamos';
-import { formatearIdReclamo } from '../utils/ids';
-import { notifyError } from '../utils/notifications';
+import { eliminarReclamo, listarReclamos } from '../../api/reclamos';
+import { formatearIdReclamo } from '../../utils/ids';
+import { notifyError } from '../../utils/notifications';
 
 const colorPorPrioridad = {
   ALTA: 'red',

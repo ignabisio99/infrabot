@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, Button, Container, Group, Loader, Table, Text, Title } from '@mantine/core';
 
-import { eliminarContratista, listarContratistas } from '../api/contratistas';
-import { notifyError } from '../utils/notifications';
+import { eliminarContratista, listarContratistas } from '../../api/contratistas';
+import { notifyError } from '../../utils/notifications';
 
 export function ContractorsListPage() {
   const navigate = useNavigate();

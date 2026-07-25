@@ -1,15 +1,15 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { AppLayout } from './layout/AppLayout';
-import { BudgetsListPage } from './pages/BudgetsListPage';
-import { ClaimsListPage } from './pages/ClaimsListPage';
-import { ContractorsListPage } from './pages/ContractorsListPage';
-import { EditBudgetPage } from './pages/EditBudgetPage';
-import { EditClaimPage } from './pages/EditClaimPage';
-import { EditContractorPage } from './pages/EditContractorPage';
-import { NewBudgetPage } from './pages/NewBudgetPage';
-import { NewClaimPage } from './pages/NewClaimPage';
-import { NewContractorPage } from './pages/NewContractorPage';
+import { BudgetsListPage } from './pages/budgets/BudgetsListPage';
+import { EditBudgetPage } from './pages/budgets/EditBudgetPage';
+import { NewBudgetPage } from './pages/budgets/NewBudgetPage';
+import { ClaimsListPage } from './pages/claims/ClaimsListPage';
+import { EditClaimPage } from './pages/claims/EditClaimPage';
+import { NewClaimPage } from './pages/claims/NewClaimPage';
+import { ContractorsListPage } from './pages/contractors/ContractorsListPage';
+import { EditContractorPage } from './pages/contractors/EditContractorPage';
+import { NewContractorPage } from './pages/contractors/NewContractorPage';
 
 function App() {
   return (

@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Alert, Anchor, Container, Loader, Title } from '@mantine/core';
 
-import { SchoolClaimForm } from '../components/forms/SchoolClaimForm';
-import { actualizarReclamo, obtenerReclamo } from '../api/reclamos';
-import { notifyError } from '../utils/notifications';
+import { ContractorForm } from './ContractorForm';
+import { actualizarContratista, obtenerContratista } from '../../api/contratistas';
+import { notifyError } from '../../utils/notifications';
 
-export function EditClaimPage() {
+export function EditContractorPage() {
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -17,15 +17,14 @@ export function EditClaimPage() {
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
-    obtenerReclamo(id)
-      .then((reclamo) =>
+    obtenerContratista(id)
+      .then((contratista) =>
         setInitialValues({
-          schoolName: reclamo.nombre_escuela,
-          sector: reclamo.ubicacion,
-          priority: reclamo.prioridad,
-          category: reclamo.categoria,
-          description: reclamo.descripcion,
-          observations: reclamo.observaciones ?? '',
+          companyName: contratista.nombre_empresa,
+          phone: contratista.telefono,
+          address: contratista.direccion,
+          specialty: contratista.especialidad,
+          rating: contratista.calificacion,
         }),
       )
       .catch((err) => setErrorCarga(err.message))
@@ -35,8 +34,8 @@ export function EditClaimPage() {
   const handleSubmit = async (payload) => {
     setGuardando(true);
     try {
-      await actualizarReclamo(id, payload);
-      navigate('/reclamos');
+      await actualizarContratista(id, payload);
+      navigate('/contratistas');
     } catch (error) {
       notifyError(error?.message);
     } finally {
@@ -46,25 +45,25 @@ export function EditClaimPage() {
 
   return (
     <Container size="sm" py="xl">
-      <Anchor component={Link} to="/reclamos" mb="md" display="inline-block">
-        ← Volver a Reclamos
+      <Anchor component={Link} to="/contratistas" mb="md" display="inline-block">
+        ← Volver a Contratistas
       </Anchor>
 
       <Title order={2} mb="md">
-        Editar Reclamo
+        Editar Contratista
       </Title>
 
       {cargando && <Loader />}
 
       {errorCarga && (
-        <Alert color="red" title="No se pudo cargar el reclamo">
+        <Alert color="red" title="No se pudo cargar el contratista">
           {errorCarga}
         </Alert>
       )}
 
       {!cargando && !errorCarga && initialValues && (
         <>
-          <SchoolClaimForm
+          <ContractorForm
             initialValues={initialValues}
             onSubmit={handleSubmit}
             submitting={guardando}
