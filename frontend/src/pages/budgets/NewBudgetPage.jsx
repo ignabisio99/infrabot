@@ -6,7 +6,7 @@ import { BudgetForm } from './BudgetForm';
 import { crearPresupuesto } from '../../api/presupuestos';
 import { listarReclamos } from '../../api/reclamos';
 import { listarContratistas } from '../../api/contratistas';
-import { notifyError } from '../../utils/notifications';
+import { notifyError, notifySuccess } from '../../utils/notifications';
 
 export function NewBudgetPage() {
   const [reclamos, setReclamos] = useState([]);
@@ -15,7 +15,6 @@ export function NewBudgetPage() {
   const [errorDatos, setErrorDatos] = useState(null);
 
   const [enviando, setEnviando] = useState(false);
-  const [enviadoOk, setEnviadoOk] = useState(false);
   const [formKey, setFormKey] = useState(0);
 
   useEffect(() => {
@@ -29,11 +28,10 @@ export function NewBudgetPage() {
   }, []);
 
   const handleSubmit = async (payload) => {
-    setEnviadoOk(false);
     setEnviando(true);
     try {
       await crearPresupuesto(payload);
-      setEnviadoOk(true);
+      notifySuccess('El presupuesto fue registrado correctamente.');
       setFormKey((key) => key + 1);
     } catch (error) {
       notifyError(error?.message);
@@ -58,12 +56,6 @@ export function NewBudgetPage() {
 
       {!cargandoDatos && !errorDatos && (
         <>
-          {enviadoOk && (
-            <Alert color="green" title="Presupuesto guardado" mb="md">
-              El presupuesto fue registrado correctamente.
-            </Alert>
-          )}
-
           <BudgetForm
             key={formKey}
             reclamosDisponibles={reclamos}

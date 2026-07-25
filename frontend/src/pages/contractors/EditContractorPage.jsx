@@ -4,7 +4,7 @@ import { Alert, Anchor, Container, Loader, Title } from '@mantine/core';
 
 import { ContractorForm } from './ContractorForm';
 import { actualizarContratista, obtenerContratista } from '../../api/contratistas';
-import { notifyError } from '../../utils/notifications';
+import { notifyError, notifySuccess } from '../../utils/notifications';
 
 export function EditContractorPage() {
   const { id } = useParams();
@@ -35,6 +35,7 @@ export function EditContractorPage() {
     setGuardando(true);
     try {
       await actualizarContratista(id, payload);
+      notifySuccess('El contratista fue actualizado correctamente.');
       navigate('/contratistas');
     } catch (error) {
       notifyError(error?.message);

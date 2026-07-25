@@ -4,7 +4,7 @@ import { Alert, Anchor, Container, Loader, Title } from '@mantine/core';
 
 import { SchoolClaimForm } from './SchoolClaimForm';
 import { actualizarReclamo, obtenerReclamo } from '../../api/reclamos';
-import { notifyError } from '../../utils/notifications';
+import { notifyError, notifySuccess } from '../../utils/notifications';
 
 export function EditClaimPage() {
   const { id } = useParams();
@@ -36,6 +36,7 @@ export function EditClaimPage() {
     setGuardando(true);
     try {
       await actualizarReclamo(id, payload);
+      notifySuccess('El reclamo fue actualizado correctamente.');
       navigate('/reclamos');
     } catch (error) {
       notifyError(error?.message);

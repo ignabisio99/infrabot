@@ -15,7 +15,7 @@ import { IconListDetails } from '@tabler/icons-react';
 
 import { eliminarPresupuesto, listarPresupuestos } from '../../api/presupuestos';
 import { formatearIdReclamo } from '../../utils/ids';
-import { notifyError } from '../../utils/notifications';
+import { notifyError, notifySuccess } from '../../utils/notifications';
 import { formatoMoneda } from '../../utils/formatters';
 import { BudgetItemsModal } from './BudgetItemsModal';
 
@@ -41,6 +41,7 @@ export function BudgetsListPage() {
     try {
       await eliminarPresupuesto(id);
       setPresupuestos((actuales) => actuales.filter((presupuesto) => presupuesto.id !== id));
+      notifySuccess('El presupuesto fue eliminado correctamente.');
     } catch (error) {
       notifyError(error?.message);
     } finally {

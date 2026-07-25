@@ -1,22 +1,20 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Alert, Anchor, Container } from '@mantine/core';
+import { Anchor, Container } from '@mantine/core';
 
 import { SchoolClaimForm } from './SchoolClaimForm';
 import { crearReclamo } from '../../api/reclamos';
-import { notifyError } from '../../utils/notifications';
+import { notifyError, notifySuccess } from '../../utils/notifications';
 
 export function NewClaimPage() {
   const [enviando, setEnviando] = useState(false);
-  const [enviadoOk, setEnviadoOk] = useState(false);
   const [formKey, setFormKey] = useState(0);
 
   const handleSubmit = async (payload) => {
-    setEnviadoOk(false);
     setEnviando(true);
     try {
       await crearReclamo(payload);
-      setEnviadoOk(true);
+      notifySuccess('Tu reclamo fue registrado correctamente.');
       setFormKey((key) => key + 1);
     } catch (error) {
       notifyError(error?.message);
@@ -30,12 +28,6 @@ export function NewClaimPage() {
       <Anchor component={Link} to="/reclamos" mb="md" display="inline-block">
         ← Volver a Reclamos
       </Anchor>
-
-      {enviadoOk && (
-        <Alert color="green" title="Reclamo enviado" mb="md">
-          Tu reclamo fue registrado correctamente.
-        </Alert>
-      )}
 
       <SchoolClaimForm key={formKey} onSubmit={handleSubmit} submitting={enviando} />
     </Container>

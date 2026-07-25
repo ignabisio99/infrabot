@@ -6,7 +6,7 @@ import { BudgetForm } from './BudgetForm';
 import { actualizarPresupuesto, obtenerPresupuesto } from '../../api/presupuestos';
 import { listarReclamos } from '../../api/reclamos';
 import { listarContratistas } from '../../api/contratistas';
-import { notifyError } from '../../utils/notifications';
+import { notifyError, notifySuccess } from '../../utils/notifications';
 
 export function EditBudgetPage() {
   const { id } = useParams();
@@ -44,6 +44,7 @@ export function EditBudgetPage() {
     setGuardando(true);
     try {
       await actualizarPresupuesto(id, payload);
+      notifySuccess('El presupuesto fue actualizado correctamente.');
       navigate('/presupuestos');
     } catch (error) {
       notifyError(error?.message);
