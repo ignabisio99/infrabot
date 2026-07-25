@@ -41,7 +41,7 @@ export function NewBudgetPage() {
   };
 
   return (
-    <Container size="md" py="xl">
+    <Container size="md" px={0}>
       <Anchor component={Link} to="/presupuestos" mb="md" display="inline-block">
         ← Volver a Presupuestos
       </Anchor>

@@ -1,18 +1,28 @@
-import { AppShell, Burger, Group, NavLink, Title, ActionIcon, Tooltip } from '@mantine/core';
+import { AppShell, Burger, Group, NavLink, ActionIcon, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
+  IconHome,
   IconClipboardList,
   IconTruck,
   IconReceipt2,
+  IconCalendar,
+  IconChartBar,
+  IconSettings,
   IconChevronLeft,
   IconChevronRight,
 } from '@tabler/icons-react';
+import logo from '../assets/logo-infrabot.jpeg';
+import classes from './AppLayout.module.css';
 
 const links = [
+  { label: 'Dashboard', path: '/dashboard', icon: IconHome },
   { label: 'Reclamos', path: '/reclamos', icon: IconClipboardList },
   { label: 'Contratistas', path: '/contratistas', icon: IconTruck },
   { label: 'Presupuestos', path: '/presupuestos', icon: IconReceipt2 },
+  { label: 'Calendario', path: '/calendario', icon: IconCalendar },
+  { label: 'Reportes', path: '/reportes', icon: IconChartBar },
+  { label: 'Configuración', path: '/configuracion', icon: IconSettings },
 ];
 
 const NAVBAR_WIDTH_EXPANDIDO = 260;
@@ -41,19 +51,26 @@ export function AppLayout() {
           <ActionIcon variant="subtle" color="gray" onClick={toggleColapsado} visibleFrom="sm">
             {colapsado ? <IconChevronRight size={18} /> : <IconChevronLeft size={18} />}
           </ActionIcon>
-          {!colapsado && <Title order={3}>InfraBot UTN</Title>}
+          {<img src={logo} alt="InfraBot UTN" height={56} />}
         </Group>
       </AppShell.Header>
 
-      <AppShell.Navbar p="md">
+      <AppShell.Navbar p="md" style={{ backgroundColor: '#132a4d', border: 'none' }}>
         {links.map((link) => {
           const Icon = link.icon;
           const item = (
             <NavLink
+              className={classes.navLink}
               label={colapsado ? undefined : link.label}
               leftSection={<Icon size={18} stroke={1.5} />}
               active={location.pathname.startsWith(link.path)}
               onClick={() => navigate(link.path)}
+              variant="filled"
+              color="#1fa7b3"
+              styles={{
+                root: { color: '#c7cee0' },
+                label: { color: 'inherit' },
+              }}
             />
           );
 

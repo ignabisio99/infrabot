@@ -50,7 +50,7 @@ export function BudgetsListPage() {
   };
 
   return (
-    <Container fluid py="xl">
+    <Container fluid px={0}>
       <Group justify="space-between" mb="md">
         <Title order={2}>Presupuestos</Title>
         <Button onClick={() => navigate('/presupuestos/nuevo')}>+ Nuevo Presupuesto</Button>

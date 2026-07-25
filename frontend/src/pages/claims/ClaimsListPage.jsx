@@ -132,7 +132,7 @@ export function ClaimsListPage() {
   };
 
   return (
-    <Container fluid py="xl">
+    <Container fluid px={0}>
       <Group justify="space-between" mb="md">
         <Title order={2}>Reclamos</Title>
         <Button onClick={() => navigate('/reclamos/nuevo')}>+ Nuevo Reclamo</Button>

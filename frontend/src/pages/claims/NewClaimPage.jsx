@@ -24,7 +24,7 @@ export function NewClaimPage() {
   };
 
   return (
-    <Container size="sm" py="xl">
+    <Container size="sm" px={0}>
       <Anchor component={Link} to="/reclamos" mb="md" display="inline-block">
         ← Volver a Reclamos
       </Anchor>
