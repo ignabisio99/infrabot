@@ -1,4 +1,14 @@
-import { AppShell, Burger, Group, NavLink, ActionIcon, Tooltip } from '@mantine/core';
+import {
+  AppShell,
+  Avatar,
+  Burger,
+  Group,
+  NavLink,
+  ActionIcon,
+  Text,
+  Tooltip,
+  UnstyledButton,
+} from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -9,6 +19,7 @@ import {
   IconCalendar,
   IconChartBar,
   IconSettings,
+  IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
 } from '@tabler/icons-react';
@@ -24,6 +35,13 @@ const links = [
   { label: 'Reportes', path: '/reportes', icon: IconChartBar },
   { label: 'Configuración', path: '/configuracion', icon: IconSettings },
 ];
+
+// TODO: reemplazar por el usuario autenticado real cuando exista login
+const usuarioMock = {
+  iniciales: 'RP',
+  nombre: 'R. Pérez',
+  rol: 'Responsable',
+};
 
 const NAVBAR_WIDTH_EXPANDIDO = 260;
 const NAVBAR_WIDTH_COLAPSADO = 80;
@@ -46,12 +64,31 @@ export function AppLayout() {
       transitionDuration={200}
     >
       <AppShell.Header>
-        <Group h="100%" px="md">
-          <Burger opened={mobileOpened} onClick={toggleMobile} hiddenFrom="sm" size="sm" />
-          <ActionIcon variant="subtle" color="gray" onClick={toggleColapsado} visibleFrom="sm">
-            {colapsado ? <IconChevronRight size={18} /> : <IconChevronLeft size={18} />}
-          </ActionIcon>
-          {<img src={logo} alt="InfraBot UTN" height={56} />}
+        <Group h="100%" px="md" justify="space-between">
+          <Group h="100%">
+            <Burger opened={mobileOpened} onClick={toggleMobile} hiddenFrom="sm" size="sm" />
+            <ActionIcon variant="subtle" color="gray" onClick={toggleColapsado} visibleFrom="sm">
+              {colapsado ? <IconChevronRight size={18} /> : <IconChevronLeft size={18} />}
+            </ActionIcon>
+            {<img src={logo} alt="InfraBot UTN" height={56} />}
+          </Group>
+
+          <UnstyledButton>
+            <Group gap="xs">
+              <Avatar color="#1fa7b3" radius="xl">
+                {usuarioMock.iniciales}
+              </Avatar>
+              <div style={{ lineHeight: 1.1 }}>
+                <Text size="sm" fw={500}>
+                  {usuarioMock.nombre}
+                </Text>
+                <Text size="xs" c="dimmed">
+                  {usuarioMock.rol}
+                </Text>
+              </div>
+              <IconChevronDown size={16} stroke={1.5} />
+            </Group>
+          </UnstyledButton>
         </Group>
       </AppShell.Header>
 
