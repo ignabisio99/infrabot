@@ -17,6 +17,20 @@ Una vez levantado, los servicios quedan disponibles en:
 - Backend (API): http://localhost:8000
 - Documentación interactiva de la API (Swagger UI): http://localhost:8000/docs
 
+## Datos de ejemplo
+
+La BD arranca vacía. Para cargar datos de prueba (contratistas, reclamos y presupuestos):
+
+```bash
+docker compose exec backend python seed.py
+```
+
+Si ya hay datos cargados, el script no hace nada. Para borrar todo y recargar:
+
+```bash
+docker compose exec backend python seed.py --reset
+```
+
 ## Stack
 
 - Backend: FastAPI + SQLAlchemy (ORM) + Postgres.
