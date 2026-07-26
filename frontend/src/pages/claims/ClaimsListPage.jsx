@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import {
   ActionIcon,
   Alert,
-  Badge,
   Button,
   Container,
   Group,
@@ -18,16 +17,12 @@ import {
 import { DatePickerInput } from '@mantine/dates';
 import { IconEye } from '@tabler/icons-react';
 
+import { RowActionsMenu } from '../../components/RowActionsMenu';
 import { eliminarReclamo, listarReclamos } from '../../api/reclamos';
 import { formatearIdReclamo } from '../../utils/ids';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 import { ClaimDetailDrawer } from './ClaimDetailDrawer';
-
-const colorPorPrioridad = {
-  ALTA: 'red',
-  MEDIA: 'yellow',
-  BAJA: 'green',
-};
+import { PriorityBadge } from './PriorityBadge';
 
 const opcionesPrioridad = [
   { value: '', label: 'Todas' },
@@ -204,7 +199,6 @@ export function ClaimsListPage() {
               <Table.Th>Prioridad</Table.Th>
               <Table.Th>Categoría</Table.Th>
               <Table.Th>Descripción</Table.Th>
-              <Table.Th>Observaciones</Table.Th>
               <Table.Th>Fecha</Table.Th>
               <Table.Th />
             </Table.Tr>
@@ -227,7 +221,7 @@ export function ClaimsListPage() {
                 <Table.Td>{reclamo.nombre_escuela}</Table.Td>
                 <Table.Td>{reclamo.ubicacion}</Table.Td>
                 <Table.Td>
-                  <Badge color={colorPorPrioridad[reclamo.prioridad]}>{reclamo.prioridad}</Badge>
+                  <PriorityBadge prioridad={reclamo.prioridad} variant="light" />
                 </Table.Td>
                 <Table.Td>{reclamo.categoria}</Table.Td>
                 <Table.Td>
@@ -235,35 +229,13 @@ export function ClaimsListPage() {
                     {reclamo.descripcion}
                   </Text>
                 </Table.Td>
-                <Table.Td>
-                  {reclamo.observaciones ? (
-                    <Text truncate="end" maw={200} title={reclamo.observaciones}>
-                      {reclamo.observaciones}
-                    </Text>
-                  ) : (
-                    <Text c="dimmed">—</Text>
-                  )}
-                </Table.Td>
                 <Table.Td>{new Date(reclamo.fecha_creacion).toLocaleString('es-AR')}</Table.Td>
                 <Table.Td>
-                  <Group gap="xs" wrap="nowrap" onClick={(event) => event.stopPropagation()}>
-                    <Button
-                      variant="subtle"
-                      size="xs"
-                      onClick={() => navigate(`/reclamos/${reclamo.id}/editar`)}
-                    >
-                      Editar
-                    </Button>
-                    <Button
-                      color="red"
-                      variant="subtle"
-                      size="xs"
-                      loading={eliminandoId === reclamo.id}
-                      onClick={() => handleEliminar(reclamo.id)}
-                    >
-                      Eliminar
-                    </Button>
-                  </Group>
+                  <RowActionsMenu
+                    onEdit={() => navigate(`/reclamos/${reclamo.id}/editar`)}
+                    onDelete={() => handleEliminar(reclamo.id)}
+                    deleting={eliminandoId === reclamo.id}
+                  />
                 </Table.Td>
               </Table.Tr>
             ))}

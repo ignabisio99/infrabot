@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, Button, Container, Group, Loader, Table, Text, Title } from '@mantine/core';
 
+import { RowActionsMenu } from '../../components/RowActionsMenu';
 import { eliminarContratista, listarContratistas } from '../../api/contratistas';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 
@@ -74,24 +75,11 @@ export function ContractorsListPage() {
                 <Table.Td>{contratista.especialidad}</Table.Td>
                 <Table.Td>{contratista.calificacion} / 5</Table.Td>
                 <Table.Td>
-                  <Group gap="xs" wrap="nowrap">
-                    <Button
-                      variant="subtle"
-                      size="xs"
-                      onClick={() => navigate(`/contratistas/${contratista.id}/editar`)}
-                    >
-                      Editar
-                    </Button>
-                    <Button
-                      color="red"
-                      variant="subtle"
-                      size="xs"
-                      loading={eliminandoId === contratista.id}
-                      onClick={() => handleEliminar(contratista.id)}
-                    >
-                      Eliminar
-                    </Button>
-                  </Group>
+                  <RowActionsMenu
+                    onEdit={() => navigate(`/contratistas/${contratista.id}/editar`)}
+                    onDelete={() => handleEliminar(contratista.id)}
+                    deleting={eliminandoId === contratista.id}
+                  />
                 </Table.Td>
               </Table.Tr>
             ))}

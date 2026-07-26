@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  Badge,
   Drawer,
   Group,
   Image,
@@ -25,19 +24,30 @@ import {
 } from '@tabler/icons-react';
 
 import { formatearIdReclamo } from '../../utils/ids';
-
-const colorPorPrioridad = {
-  ALTA: 'red',
-  MEDIA: 'yellow',
-  BAJA: 'green',
-};
+import { PriorityBadge } from './PriorityBadge';
 
 // TODO: reemplazar por fotos reales cuando el backend exponga un endpoint de adjuntos
 const FOTOS_MOCK = [
-  { id: 1, etiqueta: 'Foto 1', url: 'https://picsum.photos/seed/reclamo-1/600/600' },
-  { id: 2, etiqueta: 'Foto 2', url: 'https://picsum.photos/seed/reclamo-2/600/600' },
-  { id: 3, etiqueta: 'Foto 3', url: 'https://picsum.photos/seed/reclamo-3/600/600' },
-  { id: 4, etiqueta: 'Foto 4', url: 'https://picsum.photos/seed/reclamo-4/600/600' },
+  {
+    id: 1,
+    etiqueta: 'Foto 1',
+    url: 'https://loremflickr.com/600/600/construction,renovation/all?lock=1',
+  },
+  {
+    id: 2,
+    etiqueta: 'Foto 2',
+    url: 'https://loremflickr.com/600/600/construction,renovation/all?lock=2',
+  },
+  {
+    id: 3,
+    etiqueta: 'Foto 3',
+    url: 'https://loremflickr.com/600/600/construction,renovation/all?lock=3',
+  },
+  {
+    id: 4,
+    etiqueta: 'Foto 4',
+    url: 'https://loremflickr.com/600/600/school,construction/all?lock=1',
+  },
 ];
 
 // Suma `dias` a la fecha de creación del reclamo, para que cada evento del
@@ -156,9 +166,7 @@ export function ClaimDetailDrawer({ reclamo, onClose }) {
                   <Text size="xs" c="dimmed" ff="monospace">
                     {formatearIdReclamo(reclamo.id)}
                   </Text>
-                  <Badge size="xs" color={colorPorPrioridad[reclamo.prioridad]}>
-                    {reclamo.prioridad}
-                  </Badge>
+                  <PriorityBadge prioridad={reclamo.prioridad} size="xs" variant="light" />
                 </Group>
                 <Text fw={700} size="lg" lh={1.15}>
                   {reclamo.nombre_escuela}

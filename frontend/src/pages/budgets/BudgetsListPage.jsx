@@ -13,6 +13,7 @@ import {
 } from '@mantine/core';
 import { IconListDetails } from '@tabler/icons-react';
 
+import { RowActionsMenu } from '../../components/RowActionsMenu';
 import { eliminarPresupuesto, listarPresupuestos } from '../../api/presupuestos';
 import { formatearIdReclamo } from '../../utils/ids';
 import { notifyError, notifySuccess } from '../../utils/notifications';
@@ -109,24 +110,11 @@ export function BudgetsListPage() {
                   )}
                 </Table.Td>
                 <Table.Td>
-                  <Group gap="xs" wrap="nowrap" onClick={(event) => event.stopPropagation()}>
-                    <Button
-                      variant="subtle"
-                      size="xs"
-                      onClick={() => navigate(`/presupuestos/${presupuesto.id}/editar`)}
-                    >
-                      Editar
-                    </Button>
-                    <Button
-                      color="red"
-                      variant="subtle"
-                      size="xs"
-                      loading={eliminandoId === presupuesto.id}
-                      onClick={() => handleEliminar(presupuesto.id)}
-                    >
-                      Eliminar
-                    </Button>
-                  </Group>
+                  <RowActionsMenu
+                    onEdit={() => navigate(`/presupuestos/${presupuesto.id}/editar`)}
+                    onDelete={() => handleEliminar(presupuesto.id)}
+                    deleting={eliminandoId === presupuesto.id}
+                  />
                 </Table.Td>
               </Table.Tr>
             ))}
