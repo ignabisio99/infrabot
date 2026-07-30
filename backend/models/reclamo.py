@@ -2,6 +2,7 @@ import enum
 from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Enum, Integer, String, Text
+from sqlalchemy.orm import relationship
 
 from core.database import Base
 
@@ -23,3 +24,10 @@ class Reclamo(Base):
     descripcion = Column(Text, nullable=False)
     observaciones = Column(Text, nullable=True)
     fecha_creacion = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    fotos = relationship(
+        "FotoReclamo",
+        back_populates="reclamo",
+        cascade="all, delete-orphan",
+        order_by="FotoReclamo.id",
+    )

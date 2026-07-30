@@ -1,12 +1,20 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy.orm import Session, joinedload
 
 from core.database import get_db
+from core.storage import storage
+from models.foto_reclamo import FotoReclamo
 from models.presupuesto import Presupuesto
 from models.reclamo import Reclamo
-from schemas.reclamo import ReclamoCreate, ReclamoOut
+from schemas.reclamo import FotoReclamoOut, ReclamoCreate, ReclamoOut
 
 router = APIRouter(prefix="/reclamos", tags=["reclamos"])
+
+TIPOS_IMAGEN_PERMITIDOS = {"image/jpeg", "image/png", "image/webp"}
+
+
+def _con_fotos(query):
+    return query.options(joinedload(Reclamo.fotos))
 
 
 @router.post("", response_model=ReclamoOut, status_code=201)
@@ -20,12 +28,12 @@ def crear_reclamo(reclamo: ReclamoCreate, db: Session = Depends(get_db)):
 
 @router.get("", response_model=list[ReclamoOut])
 def listar_reclamos(db: Session = Depends(get_db)):
-    return db.query(Reclamo).order_by(Reclamo.fecha_creacion.desc()).all()
+    return _con_fotos(db.query(Reclamo)).order_by(Reclamo.fecha_creacion.desc()).all()
 
 
 @router.get("/{reclamo_id}", response_model=ReclamoOut)
 def obtener_reclamo(reclamo_id: int, db: Session = Depends(get_db)):
-    reclamo = db.get(Reclamo, reclamo_id)
+    reclamo = _con_fotos(db.query(Reclamo)).filter(Reclamo.id == reclamo_id).first()
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
     return reclamo
@@ -55,5 +63,39 @@ def eliminar_reclamo(reclamo_id: int, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=409, detail="No se puede eliminar el reclamo: tiene presupuestos asociados"
         )
+    for foto in reclamo.fotos:
+        storage.eliminar(foto.url)
     db.delete(reclamo)
+    db.commit()
+
+
+@router.post("/{reclamo_id}/fotos", response_model=FotoReclamoOut, status_code=201)
+def subir_foto(reclamo_id: int, archivo: UploadFile = File(...), db: Session = Depends(get_db)):
+    reclamo = db.get(Reclamo, reclamo_id)
+    if reclamo is None:
+        raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+
+    if archivo.content_type not in TIPOS_IMAGEN_PERMITIDOS:
+        raise HTTPException(status_code=400, detail="El archivo debe ser una imagen (jpg, png o webp)")
+
+    url = storage.guardar(archivo, f"reclamos/{reclamo_id}")
+
+    nueva_foto = FotoReclamo(reclamo_id=reclamo_id, nombre_archivo=archivo.filename, url=url)
+    db.add(nueva_foto)
+    db.commit()
+    db.refresh(nueva_foto)
+    return nueva_foto
+
+
+@router.delete("/{reclamo_id}/fotos/{foto_id}", status_code=204)
+def eliminar_foto(reclamo_id: int, foto_id: int, db: Session = Depends(get_db)):
+    foto = (
+        db.query(FotoReclamo)
+        .filter(FotoReclamo.id == foto_id, FotoReclamo.reclamo_id == reclamo_id)
+        .first()
+    )
+    if foto is None:
+        raise HTTPException(status_code=404, detail="Foto no encontrada")
+    storage.eliminar(foto.url)
+    db.delete(foto)
     db.commit()

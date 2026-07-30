@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Archivos subidos por usuarios (fotos de reclamos, guardadas en disco local en dev)
+backend/uploads/

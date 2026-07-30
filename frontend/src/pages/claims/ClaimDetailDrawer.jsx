@@ -1,17 +1,5 @@
-import { useState } from 'react';
-import {
-  Drawer,
-  Group,
-  Image,
-  Modal,
-  Paper,
-  SimpleGrid,
-  Tabs,
-  Text,
-  ThemeIcon,
-  Timeline,
-  UnstyledButton,
-} from '@mantine/core';
+import { useEffect, useState } from 'react';
+import { Drawer, Group, Loader, Paper, Tabs, Text, ThemeIcon, Timeline } from '@mantine/core';
 import {
   IconArrowRight,
   IconBulb,
@@ -23,32 +11,11 @@ import {
   IconTruck,
 } from '@tabler/icons-react';
 
+import { obtenerReclamo } from '../../api/reclamos';
 import { formatearIdReclamo } from '../../utils/ids';
+import { notifyError } from '../../utils/notifications';
+import { ClaimPhotosManager } from './ClaimPhotosManager';
 import { PriorityBadge } from './PriorityBadge';
-
-// TODO: reemplazar por fotos reales cuando el backend exponga un endpoint de adjuntos
-const FOTOS_MOCK = [
-  {
-    id: 1,
-    etiqueta: 'Foto 1',
-    url: 'https://loremflickr.com/600/600/construction,renovation/all?lock=1',
-  },
-  {
-    id: 2,
-    etiqueta: 'Foto 2',
-    url: 'https://loremflickr.com/600/600/construction,renovation/all?lock=2',
-  },
-  {
-    id: 3,
-    etiqueta: 'Foto 3',
-    url: 'https://loremflickr.com/600/600/construction,renovation/all?lock=3',
-  },
-  {
-    id: 4,
-    etiqueta: 'Foto 4',
-    url: 'https://loremflickr.com/600/600/school,construction/all?lock=1',
-  },
-];
 
 // Suma `dias` a la fecha de creación del reclamo, para que cada evento del
 // historial mockeado quede en una fecha posterior al anterior.
@@ -120,167 +87,135 @@ const colorPorTipo = {
   contratista: '#1fa7b3',
 };
 
-function FotoConEtiqueta({ foto }) {
-  return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <Image src={foto.url} alt={foto.etiqueta} radius="md" h="100%" w="100%" fit="cover" />
-      <Text
-        size="xs"
-        c="white"
-        fw={500}
-        style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          padding: '6px 8px',
-          borderBottomLeftRadius: 8,
-          borderBottomRightRadius: 8,
-          background: 'linear-gradient(to top, rgba(0,0,0,0.65), transparent)',
-        }}
-      >
-        {foto.etiqueta}
-      </Text>
-    </div>
-  );
-}
+export function ClaimDetailDrawer({ reclamoId, onClose }) {
+  // Guarda el último fetch resuelto junto con el id al que corresponde: así `cargando`
+  // se puede derivar comparando contra `reclamoId` en vez de duplicar estado, y una
+  // respuesta vieja que llega tarde (ej. al cambiar rápido de reclamo) no pisa una más nueva.
+  const [ultimoCargado, setUltimoCargado] = useState({ id: null, reclamo: null });
 
-export function ClaimDetailDrawer({ reclamo, onClose }) {
-  const [fotoAmpliada, setFotoAmpliada] = useState(null);
+  useEffect(() => {
+    if (reclamoId === null) return;
+    let vigente = true;
+    obtenerReclamo(reclamoId)
+      .then((data) => {
+        if (vigente) setUltimoCargado({ id: reclamoId, reclamo: data });
+      })
+      .catch((err) => {
+        if (vigente) notifyError(err.message);
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [reclamoId]);
+
+  const reclamo = ultimoCargado.id === reclamoId ? ultimoCargado.reclamo : null;
+  const cargando = reclamoId !== null && reclamo === null;
 
   return (
-    <>
-      <Drawer
-        opened={reclamo !== null}
-        onClose={onClose}
-        position="right"
-        size="lg"
-        title={
-          reclamo && (
-            <Group gap="sm" wrap="nowrap" py={2}>
-              <ThemeIcon size={40} radius="md" variant="light" color="#1fa7b3">
-                <IconClipboardList size={20} />
-              </ThemeIcon>
-              <div>
-                <Group gap={8} mb={2}>
-                  <Text size="xs" c="dimmed" ff="monospace">
-                    {formatearIdReclamo(reclamo.id)}
-                  </Text>
-                  <PriorityBadge prioridad={reclamo.prioridad} size="xs" variant="light" />
-                </Group>
-                <Text fw={700} size="lg" lh={1.15}>
-                  {reclamo.nombre_escuela}
+    <Drawer
+      opened={reclamoId !== null}
+      onClose={onClose}
+      position="right"
+      size="lg"
+      title={
+        reclamo && (
+          <Group gap="sm" wrap="nowrap" py={2}>
+            <ThemeIcon size={40} radius="md" variant="light" color="#1fa7b3">
+              <IconClipboardList size={20} />
+            </ThemeIcon>
+            <div>
+              <Group gap={8} mb={2}>
+                <Text size="xs" c="dimmed" ff="monospace">
+                  {formatearIdReclamo(reclamo.id)}
                 </Text>
-                <Group gap={4} c="dimmed">
-                  <IconMapPin size={13} />
-                  <Text size="xs">{reclamo.ubicacion}</Text>
-                </Group>
-              </div>
-            </Group>
-          )
-        }
-        styles={{
-          header: { borderBottom: '1px solid var(--mantine-color-gray-3)', paddingBottom: 12 },
-          body: { paddingTop: 16 },
-        }}
-      >
-        {reclamo && (
-          <>
-            <Paper
-              radius="md"
-              p="sm"
-              mb="md"
-              style={{
-                backgroundColor: 'var(--mantine-color-teal-0)',
-                borderLeft: '4px solid #1fa7b3',
-              }}
-            >
-              <Group gap="xs" mb={4} wrap="nowrap">
-                <ThemeIcon size={24} radius="xl" variant="filled" color="teal">
-                  <IconArrowRight size={14} />
-                </ThemeIcon>
-                <Text fw={700} size="sm" c="teal.9">
-                  Próximo paso
-                </Text>
+                <PriorityBadge prioridad={reclamo.prioridad} size="xs" variant="light" />
               </Group>
-              <Text fw={600} size="sm" ml={32}>
-                {PROXIMA_ACCION_MOCK.titulo}
+              <Text fw={700} size="lg" lh={1.15}>
+                {reclamo.nombre_escuela}
               </Text>
-              <Text size="sm" c="dimmed" ml={32}>
-                {PROXIMA_ACCION_MOCK.descripcion}
-              </Text>
-            </Paper>
+              <Group gap={4} c="dimmed">
+                <IconMapPin size={13} />
+                <Text size="xs">{reclamo.ubicacion}</Text>
+              </Group>
+            </div>
+          </Group>
+        )
+      }
+      styles={{
+        header: { borderBottom: '1px solid var(--mantine-color-gray-3)', paddingBottom: 12 },
+        body: { paddingTop: 16 },
+      }}
+    >
+      {cargando && <Loader />}
 
-            <Tabs defaultValue="avance">
-              <Tabs.List>
-                <Tabs.Tab value="avance" leftSection={<IconHistory size={16} />}>
-                  Avance
-                </Tabs.Tab>
-                <Tabs.Tab value="fotos" leftSection={<IconPhoto size={16} />}>
-                  Fotos
-                </Tabs.Tab>
-              </Tabs.List>
-
-              <Tabs.Panel value="avance" pt="md">
-                <Timeline active={historialMock(reclamo).length} bulletSize={24} lineWidth={2}>
-                  {historialMock(reclamo).map((evento) => {
-                    const Icono = iconoPorTipo[evento.tipo];
-                    return (
-                      <Timeline.Item
-                        key={evento.id}
-                        title={evento.titulo}
-                        bullet={<Icono size={14} />}
-                        color={colorPorTipo[evento.tipo]}
-                      >
-                        <Text size="sm" c="dimmed">
-                          {evento.descripcion}
-                        </Text>
-                        {evento.fecha && (
-                          <Text size="xs" c="dimmed" mt={4}>
-                            {new Date(evento.fecha).toLocaleString('es-AR')}
-                          </Text>
-                        )}
-                      </Timeline.Item>
-                    );
-                  })}
-                </Timeline>
-              </Tabs.Panel>
-
-              <Tabs.Panel value="fotos" pt="md">
-                <SimpleGrid cols={3} spacing="sm">
-                  {FOTOS_MOCK.map((foto) => (
-                    <UnstyledButton
-                      key={foto.id}
-                      onClick={() => setFotoAmpliada(foto)}
-                      style={{ aspectRatio: '1 / 1' }}
-                    >
-                      <FotoConEtiqueta foto={foto} />
-                    </UnstyledButton>
-                  ))}
-                </SimpleGrid>
-              </Tabs.Panel>
-            </Tabs>
-          </>
-        )}
-      </Drawer>
-
-      <Modal
-        opened={fotoAmpliada !== null}
-        onClose={() => setFotoAmpliada(null)}
-        title={fotoAmpliada?.etiqueta}
-        size="lg"
-      >
-        <div style={{ aspectRatio: '16 / 10' }}>
-          <Image
-            src={fotoAmpliada?.url}
-            alt={fotoAmpliada?.etiqueta}
+      {!cargando && reclamo && (
+        <>
+          <Paper
             radius="md"
-            h="100%"
-            w="100%"
-            fit="cover"
-          />
-        </div>
-      </Modal>
-    </>
+            p="sm"
+            mb="md"
+            style={{
+              backgroundColor: 'var(--mantine-color-teal-0)',
+              borderLeft: '4px solid #1fa7b3',
+            }}
+          >
+            <Group gap="xs" mb={4} wrap="nowrap">
+              <ThemeIcon size={24} radius="xl" variant="filled" color="teal">
+                <IconArrowRight size={14} />
+              </ThemeIcon>
+              <Text fw={700} size="sm" c="teal.9">
+                Próximo paso
+              </Text>
+            </Group>
+            <Text fw={600} size="sm" ml={32}>
+              {PROXIMA_ACCION_MOCK.titulo}
+            </Text>
+            <Text size="sm" c="dimmed" ml={32}>
+              {PROXIMA_ACCION_MOCK.descripcion}
+            </Text>
+          </Paper>
+
+          <Tabs defaultValue="avance">
+            <Tabs.List>
+              <Tabs.Tab value="avance" leftSection={<IconHistory size={16} />}>
+                Avance
+              </Tabs.Tab>
+              <Tabs.Tab value="fotos" leftSection={<IconPhoto size={16} />}>
+                Fotos
+              </Tabs.Tab>
+            </Tabs.List>
+
+            <Tabs.Panel value="avance" pt="md">
+              <Timeline active={historialMock(reclamo).length} bulletSize={24} lineWidth={2}>
+                {historialMock(reclamo).map((evento) => {
+                  const Icono = iconoPorTipo[evento.tipo];
+                  return (
+                    <Timeline.Item
+                      key={evento.id}
+                      title={evento.titulo}
+                      bullet={<Icono size={14} />}
+                      color={colorPorTipo[evento.tipo]}
+                    >
+                      <Text size="sm" c="dimmed">
+                        {evento.descripcion}
+                      </Text>
+                      {evento.fecha && (
+                        <Text size="xs" c="dimmed" mt={4}>
+                          {new Date(evento.fecha).toLocaleString('es-AR')}
+                        </Text>
+                      )}
+                    </Timeline.Item>
+                  );
+                })}
+              </Timeline>
+            </Tabs.Panel>
+
+            <Tabs.Panel value="fotos" pt="md">
+              <ClaimPhotosManager reclamoId={reclamo.id} fotosIniciales={reclamo.fotos} />
+            </Tabs.Panel>
+          </Tabs>
+        </>
+      )}
+    </Drawer>
   );
 }

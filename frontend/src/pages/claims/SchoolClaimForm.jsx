@@ -15,6 +15,7 @@ export function SchoolClaimForm({
   onSubmit,
   submitting = false,
   submitLabel = 'Enviar Reclamo',
+  children,
 }) {
   const form = useForm({
     initialValues,
@@ -91,6 +92,8 @@ export function SchoolClaimForm({
           key={form.key('observations')}
           {...form.getInputProps('observations')}
         />
+
+        {children}
 
         <Button type="submit" mt="md" loading={submitting}>
           {submitLabel}

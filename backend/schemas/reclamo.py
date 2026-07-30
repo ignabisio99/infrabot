@@ -14,8 +14,19 @@ class ReclamoCreate(BaseModel):
     observaciones: str | None = None
 
 
+class FotoReclamoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    reclamo_id: int
+    nombre_archivo: str
+    url: str
+    fecha_creacion: datetime
+
+
 class ReclamoOut(ReclamoCreate):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     fecha_creacion: datetime
+    fotos: list[FotoReclamoOut] = []

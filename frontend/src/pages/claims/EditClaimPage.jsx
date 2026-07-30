@@ -64,14 +64,12 @@ export function EditClaimPage() {
       )}
 
       {!cargando && !errorCarga && initialValues && (
-        <>
-          <SchoolClaimForm
-            initialValues={initialValues}
-            onSubmit={handleSubmit}
-            submitting={guardando}
-            submitLabel="Guardar Cambios"
-          />
-        </>
+        <SchoolClaimForm
+          initialValues={initialValues}
+          onSubmit={handleSubmit}
+          submitting={guardando}
+          submitLabel="Guardar Cambios"
+        />
       )}
     </Container>
   );

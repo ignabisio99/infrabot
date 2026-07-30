@@ -56,7 +56,7 @@ export function ClaimsListPage() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [eliminandoId, setEliminandoId] = useState(null);
-  const [reclamoSeleccionado, setReclamoSeleccionado] = useState(null);
+  const [reclamoIdSeleccionado, setReclamoIdSeleccionado] = useState(null);
 
   const [prioridadFiltro, setPrioridadFiltro] = useState('');
   const [rangoFechas, setRangoFechas] = useState([null, null]);
@@ -207,7 +207,7 @@ export function ClaimsListPage() {
             {reclamosPagina.map((reclamo) => (
               <Table.Tr
                 key={reclamo.id}
-                onClick={() => setReclamoSeleccionado(reclamo)}
+                onClick={() => setReclamoIdSeleccionado(reclamo.id)}
                 style={{ cursor: 'pointer' }}
               >
                 <Table.Td w={40}>
@@ -250,8 +250,8 @@ export function ClaimsListPage() {
       )}
 
       <ClaimDetailDrawer
-        reclamo={reclamoSeleccionado}
-        onClose={() => setReclamoSeleccionado(null)}
+        reclamoId={reclamoIdSeleccionado}
+        onClose={() => setReclamoIdSeleccionado(null)}
       />
     </Container>
   );
