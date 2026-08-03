@@ -37,8 +37,12 @@ services:
       - "${FRONTEND_PORT}:3000"
     environment:
       VITE_API_URL: ${VITE_API_URL}
+      HUSKY: 0
     volumes:
       - ./frontend:/app
+    # Este bind mount tapa el node_modules que instaló la imagen, así que las
+    # dependencias se instalan al arrancar. Si ya están al día, tarda ~1s.
+    command: sh -c "pnpm install && pnpm dev --host 0.0.0.0"
     depends_on:
       - backend
 
