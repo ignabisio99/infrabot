@@ -1,0 +1,249 @@
+import { useState } from 'react';
+import {
+  Alert,
+  Anchor,
+  Button,
+  Container,
+  Divider,
+  Group,
+  List,
+  Paper,
+  PasswordInput,
+  Stack,
+  Tabs,
+  Text,
+  TextInput,
+} from '@mantine/core';
+import {
+  IconAlertCircle,
+  IconCheck,
+  IconLock,
+  IconMail,
+  IconUser,
+} from '@tabler/icons-react';
+import logo from '../../assets/logo-infrabot-front.png';
+import { login, register, loginWithGoogle } from '../../api/auth';
+import { GoogleLogin } from '@react-oauth/google';
+
+export function LoginPage({ onLogin }) {
+  const [activeTab, setActiveTab] = useState('login');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+  const [registerForm, setRegisterForm] = useState({
+    nombre: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+  });
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setLoading(true);
+    try {
+      const data = await login(loginForm.email, loginForm.password);
+      localStorage.setItem('infrabot_token', data.access_token);
+      localStorage.setItem('infrabot_user', JSON.stringify(data.usuario));
+      onLogin();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+
+    if (registerForm.password !== registerForm.confirmPassword) {
+      setError('Las contraseñas no coinciden');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const data = await register(registerForm.nombre, registerForm.email, registerForm.password);
+      setSuccess(data.mensaje);
+      setRegisterForm({ nombre: '', email: '', password: '', confirmPassword: '' });
+      // Cambiar a la pestaña de login después de registrarse
+      setTimeout(() => setActiveTab('login'), 3000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse) => {
+    setError('');
+    setSuccess('');
+    setLoading(true);
+    try {
+      const data = await loginWithGoogle(credentialResponse.credential);
+      localStorage.setItem('infrabot_token', data.access_token);
+      localStorage.setItem('infrabot_user', JSON.stringify(data.usuario));
+      onLogin();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #132a4d 0%, #1a3a5c 50%, #1fa7b3 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Container size={440}>
+        <Stack align="center" mb="lg">
+          <img
+            src={logo}
+            alt="InfraBot"
+            height={72}
+            style={{ borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}
+          />
+          <Text c="rgba(255,255,255,0.7)" ta="center" size="sm">
+            Sistema de gestión de reclamos de infraestructura escolar
+          </Text>
+        </Stack>
+
+        <Paper radius="md" p="xl" shadow="xl" withBorder>
+          <Stack align="center" mb="md">
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={() => setError('Error al iniciar sesión con Google')}
+              text="continue_with"
+              shape="pill"
+              width="100%"
+            />
+          </Stack>
+
+          <Divider label="o con email" labelPosition="center" mb="md" />
+
+          <Tabs
+            value={activeTab}
+            onChange={(v) => {
+              setActiveTab(v);
+              setError('');
+              setSuccess('');
+            }}
+          >
+            <Tabs.List grow mb="md">
+              <Tabs.Tab value="login">Iniciar sesión</Tabs.Tab>
+              <Tabs.Tab value="register">Registrarse</Tabs.Tab>
+            </Tabs.List>
+
+            {error && (
+              <Alert icon={<IconAlertCircle size={16} />} color="red" mb="md" variant="light">
+                {error}
+              </Alert>
+            )}
+
+            {success && (
+              <Alert icon={<IconCheck size={16} />} color="green" mb="md" variant="light">
+                {success}
+              </Alert>
+            )}
+
+            <Tabs.Panel value="login">
+              <form onSubmit={handleLogin}>
+                <Stack>
+                  <TextInput
+                    label="Email"
+                    placeholder="tu@email.com"
+                    leftSection={<IconMail size={16} />}
+                    required
+                    value={loginForm.email}
+                    onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })}
+                  />
+                  <PasswordInput
+                    label="Contraseña"
+                    placeholder="Tu contraseña"
+                    leftSection={<IconLock size={16} />}
+                    required
+                    value={loginForm.password}
+                    onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+                  />
+                  <Group justify="flex-end">
+                    <Anchor size="xs" c="#1fa7b3">
+                      ¿Olvidaste tu contraseña?
+                    </Anchor>
+                  </Group>
+                  <Button type="submit" fullWidth color="#1fa7b3" loading={loading}>
+                    Iniciar sesión
+                  </Button>
+                </Stack>
+              </form>
+            </Tabs.Panel>
+
+            <Tabs.Panel value="register">
+              <form onSubmit={handleRegister}>
+                <Stack>
+                  <TextInput
+                    label="Nombre completo"
+                    placeholder="Tu nombre"
+                    leftSection={<IconUser size={16} />}
+                    required
+                    value={registerForm.nombre}
+                    onChange={(e) => setRegisterForm({ ...registerForm, nombre: e.target.value })}
+                  />
+                  <TextInput
+                    label="Email"
+                    placeholder="tu@email.com"
+                    leftSection={<IconMail size={16} />}
+                    required
+                    value={registerForm.email}
+                    onChange={(e) => setRegisterForm({ ...registerForm, email: e.target.value })}
+                  />
+                  <PasswordInput
+                    label="Contraseña"
+                    placeholder="Mínimo 8 caracteres"
+                    leftSection={<IconLock size={16} />}
+                    required
+                    value={registerForm.password}
+                    onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })}
+                  />
+                  <List size="xs" c="dimmed" spacing={4}>
+                    <List.Item>Mínimo 8 caracteres</List.Item>
+                    <List.Item>Al menos una mayúscula</List.Item>
+                    <List.Item>Al menos un símbolo especial (!@#$%...)</List.Item>
+                  </List>
+                  <PasswordInput
+                    label="Confirmar contraseña"
+                    placeholder="Repetí tu contraseña"
+                    leftSection={<IconLock size={16} />}
+                    required
+                    value={registerForm.confirmPassword}
+                    onChange={(e) =>
+                      setRegisterForm({ ...registerForm, confirmPassword: e.target.value })
+                    }
+                  />
+                  <Button type="submit" fullWidth color="#1fa7b3" loading={loading}>
+                    Registrarse
+                  </Button>
+                </Stack>
+              </form>
+            </Tabs.Panel>
+          </Tabs>
+
+          <Divider my="md" />
+          <Text ta="center" size="xs" c="dimmed">
+            © {new Date().getFullYear()} InfraBot UTN
+          </Text>
+        </Paper>
+      </Container>
+    </div>
+  );
+}

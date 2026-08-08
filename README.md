@@ -1,45 +1,98 @@
 # infrabot-utn
 
-## Primeros Pasos
+Sistema de gestión de reclamos de infraestructura escolar.
 
-Para ejecutar este proyecto localmente:
+## Stack
 
-1. Clona el repositorio.
-2. Crea un archivo `.env` tomando como base el `.env.example`.
-3. Ejecutá con Docker Compose:
-   ```bash
-   docker compose up
-   ```
+- **Backend:** FastAPI + SQLAlchemy + PostgreSQL
+- **Frontend:** React 19 + Vite + Mantine UI + React Router
+- **Autenticación:** JWT + Google OAuth 2.0 + confirmación por email (Gmail SMTP)
+- **Infraestructura:** Docker Compose
 
-Una vez levantado, los servicios quedan disponibles en:
+## Cómo levantar el proyecto
 
-- Frontend: http://localhost:3000
-- Backend (API): http://localhost:8000
-- Documentación interactiva de la API (Swagger UI): http://localhost:8000/docs
+### Requisitos previos
+
+- [Docker](https://docs.docker.com/get-docker/) y Docker Compose instalados
+
+### 1. Clonar el repositorio
+
+```bash
+git clone <url-del-repo>
+cd infrabot-utn
+```
+
+### 2. Configurar variables de entorno
+
+Copiá el archivo de ejemplo y completá con tus valores:
+
+```bash
+cp .env.example .env
+```
+
+Editá el `.env` y configurá:
+
+| Variable | Descripción |
+|----------|-------------|
+| `SMTP_EMAIL` | Email de Gmail para enviar confirmaciones |
+| `SMTP_PASSWORD` | Contraseña de aplicación de Gmail ([cómo generarla](https://myaccount.google.com/apppasswords)) |
+| `GOOGLE_CLIENT_ID` | Client ID de Google OAuth ([consola de Google Cloud](https://console.cloud.google.com/apis/credentials)) |
+
+Las demás variables vienen con valores por defecto que funcionan para desarrollo local.
+
+### 3. Levantar los servicios
+
+```bash
+docker compose up --build
+```
+
+La primera vez tarda unos minutos porque descarga imágenes y construye los contenedores. Las siguientes veces:
+
+```bash
+docker compose up
+```
+
+### 4. Acceder
+
+- **Frontend:** http://localhost:3000
+- **Backend (API):** http://localhost:8000
+- **Swagger UI:** http://localhost:8000/docs
 
 ## Datos de ejemplo
 
-La BD arranca vacía. Para cargar datos de prueba (contratistas, reclamos y presupuestos):
+La base de datos arranca vacía. Para cargar datos de prueba:
 
 ```bash
 docker compose exec backend python seed.py
 ```
 
-Si ya hay datos cargados, el script no hace nada. Para borrar todo y recargar:
+Para borrar todo y recargar:
 
 ```bash
 docker compose exec backend python seed.py --reset
 ```
 
-## Stack
+## Comandos útiles
 
-- Backend: FastAPI + SQLAlchemy (ORM) + Postgres.
-- Frontend: React 19 + Vite + Mantine + React Router.
+```bash
+# Ver logs de un servicio específico
+docker compose logs -f backend
+
+# Reiniciar un servicio (sin reconstruir)
+docker compose restart backend
+
+# Parar todo
+docker compose down
+
+# Reconstruir (necesario al cambiar dependencias)
+docker compose up --build
+```
 
 ## Enlaces útiles
 
-- [FastAPI - Documentación](https://fastapi.tiangolo.com/)
-- [SQLAlchemy - Documentación](https://docs.sqlalchemy.org/)
-- [React - Documentación](https://react.dev/)
-- [Mantine - Documentación de componentes](https://mantine.dev/)
-- [Tabler Icons (React)](https://tabler.io/icons)
+- [FastAPI](https://fastapi.tiangolo.com/)
+- [SQLAlchemy](https://docs.sqlalchemy.org/)
+- [React](https://react.dev/)
+- [Mantine](https://mantine.dev/)
+- [Tabler Icons](https://tabler.io/icons)
+- [Google OAuth - Guía](https://developers.google.com/identity/gsi/web/guides/overview)

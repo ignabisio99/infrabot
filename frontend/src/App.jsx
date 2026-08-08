@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { AppLayout } from './layout/AppLayout';
+import { ConfirmarEmailPage } from './pages/auth/ConfirmarEmailPage';
+import { LoginPage } from './pages/auth/LoginPage';
 import { BudgetsListPage } from './pages/budgets/BudgetsListPage';
 import { EditBudgetPage } from './pages/budgets/EditBudgetPage';
 import { NewBudgetPage } from './pages/budgets/NewBudgetPage';
@@ -16,6 +19,19 @@ import { ReportsPage } from './pages/reports/ReportsPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
 
 function App() {
+  const [autenticado, setAutenticado] = useState(() => {
+    return !!localStorage.getItem('infrabot_user');
+  });
+
+  if (!autenticado) {
+    return (
+      <Routes>
+        <Route path="/confirmar" element={<ConfirmarEmailPage />} />
+        <Route path="*" element={<LoginPage onLogin={() => setAutenticado(true)} />} />
+      </Routes>
+    );
+  }
+
   return (
     <Routes>
       <Route element={<AppLayout />}>
