@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from core.auth import create_access_token, decode_access_token, hash_password, verify_password
 from core.database import get_db
-from core.email import enviar_confirmacion
+from core.email import enviar_confirmacion, enviar_aprobacion
 from models.usuario import EstadoUsuario, Usuario
 from schemas.usuario import (
     CompletarPerfil,
@@ -35,7 +35,12 @@ def registrar_usuario(datos: UsuarioRegister, db: Session = Depends(get_db)):
         email=datos.email,
         password_hash=hash_password(datos.password),
         email_confirmado=False,
-        estado=EstadoUsuario.PENDIENTE_PERFIL,
+        telefono=datos.telefono,
+        direccion=datos.direccion,
+        tipo=datos.tipo,
+        nombre_empresa=datos.nombre_empresa,
+        especialidad=datos.especialidad,
+        estado=EstadoUsuario.PENDIENTE_APROBACION,
     )
     db.add(nuevo_usuario)
     db.commit()
@@ -59,6 +64,18 @@ def iniciar_sesion(datos: UsuarioLogin, db: Session = Depends(get_db)):
             detail="Necesitás confirmar tu email antes de iniciar sesión. Revisá tu bandeja de entrada.",
         )
 
+    if usuario.estado == EstadoUsuario.PENDIENTE_APROBACION:
+        raise HTTPException(
+            status_code=403,
+            detail="Tu cuenta está pendiente de aprobación por un administrador.",
+        )
+
+    if usuario.estado == EstadoUsuario.RECHAZADO:
+        raise HTTPException(
+            status_code=403,
+            detail="Tu cuenta fue rechazada. Contactá a un administrador para más información.",
+        )
+
     token = create_access_token({"sub": str(usuario.id), "email": usuario.email})
 
     return TokenOut(
@@ -79,12 +96,12 @@ def confirmar_email(token: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
     if usuario.email_confirmado:
-        return MensajeOut(mensaje="Tu email ya estaba confirmado. Podés iniciar sesión.")
+        return MensajeOut(mensaje="Tu email ya estaba confirmado. Tu cuenta está pendiente de aprobación por un administrador.")
 
     usuario.email_confirmado = True
     db.commit()
 
-    return MensajeOut(mensaje="Email confirmado exitosamente. Ya podés iniciar sesión.")
+    return MensajeOut(mensaje="Email confirmado exitosamente. Tu cuenta será revisada por un administrador antes de poder acceder.")
 
 
 @router.post("/reenviar-confirmacion", response_model=MensajeOut)
@@ -136,6 +153,8 @@ def aprobar_usuario(usuario_id: int, db: Session = Depends(get_db)):
 
     usuario.estado = EstadoUsuario.APROBADO
     db.commit()
+
+    enviar_aprobacion(usuario.email)
 
     return MensajeOut(mensaje=f"Usuario {usuario.email} aprobado exitosamente.")
 

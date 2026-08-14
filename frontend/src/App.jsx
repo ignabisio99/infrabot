@@ -19,6 +19,7 @@ import { NewContractorPage } from './pages/contractors/NewContractorPage';
 import { DashboardPage } from './pages/dashboard/DashboardPage';
 import { ReportsPage } from './pages/reports/ReportsPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
+import { UsersApprovalPage } from './pages/users/UsersApprovalPage';
 
 function getUsuarioGuardado() {
   try {
@@ -83,6 +84,7 @@ function App() {
         <Route path="/presupuestos/:id/editar" element={<EditBudgetPage />} />
         <Route path="/calendario" element={<CalendarPage />} />
         <Route path="/reportes" element={<ReportsPage />} />
+        <Route path="/solicitudes" element={<UsersApprovalPage />} />
         <Route path="/configuracion" element={<SettingsPage />} />
       </Route>
     </Routes>

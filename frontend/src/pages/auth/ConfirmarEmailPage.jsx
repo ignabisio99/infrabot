@@ -67,11 +67,15 @@ export function ConfirmarEmailPage() {
 
             {estado === 'success' && (
               <>
-                <Alert icon={<IconCheck size={16} />} color="green" variant="light" w="100%">
-                  {mensaje}
+                <Alert icon={<IconCheck size={16} />} color="yellow" variant="light" w="100%">
+                  <Text fw={500}>Email confirmado correctamente</Text>
+                  <Text size="sm" mt="xs">
+                    Tu cuenta está pendiente de aprobación por un administrador. Te notificaremos
+                    cuando sea aprobada.
+                  </Text>
                 </Alert>
                 <Button color="#1fa7b3" fullWidth onClick={() => navigate('/')}>
-                  Ir a iniciar sesión
+                  Volver al inicio
                 </Button>
               </>
             )}
