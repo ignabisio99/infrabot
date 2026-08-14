@@ -9,6 +9,7 @@ import {
   List,
   Paper,
   PasswordInput,
+  Select,
   Stack,
   Tabs,
   Text,
@@ -16,9 +17,13 @@ import {
 } from '@mantine/core';
 import {
   IconAlertCircle,
+  IconBuilding,
   IconCheck,
   IconLock,
   IconMail,
+  IconMapPin,
+  IconPhone,
+  IconTool,
   IconUser,
 } from '@tabler/icons-react';
 import logo from '../../assets/logo-infrabot-front.png';
@@ -37,6 +42,11 @@ export function LoginPage({ onLogin }) {
     email: '',
     password: '',
     confirmPassword: '',
+    telefono: '',
+    direccion: '',
+    tipo: '',
+    nombre_empresa: '',
+    especialidad: '',
   });
 
   const handleLogin = async (e) => {
@@ -68,9 +78,18 @@ export function LoginPage({ onLogin }) {
 
     setLoading(true);
     try {
-      const data = await register(registerForm.nombre, registerForm.email, registerForm.password);
+      const data = await register({
+        nombre: registerForm.nombre,
+        email: registerForm.email,
+        password: registerForm.password,
+        telefono: registerForm.telefono,
+        direccion: registerForm.direccion,
+        tipo: registerForm.tipo,
+        nombre_empresa: registerForm.tipo === 'CONTRATISTA' ? registerForm.nombre_empresa : null,
+        especialidad: registerForm.tipo === 'CONTRATISTA' ? registerForm.especialidad : null,
+      });
       setSuccess(data.mensaje);
-      setRegisterForm({ nombre: '', email: '', password: '', confirmPassword: '' });
+      setRegisterForm({ nombre: '', email: '', password: '', confirmPassword: '', telefono: '', direccion: '', tipo: '', nombre_empresa: '', especialidad: '' });
       // Cambiar a la pestaña de login después de registrarse
       setTimeout(() => setActiveTab('login'), 3000);
     } catch (err) {
@@ -230,6 +249,61 @@ export function LoginPage({ onLogin }) {
                       setRegisterForm({ ...registerForm, confirmPassword: e.target.value })
                     }
                   />
+
+                  <Divider label="Datos de perfil" labelPosition="center" />
+
+                  <TextInput
+                    label="Teléfono de contacto"
+                    placeholder="+54 11 1234-5678"
+                    leftSection={<IconPhone size={16} />}
+                    required
+                    value={registerForm.telefono}
+                    onChange={(e) => setRegisterForm({ ...registerForm, telefono: e.target.value })}
+                  />
+                  <TextInput
+                    label="Dirección"
+                    placeholder="Av. Medrano 951, CABA"
+                    leftSection={<IconMapPin size={16} />}
+                    required
+                    value={registerForm.direccion}
+                    onChange={(e) => setRegisterForm({ ...registerForm, direccion: e.target.value })}
+                  />
+                  <Select
+                    label="Tipo de usuario"
+                    placeholder="Seleccioná tu rol"
+                    required
+                    data={[
+                      { value: 'ADMINISTRADOR', label: 'Administrador' },
+                      { value: 'CONTRATISTA', label: 'Contratista' },
+                    ]}
+                    value={registerForm.tipo}
+                    onChange={(value) => setRegisterForm({ ...registerForm, tipo: value })}
+                  />
+                  {registerForm.tipo === 'CONTRATISTA' && (
+                    <>
+                      <TextInput
+                        label="Nombre de la empresa"
+                        placeholder="Mi Empresa S.A."
+                        leftSection={<IconBuilding size={16} />}
+                        required
+                        value={registerForm.nombre_empresa}
+                        onChange={(e) =>
+                          setRegisterForm({ ...registerForm, nombre_empresa: e.target.value })
+                        }
+                      />
+                      <TextInput
+                        label="Especialidad"
+                        placeholder="Electricidad, Plomería, etc."
+                        leftSection={<IconTool size={16} />}
+                        required
+                        value={registerForm.especialidad}
+                        onChange={(e) =>
+                          setRegisterForm({ ...registerForm, especialidad: e.target.value })
+                        }
+                      />
+                    </>
+                  )}
+
                   <Button type="submit" fullWidth color="#1fa7b3" loading={loading}>
                     Registrarse
                   </Button>

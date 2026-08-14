@@ -24,6 +24,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconLogout,
+  IconUserCheck,
 } from '@tabler/icons-react';
 import logo from '../assets/logo-infrabot.jpeg';
 import classes from './AppLayout.module.css';
@@ -35,6 +36,7 @@ const links = [
   { label: 'Presupuestos', path: '/presupuestos', icon: IconReceipt2 },
   { label: 'Calendario', path: '/calendario', icon: IconCalendar },
   { label: 'Reportes', path: '/reportes', icon: IconChartBar },
+  { label: 'Solicitudes', path: '/solicitudes', icon: IconUserCheck },
   { label: 'Configuración', path: '/configuracion', icon: IconSettings },
 ];
 

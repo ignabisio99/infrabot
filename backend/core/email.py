@@ -59,3 +59,23 @@ def enviar_confirmacion(destinatario: str, token: str) -> bool:
     </div>
     """
     return enviar_email(destinatario, "Confirmá tu cuenta - InfraBot", html)
+
+
+def enviar_aprobacion(destinatario: str) -> bool:
+    """Envía un email notificando que la cuenta fue aprobada."""
+    link = APP_URL
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #132a4d;">¡Tu cuenta fue aprobada!</h2>
+        <p>Un administrador revisó tu solicitud y aprobó tu cuenta en InfraBot.</p>
+        <p>Ya podés iniciar sesión y comenzar a usar el sistema.</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{link}" 
+               style="background-color: #1fa7b3; color: white; padding: 12px 30px; 
+                      text-decoration: none; border-radius: 6px; font-weight: bold;">
+                Iniciar sesión
+            </a>
+        </div>
+    </div>
+    """
+    return enviar_email(destinatario, "Tu cuenta fue aprobada - InfraBot", html)

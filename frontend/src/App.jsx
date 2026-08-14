@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { AppLayout } from './layout/AppLayout';
+import { CompletarPerfilPage } from './pages/auth/CompletarPerfilPage';
 import { ConfirmarEmailPage } from './pages/auth/ConfirmarEmailPage';
 import { LoginPage } from './pages/auth/LoginPage';
+import { PendienteAprobacionPage } from './pages/auth/PendienteAprobacionPage';
 import { BudgetsListPage } from './pages/budgets/BudgetsListPage';
 import { EditBudgetPage } from './pages/budgets/EditBudgetPage';
 import { NewBudgetPage } from './pages/budgets/NewBudgetPage';
@@ -17,21 +19,55 @@ import { NewContractorPage } from './pages/contractors/NewContractorPage';
 import { DashboardPage } from './pages/dashboard/DashboardPage';
 import { ReportsPage } from './pages/reports/ReportsPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
+import { UsersApprovalPage } from './pages/users/UsersApprovalPage';
+
+function getUsuarioGuardado() {
+  try {
+    return JSON.parse(localStorage.getItem('infrabot_user') || 'null');
+  } catch {
+    return null;
+  }
+}
 
 function App() {
-  const [autenticado, setAutenticado] = useState(() => {
-    return !!localStorage.getItem('infrabot_user');
-  });
+  const [usuario, setUsuario] = useState(getUsuarioGuardado);
 
-  if (!autenticado) {
+  const handleLogin = () => {
+    setUsuario(getUsuarioGuardado());
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('infrabot_token');
+    localStorage.removeItem('infrabot_user');
+    setUsuario(null);
+  };
+
+  // No autenticado → login
+  if (!usuario) {
     return (
       <Routes>
         <Route path="/confirmar" element={<ConfirmarEmailPage />} />
-        <Route path="*" element={<LoginPage onLogin={() => setAutenticado(true)} />} />
+        <Route path="*" element={<LoginPage onLogin={handleLogin} />} />
       </Routes>
     );
   }
 
+  // Autenticado pero necesita completar perfil
+  if (usuario.estado === 'PENDIENTE_PERFIL') {
+    return (
+      <CompletarPerfilPage
+        usuario={usuario}
+        onComplete={() => setUsuario(getUsuarioGuardado())}
+      />
+    );
+  }
+
+  // Autenticado pero pendiente de aprobación o rechazado
+  if (usuario.estado === 'PENDIENTE_APROBACION' || usuario.estado === 'RECHAZADO') {
+    return <PendienteAprobacionPage onLogout={handleLogout} />;
+  }
+
+  // Aprobado → app normal
   return (
     <Routes>
       <Route element={<AppLayout />}>
@@ -48,6 +84,7 @@ function App() {
         <Route path="/presupuestos/:id/editar" element={<EditBudgetPage />} />
         <Route path="/calendario" element={<CalendarPage />} />
         <Route path="/reportes" element={<ReportsPage />} />
+        <Route path="/solicitudes" element={<UsersApprovalPage />} />
         <Route path="/configuracion" element={<SettingsPage />} />
       </Route>
     </Routes>
