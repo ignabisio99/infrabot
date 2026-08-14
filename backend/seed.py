@@ -5,12 +5,20 @@ Uso:
     docker compose exec backend python seed.py --reset   # borra todo y vuelve a cargar
 """
 
+import logging
 import sys
 
 from core.database import Base, SessionLocal, engine
 from models.contratista import Contratista
 from models.presupuesto import ItemPresupuesto, Presupuesto
 from models.reclamo import PrioridadReclamo, Reclamo
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 CONTRATISTAS = [
     dict(
@@ -112,10 +120,10 @@ def main():
         if "--reset" in sys.argv:
             reset(db)
         elif db.query(Reclamo).first() is not None:
-            print("Ya hay datos cargados. Usá --reset si querés borrar todo y recargar.")
+            logger.info("Ya hay datos cargados. Usá --reset si querés borrar todo y recargar.")
             return
         seed(db)
-        print("Datos de ejemplo cargados correctamente.")
+        logger.info("Datos de ejemplo cargados correctamente.")
     finally:
         db.close()
 

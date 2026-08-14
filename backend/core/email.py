@@ -1,9 +1,12 @@
 """Envío de emails usando Gmail SMTP."""
 
+import logging
 import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+
+logger = logging.getLogger(__name__)
 
 SMTP_EMAIL = os.getenv("SMTP_EMAIL", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
@@ -15,7 +18,7 @@ APP_URL = os.getenv("APP_URL", "http://localhost:3000")
 def enviar_email(destinatario: str, asunto: str, html: str) -> bool:
     """Envía un email. Devuelve True si fue exitoso."""
     if not SMTP_EMAIL or not SMTP_PASSWORD:
-        print(f"[EMAIL] No configurado. Asunto: {asunto} → {destinatario}")
+        logger.warning("Email no configurado. Asunto: %s → %s", asunto, destinatario)
         return False
 
     msg = MIMEMultipart("alternative")
@@ -29,9 +32,10 @@ def enviar_email(destinatario: str, asunto: str, html: str) -> bool:
             server.starttls()
             server.login(SMTP_EMAIL, SMTP_PASSWORD)
             server.sendmail(SMTP_EMAIL, destinatario, msg.as_string())
+        logger.info("Email enviado a %s - Asunto: %s", destinatario, asunto)
         return True
     except Exception as e:
-        print(f"[EMAIL] Error enviando a {destinatario}: {e}")
+        logger.error("Error enviando email a %s: %s", destinatario, e)
         return False
 
 
