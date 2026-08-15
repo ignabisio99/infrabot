@@ -7,11 +7,15 @@ import { notifyError } from '../../utils/notifications';
 import { PhotoDropzone } from './PhotoDropzone';
 import { PhotoGrid } from './PhotoGrid';
 
+function isVideo(item) {
+  return item.tipo === 'VIDEO' || /\.(mp4|mov|webm|3gp)$/i.test(item.src);
+}
+
 export function ClaimPhotosManager({ reclamoId, fotosIniciales = [] }) {
   const [fotos, setFotos] = useState(fotosIniciales);
   const [subiendo, setSubiendo] = useState(false);
   const [eliminandoId, setEliminandoId] = useState(null);
-  const [fotoAmpliada, setFotoAmpliada] = useState(null);
+  const [mediaAmpliada, setMediaAmpliada] = useState(null);
 
   const handleDrop = async (archivos) => {
     setSubiendo(true);
@@ -43,6 +47,7 @@ export function ClaimPhotosManager({ reclamoId, fotosIniciales = [] }) {
     id: foto.id,
     src: `${API_URL}${foto.url}`,
     alt: foto.nombre_archivo,
+    tipo: foto.tipo,
   }));
 
   return (
@@ -50,32 +55,40 @@ export function ClaimPhotosManager({ reclamoId, fotosIniciales = [] }) {
       <PhotoDropzone
         onDrop={handleDrop}
         loading={subiendo}
-        helperText="JPG, PNG o WEBP, hasta 5MB cada una"
+        helperText="JPG, PNG, WEBP, MP4, MOV o WEBM — hasta 50MB cada uno"
       />
 
       <PhotoGrid
         items={items}
         onRemove={handleEliminar}
-        onSelect={setFotoAmpliada}
+        onSelect={setMediaAmpliada}
         removingId={eliminandoId}
       />
 
       <Modal
-        opened={fotoAmpliada !== null}
-        onClose={() => setFotoAmpliada(null)}
-        title={fotoAmpliada?.alt}
-        size="lg"
+        opened={mediaAmpliada !== null}
+        onClose={() => setMediaAmpliada(null)}
+        title={mediaAmpliada?.alt}
+        size="xl"
+        centered
       >
-        <div style={{ aspectRatio: '16 / 10' }}>
-          <Image
-            src={fotoAmpliada?.src}
-            alt={fotoAmpliada?.alt}
-            radius="md"
-            h="100%"
-            w="100%"
-            fit="cover"
+        {mediaAmpliada && isVideo(mediaAmpliada) ? (
+          <video
+            src={mediaAmpliada.src}
+            controls
+            autoPlay
+            style={{ width: '100%', maxHeight: '70vh', borderRadius: 8 }}
           />
-        </div>
+        ) : (
+          <Image
+            src={mediaAmpliada?.src}
+            alt={mediaAmpliada?.alt}
+            radius="md"
+            w="100%"
+            fit="contain"
+            style={{ maxHeight: '70vh' }}
+          />
+        )}
       </Modal>
     </div>
   );

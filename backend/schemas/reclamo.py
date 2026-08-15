@@ -2,6 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from models.foto_reclamo import TipoMedia
 from models.reclamo import PrioridadReclamo
 
 
@@ -21,6 +22,7 @@ class FotoReclamoOut(BaseModel):
     reclamo_id: int
     nombre_archivo: str
     url: str
+    tipo: TipoMedia
     fecha_creacion: datetime
 
 

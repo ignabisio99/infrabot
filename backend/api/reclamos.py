@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from core.database import get_db
 from core.storage import storage
-from models.foto_reclamo import FotoReclamo
+from models.foto_reclamo import FotoReclamo, TipoMedia
 from models.presupuesto import Presupuesto
 from models.reclamo import Reclamo
 from schemas.reclamo import FotoReclamoOut, ReclamoCreate, ReclamoOut
@@ -11,6 +11,8 @@ from schemas.reclamo import FotoReclamoOut, ReclamoCreate, ReclamoOut
 router = APIRouter(prefix="/reclamos", tags=["reclamos"])
 
 TIPOS_IMAGEN_PERMITIDOS = {"image/jpeg", "image/png", "image/webp"}
+TIPOS_VIDEO_PERMITIDOS = {"video/mp4", "video/quicktime", "video/webm", "video/3gpp"}
+TIPOS_MEDIA_PERMITIDOS = TIPOS_IMAGEN_PERMITIDOS | TIPOS_VIDEO_PERMITIDOS
 
 
 def _con_fotos(query):
@@ -75,12 +77,18 @@ def subir_foto(reclamo_id: int, archivo: UploadFile = File(...), db: Session = D
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
 
-    if archivo.content_type not in TIPOS_IMAGEN_PERMITIDOS:
-        raise HTTPException(status_code=400, detail="El archivo debe ser una imagen (jpg, png o webp)")
+    if archivo.content_type not in TIPOS_MEDIA_PERMITIDOS:
+        raise HTTPException(
+            status_code=400,
+            detail="El archivo debe ser una imagen (jpg, png, webp) o video (mp4, mov, webm, 3gpp)",
+        )
 
+    tipo = TipoMedia.VIDEO if archivo.content_type in TIPOS_VIDEO_PERMITIDOS else TipoMedia.IMAGEN
     url = storage.guardar(archivo, f"reclamos/{reclamo_id}")
 
-    nueva_foto = FotoReclamo(reclamo_id=reclamo_id, nombre_archivo=archivo.filename, url=url)
+    nueva_foto = FotoReclamo(
+        reclamo_id=reclamo_id, nombre_archivo=archivo.filename, url=url, tipo=tipo
+    )
     db.add(nueva_foto)
     db.commit()
     db.refresh(nueva_foto)

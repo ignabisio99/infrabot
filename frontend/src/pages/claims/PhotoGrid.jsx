@@ -1,5 +1,56 @@
 import { ActionIcon, Image, SimpleGrid, UnstyledButton } from '@mantine/core';
-import { IconTrash } from '@tabler/icons-react';
+import { IconPlayerPlay, IconTrash } from '@tabler/icons-react';
+
+function isVideo(item) {
+  return item.tipo === 'VIDEO' || /\.(mp4|mov|webm|3gp)$/i.test(item.src);
+}
+
+function MediaThumbnail({ item, onClick }) {
+  if (isVideo(item)) {
+    return (
+      <UnstyledButton onClick={onClick} h="100%" w="100%" style={{ position: 'relative' }}>
+        <video
+          src={item.src}
+          muted
+          preload="metadata"
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            borderRadius: 'var(--mantine-radius-md)',
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            background: 'rgba(0,0,0,0.6)',
+            borderRadius: '50%',
+            width: 36,
+            height: 36,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <IconPlayerPlay size={20} color="white" />
+        </div>
+      </UnstyledButton>
+    );
+  }
+
+  if (onClick) {
+    return (
+      <UnstyledButton onClick={onClick} h="100%" w="100%">
+        <Image src={item.src} alt={item.alt} radius="md" h="100%" w="100%" fit="cover" />
+      </UnstyledButton>
+    );
+  }
+
+  return <Image src={item.src} alt={item.alt} radius="md" h="100%" w="100%" fit="cover" />;
+}
 
 // Grilla de miniaturas con botón de borrar. `onSelect` es opcional (click para ampliar)
 // y `removingId` también (id del ítem que se está borrando, para mostrar loading).
@@ -10,13 +61,7 @@ export function PhotoGrid({ items, onRemove, onSelect, removingId }) {
     <SimpleGrid cols={4} spacing="sm" mt="md">
       {items.map((item) => (
         <div key={item.id} style={{ position: 'relative', aspectRatio: '1 / 1' }}>
-          {onSelect ? (
-            <UnstyledButton onClick={() => onSelect(item)} h="100%" w="100%">
-              <Image src={item.src} alt={item.alt} radius="md" h="100%" w="100%" fit="cover" />
-            </UnstyledButton>
-          ) : (
-            <Image src={item.src} alt={item.alt} radius="md" h="100%" w="100%" fit="cover" />
-          )}
+          <MediaThumbnail item={item} onClick={onSelect ? () => onSelect(item) : undefined} />
           <ActionIcon
             variant="filled"
             color="red"
@@ -27,7 +72,7 @@ export function PhotoGrid({ items, onRemove, onSelect, removingId }) {
               event.stopPropagation();
               onRemove(item.id);
             }}
-            aria-label="Quitar foto"
+            aria-label="Quitar archivo"
             style={{ position: 'absolute', top: 4, right: 4 }}
           >
             <IconTrash size={14} />

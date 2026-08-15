@@ -2,9 +2,17 @@ import { Text } from '@mantine/core';
 import { Dropzone, IMAGE_MIME_TYPE } from '@mantine/dropzone';
 import { IconPhotoUp, IconUpload, IconX } from '@tabler/icons-react';
 
+const VIDEO_MIME_TYPES = ['video/mp4', 'video/quicktime', 'video/webm', 'video/3gpp'];
+const ACCEPTED_MIME_TYPES = [...IMAGE_MIME_TYPE, ...VIDEO_MIME_TYPES];
+
 export function PhotoDropzone({ onDrop, loading = false, helperText }) {
   return (
-    <Dropzone onDrop={onDrop} loading={loading} accept={IMAGE_MIME_TYPE} maxSize={5 * 1024 ** 2}>
+    <Dropzone
+      onDrop={onDrop}
+      loading={loading}
+      accept={ACCEPTED_MIME_TYPES}
+      maxSize={50 * 1024 ** 2}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 80 }}>
         <Dropzone.Accept>
           <IconUpload size={32} color="var(--mantine-color-blue-6)" />
@@ -16,7 +24,7 @@ export function PhotoDropzone({ onDrop, loading = false, helperText }) {
           <IconPhotoUp size={32} color="var(--mantine-color-dimmed)" />
         </Dropzone.Idle>
         <div>
-          <Text size="sm">Arrastrá fotos acá o hacé clic para seleccionarlas</Text>
+          <Text size="sm">Arrastrá fotos o videos acá, o hacé clic para seleccionarlos</Text>
           <Text size="xs" c="dimmed">
             {helperText}
           </Text>
