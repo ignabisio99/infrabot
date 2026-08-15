@@ -56,7 +56,6 @@ export function LoginPage({ onLogin }) {
     setLoading(true);
     try {
       const data = await login(loginForm.email, loginForm.password);
-      localStorage.setItem('infrabot_token', data.access_token);
       localStorage.setItem('infrabot_user', JSON.stringify(data.usuario));
       onLogin();
     } catch (err) {
@@ -105,7 +104,6 @@ export function LoginPage({ onLogin }) {
     setLoading(true);
     try {
       const data = await loginWithGoogle(credentialResponse.credential);
-      localStorage.setItem('infrabot_token', data.access_token);
       localStorage.setItem('infrabot_user', JSON.stringify(data.usuario));
       onLogin();
     } catch (err) {

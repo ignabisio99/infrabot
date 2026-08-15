@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
@@ -15,7 +16,7 @@ from api.reclamos import router as reclamos_router
 from api.whatsapp import router as whatsapp_router
 from core.database import Base, engine
 from core.storage import UPLOADS_DIR
-from models import contratista, foto_reclamo, presupuesto, reclamo, usuario  # noqa: F401 - registra los modelos antes de create_all
+from models import contratista, foto_reclamo, presupuesto, reclamo, token_blacklist, usuario  # noqa: F401 - registra los modelos antes de create_all
 
 # Zona horaria UTC-3 (Argentina)
 ART = timezone(timedelta(hours=-3))
@@ -56,13 +57,30 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+# Orígenes permitidos para CORS (necesario para cookies)
+FRONTEND_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    os.getenv("APP_URL", "http://localhost:3000"),
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=FRONTEND_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def no_cache_api_responses(request, call_next):
+    """Evita que el browser cachee responses de la API (previene datos stale al navegar)."""
+    response = await call_next(request)
+    if not request.url.path.startswith("/uploads"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+    return response
 
 app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR, check_dir=False), name="uploads")
 

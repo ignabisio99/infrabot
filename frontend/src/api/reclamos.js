@@ -1,4 +1,4 @@
-import { API_URL, crearRecursoApi, extraerMensajeError } from './apiClient';
+import { API_URL, crearRecursoApi, extraerMensajeError, fetchConAuth } from './apiClient';
 
 const reclamosApi = crearRecursoApi({ recursoPlural: 'reclamos', recursoSingular: 'reclamo' });
 
@@ -12,7 +12,7 @@ export async function subirFotoReclamo(reclamoId, archivo) {
   const formData = new FormData();
   formData.append('archivo', archivo);
 
-  const response = await fetch(`${API_URL}/reclamos/${reclamoId}/fotos`, {
+  const response = await fetchConAuth(`${API_URL}/reclamos/${reclamoId}/fotos`, {
     method: 'POST',
     body: formData,
   });
@@ -20,7 +20,7 @@ export async function subirFotoReclamo(reclamoId, archivo) {
   if (!response.ok) {
     const error = await response.json().catch(() => null);
     throw new Error(
-      extraerMensajeError(error?.detail, 'No se pudo subir la foto. Intente nuevamente.'),
+      extraerMensajeError(error?.detail, 'No se pudo subir el archivo. Intente nuevamente.'),
     );
   }
 
@@ -28,12 +28,12 @@ export async function subirFotoReclamo(reclamoId, archivo) {
 }
 
 export async function eliminarFotoReclamo(reclamoId, fotoId) {
-  const response = await fetch(`${API_URL}/reclamos/${reclamoId}/fotos/${fotoId}`, {
+  const response = await fetchConAuth(`${API_URL}/reclamos/${reclamoId}/fotos/${fotoId}`, {
     method: 'DELETE',
   });
 
   if (!response.ok) {
     const error = await response.json().catch(() => null);
-    throw new Error(extraerMensajeError(error?.detail, 'No se pudo eliminar la foto.'));
+    throw new Error(extraerMensajeError(error?.detail, 'No se pudo eliminar el archivo.'));
   }
 }

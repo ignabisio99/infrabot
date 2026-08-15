@@ -6,13 +6,35 @@ export function extraerMensajeError(detail, mensajePorDefecto) {
   return mensajePorDefecto;
 }
 
+/**
+ * Wrapper de fetch que envía cookies automáticamente (credentials: include).
+ * Si recibe un 401, limpia la sesión local y redirige al login.
+ */
+export async function fetchConAuth(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    credentials: 'include',
+    headers: {
+      ...options.headers,
+    },
+  });
+
+  if (response.status === 401) {
+    localStorage.removeItem('infrabot_user');
+    window.location.href = '/';
+    throw new Error('Sesión expirada. Iniciá sesión nuevamente.');
+  }
+
+  return response;
+}
+
 // Genera el set estándar de operaciones CRUD (crear/listar/obtener/actualizar/eliminar)
 // contra `${API_URL}/{recursoPlural}`, siguiendo el mismo patrón para cualquier entidad.
 export function crearRecursoApi({ recursoPlural, recursoSingular }) {
   const base = `${API_URL}/${recursoPlural}`;
 
   async function crear(datos) {
-    const response = await fetch(base, {
+    const response = await fetchConAuth(base, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(datos),
@@ -32,7 +54,7 @@ export function crearRecursoApi({ recursoPlural, recursoSingular }) {
   }
 
   async function listar() {
-    const response = await fetch(base);
+    const response = await fetchConAuth(base);
 
     if (!response.ok) {
       throw new Error(`No se pudo obtener el listado de ${recursoPlural}.`);
@@ -42,7 +64,7 @@ export function crearRecursoApi({ recursoPlural, recursoSingular }) {
   }
 
   async function obtener(id) {
-    const response = await fetch(`${base}/${id}`);
+    const response = await fetchConAuth(`${base}/${id}`);
 
     if (!response.ok) {
       const error = await response.json().catch(() => null);
@@ -55,7 +77,7 @@ export function crearRecursoApi({ recursoPlural, recursoSingular }) {
   }
 
   async function actualizar(id, datos) {
-    const response = await fetch(`${base}/${id}`, {
+    const response = await fetchConAuth(`${base}/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(datos),
@@ -72,7 +94,7 @@ export function crearRecursoApi({ recursoPlural, recursoSingular }) {
   }
 
   async function eliminar(id) {
-    const response = await fetch(`${base}/${id}`, { method: 'DELETE' });
+    const response = await fetchConAuth(`${base}/${id}`, { method: 'DELETE' });
 
     if (!response.ok) {
       const error = await response.json().catch(() => null);

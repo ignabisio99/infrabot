@@ -52,6 +52,7 @@ export function CompletarPerfilPage({ usuario, onComplete }) {
 
       const response = await fetch(`${API_URL}/auth/completar-perfil/${usuario.id}`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });

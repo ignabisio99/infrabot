@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
   AppShell,
   Avatar,
@@ -65,10 +66,28 @@ export function AppLayout() {
   const [colapsado, { toggle: toggleColapsado }] = useDisclosure(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const usuario = getUsuario();
+  const [usuario, setUsuario] = useState(getUsuario);
 
-  const handleLogout = () => {
-    localStorage.removeItem('infrabot_token');
+  // Recalcular usuario al navegar o al restaurar del bfcache
+  useEffect(() => {
+    setUsuario(getUsuario());
+  }, [location]);
+
+  useEffect(() => {
+    const handlePageShow = (e) => {
+      if (e.persisted) setUsuario(getUsuario());
+    };
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      const { logout } = await import('../api/auth');
+      await logout();
+    } catch {
+      // Si falla la llamada al backend, igual cerramos la sesión local
+    }
     localStorage.removeItem('infrabot_user');
     window.location.href = '/';
   };

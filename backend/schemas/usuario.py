@@ -83,7 +83,13 @@ class UsuarioOut(BaseModel):
     fecha_creacion: datetime
 
 
+class LoginOut(BaseModel):
+    """Respuesta de login exitoso (el token va en la cookie, no en el body)."""
+    usuario: UsuarioOut
+
+
 class TokenOut(BaseModel):
+    """Mantiene compatibilidad con flujos que necesiten el token explícito."""
     access_token: str
     token_type: str = "bearer"
     usuario: UsuarioOut

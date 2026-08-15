@@ -2,10 +2,12 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session, joinedload
 
 from core.database import get_db
+from core.dependencies import get_current_user
 from core.storage import storage
 from models.foto_reclamo import FotoReclamo, TipoMedia
 from models.presupuesto import Presupuesto
 from models.reclamo import Reclamo
+from models.usuario import Usuario
 from schemas.reclamo import FotoReclamoOut, ReclamoCreate, ReclamoOut
 
 router = APIRouter(prefix="/reclamos", tags=["reclamos"])
@@ -20,7 +22,7 @@ def _con_fotos(query):
 
 
 @router.post("", response_model=ReclamoOut, status_code=201)
-def crear_reclamo(reclamo: ReclamoCreate, db: Session = Depends(get_db)):
+def crear_reclamo(reclamo: ReclamoCreate, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
     nuevo_reclamo = Reclamo(**reclamo.model_dump())
     db.add(nuevo_reclamo)
     db.commit()
@@ -29,12 +31,12 @@ def crear_reclamo(reclamo: ReclamoCreate, db: Session = Depends(get_db)):
 
 
 @router.get("", response_model=list[ReclamoOut])
-def listar_reclamos(db: Session = Depends(get_db)):
+def listar_reclamos(db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
     return _con_fotos(db.query(Reclamo)).order_by(Reclamo.fecha_creacion.desc()).all()
 
 
 @router.get("/{reclamo_id}", response_model=ReclamoOut)
-def obtener_reclamo(reclamo_id: int, db: Session = Depends(get_db)):
+def obtener_reclamo(reclamo_id: int, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
     reclamo = _con_fotos(db.query(Reclamo)).filter(Reclamo.id == reclamo_id).first()
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
@@ -42,7 +44,7 @@ def obtener_reclamo(reclamo_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{reclamo_id}", response_model=ReclamoOut)
-def actualizar_reclamo(reclamo_id: int, datos: ReclamoCreate, db: Session = Depends(get_db)):
+def actualizar_reclamo(reclamo_id: int, datos: ReclamoCreate, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
@@ -54,7 +56,7 @@ def actualizar_reclamo(reclamo_id: int, datos: ReclamoCreate, db: Session = Depe
 
 
 @router.delete("/{reclamo_id}", status_code=204)
-def eliminar_reclamo(reclamo_id: int, db: Session = Depends(get_db)):
+def eliminar_reclamo(reclamo_id: int, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
@@ -72,7 +74,7 @@ def eliminar_reclamo(reclamo_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{reclamo_id}/fotos", response_model=FotoReclamoOut, status_code=201)
-def subir_foto(reclamo_id: int, archivo: UploadFile = File(...), db: Session = Depends(get_db)):
+def subir_foto(reclamo_id: int, archivo: UploadFile = File(...), db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
@@ -96,7 +98,7 @@ def subir_foto(reclamo_id: int, archivo: UploadFile = File(...), db: Session = D
 
 
 @router.delete("/{reclamo_id}/fotos/{foto_id}", status_code=204)
-def eliminar_foto(reclamo_id: int, foto_id: int, db: Session = Depends(get_db)):
+def eliminar_foto(reclamo_id: int, foto_id: int, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
     foto = (
         db.query(FotoReclamo)
         .filter(FotoReclamo.id == foto_id, FotoReclamo.reclamo_id == reclamo_id)

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
+import { getMe, logout } from './api/auth';
 import { AppLayout } from './layout/AppLayout';
 import { CompletarPerfilPage } from './pages/auth/CompletarPerfilPage';
 import { ConfirmarEmailPage } from './pages/auth/ConfirmarEmailPage';
@@ -31,16 +32,70 @@ function getUsuarioGuardado() {
 
 function App() {
   const [usuario, setUsuario] = useState(getUsuarioGuardado);
+  const [verificando, setVerificando] = useState(true);
+
+  // Al montar la app, verificar la sesión real contra el backend
+  useEffect(() => {
+    verificarSesion();
+  }, []);
+
+  // Verificar sesión cuando el usuario navega con "atrás/adelante" o vuelve a la pestaña
+  useEffect(() => {
+    const handlePopState = () => verificarSesion();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') verificarSesion();
+    };
+    const handlePageShow = (e) => {
+      if (e.persisted) verificarSesion();
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pageshow', handlePageShow);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pageshow', handlePageShow);
+    };
+  }, []);
+
+  async function verificarSesion() {
+    setVerificando(true);
+    try {
+      const usuarioReal = await getMe();
+      if (usuarioReal) {
+        localStorage.setItem('infrabot_user', JSON.stringify(usuarioReal));
+        setUsuario(usuarioReal);
+      } else {
+        localStorage.removeItem('infrabot_user');
+        setUsuario(null);
+      }
+    } catch {
+      // Si no puede conectar al backend, limpiar sesión por seguridad
+      localStorage.removeItem('infrabot_user');
+      setUsuario(null);
+    } finally {
+      setVerificando(false);
+    }
+  }
 
   const handleLogin = () => {
     setUsuario(getUsuarioGuardado());
+    window.history.replaceState(null, '', '/');
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('infrabot_token');
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch {
+      // Si falla, igual cerramos la sesión local
+    }
     localStorage.removeItem('infrabot_user');
     setUsuario(null);
   };
+
+  // Mientras verifica la sesión, no renderizar nada (evita flash)
+  if (verificando) return null;
 
   // No autenticado → login
   if (!usuario) {
@@ -57,7 +112,7 @@ function App() {
     return (
       <CompletarPerfilPage
         usuario={usuario}
-        onComplete={() => setUsuario(getUsuarioGuardado())}
+        onComplete={() => verificarSesion()}
       />
     );
   }

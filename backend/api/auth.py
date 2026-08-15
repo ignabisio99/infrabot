@@ -1,27 +1,48 @@
 import os
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from core.auth import create_access_token, decode_access_token, hash_password, verify_password
+from core.auth import create_access_token, decode_access_token, hash_password, invalidar_token, verify_password
 from core.database import get_db
 from core.email import enviar_confirmacion, enviar_aprobacion
 from models.usuario import EstadoUsuario, Usuario
 from schemas.usuario import (
     CompletarPerfil,
+    LoginOut,
     MensajeOut,
-    TokenOut,
     UsuarioLogin,
     UsuarioOut,
     UsuarioRegister,
 )
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+COOKIE_NAME = "infrabot_session"
+# En desarrollo local usamos SameSite=Lax (funciona con localhost)
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _set_session_cookie(response: Response, token: str):
+    """Setea la cookie HttpOnly con el token de sesión."""
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite="lax",
+        max_age=24 * 60 * 60,  # 24 horas
+        path="/",
+    )
+
+
+def _clear_session_cookie(response: Response):
+    """Elimina la cookie de sesión."""
+    response.delete_cookie(key=COOKIE_NAME, path="/")
 
 
 @router.post("/register", response_model=MensajeOut, status_code=201)
@@ -52,8 +73,8 @@ def registrar_usuario(datos: UsuarioRegister, db: Session = Depends(get_db)):
     return MensajeOut(mensaje="Registro exitoso. Revisá tu email para confirmar tu cuenta.")
 
 
-@router.post("/login", response_model=TokenOut)
-def iniciar_sesion(datos: UsuarioLogin, db: Session = Depends(get_db)):
+@router.post("/login", response_model=LoginOut)
+def iniciar_sesion(datos: UsuarioLogin, response: Response, db: Session = Depends(get_db)):
     usuario = db.query(Usuario).filter(Usuario.email == datos.email).first()
     if not usuario or not verify_password(datos.password, usuario.password_hash):
         raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
@@ -77,11 +98,9 @@ def iniciar_sesion(datos: UsuarioLogin, db: Session = Depends(get_db)):
         )
 
     token = create_access_token({"sub": str(usuario.id), "email": usuario.email})
+    _set_session_cookie(response, token)
 
-    return TokenOut(
-        access_token=token,
-        usuario=UsuarioOut.model_validate(usuario),
-    )
+    return LoginOut(usuario=UsuarioOut.model_validate(usuario))
 
 
 @router.get("/confirmar", response_model=MensajeOut)
@@ -185,12 +204,37 @@ def listar_pendientes(db: Session = Depends(get_db)):
     )
 
 
+@router.get("/me", response_model=UsuarioOut)
+def obtener_usuario_actual(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Devuelve el usuario autenticado (verifica la cookie de sesión)."""
+    token = request.cookies.get(COOKIE_NAME)
+    if not token:
+        raise HTTPException(status_code=401, detail="No autenticado")
+
+    from core.auth import token_esta_invalidado
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Sesión expirada")
+
+    if token_esta_invalidado(token, db):
+        raise HTTPException(status_code=401, detail="Sesión cerrada")
+
+    usuario = db.get(Usuario, int(payload["sub"]))
+    if not usuario:
+        raise HTTPException(status_code=401, detail="Usuario no encontrado")
+
+    return usuario
+
+
 class GoogleTokenIn(BaseModel):
     credential: str
 
 
-@router.post("/google", response_model=TokenOut)
-def login_google(datos: GoogleTokenIn, db: Session = Depends(get_db)):
+@router.post("/google", response_model=LoginOut)
+def login_google(datos: GoogleTokenIn, response: Response, db: Session = Depends(get_db)):
     """Autentica con Google. Crea el usuario si no existe."""
     try:
         idinfo = id_token.verify_oauth2_token(
@@ -223,8 +267,20 @@ def login_google(datos: GoogleTokenIn, db: Session = Depends(get_db)):
         db.refresh(usuario)
 
     token = create_access_token({"sub": str(usuario.id), "email": usuario.email})
+    _set_session_cookie(response, token)
 
-    return TokenOut(
-        access_token=token,
-        usuario=UsuarioOut.model_validate(usuario),
-    )
+    return LoginOut(usuario=UsuarioOut.model_validate(usuario))
+
+
+@router.post("/logout", response_model=MensajeOut)
+def cerrar_sesion(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    """Invalida el token actual y borra la cookie de sesión."""
+    token = request.cookies.get(COOKIE_NAME)
+    if token:
+        invalidar_token(token, db)
+    _clear_session_cookie(response)
+    return MensajeOut(mensaje="Sesión cerrada exitosamente.")

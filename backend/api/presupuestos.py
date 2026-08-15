@@ -2,9 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 from core.database import get_db
+from core.dependencies import get_current_user
 from models.contratista import Contratista
 from models.presupuesto import ItemPresupuesto, Presupuesto
 from models.reclamo import Reclamo
+from models.usuario import Usuario
 from schemas.presupuesto import PresupuestoCreate, PresupuestoOut
 
 router = APIRouter(prefix="/presupuestos", tags=["presupuestos"])
@@ -18,7 +20,7 @@ def _validar_referencias(datos: PresupuestoCreate, db: Session):
 
 
 @router.post("", response_model=PresupuestoOut, status_code=201)
-def crear_presupuesto(datos: PresupuestoCreate, db: Session = Depends(get_db)):
+def crear_presupuesto(datos: PresupuestoCreate, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
     _validar_referencias(datos, db)
 
     nuevo_presupuesto = Presupuesto(
@@ -42,14 +44,14 @@ def _con_relaciones(query):
 
 
 @router.get("", response_model=list[PresupuestoOut])
-def listar_presupuestos(db: Session = Depends(get_db)):
+def listar_presupuestos(db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
     return (
         _con_relaciones(db.query(Presupuesto)).order_by(Presupuesto.fecha.desc()).all()
     )
 
 
 @router.get("/{presupuesto_id}", response_model=PresupuestoOut)
-def obtener_presupuesto(presupuesto_id: int, db: Session = Depends(get_db)):
+def obtener_presupuesto(presupuesto_id: int, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
     presupuesto = _con_relaciones(db.query(Presupuesto)).filter(
         Presupuesto.id == presupuesto_id
     ).first()
@@ -60,7 +62,7 @@ def obtener_presupuesto(presupuesto_id: int, db: Session = Depends(get_db)):
 
 @router.put("/{presupuesto_id}", response_model=PresupuestoOut)
 def actualizar_presupuesto(
-    presupuesto_id: int, datos: PresupuestoCreate, db: Session = Depends(get_db)
+    presupuesto_id: int, datos: PresupuestoCreate, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)
 ):
     presupuesto = db.get(Presupuesto, presupuesto_id)
     if presupuesto is None:
@@ -79,7 +81,7 @@ def actualizar_presupuesto(
 
 
 @router.delete("/{presupuesto_id}", status_code=204)
-def eliminar_presupuesto(presupuesto_id: int, db: Session = Depends(get_db)):
+def eliminar_presupuesto(presupuesto_id: int, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
     presupuesto = db.get(Presupuesto, presupuesto_id)
     if presupuesto is None:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
