@@ -1,8 +1,20 @@
 import { useEffect, useState } from 'react';
-import { Drawer, Group, Loader, Paper, Tabs, Text, ThemeIcon, Timeline } from '@mantine/core';
+import {
+  Badge,
+  Drawer,
+  Group,
+  Loader,
+  Paper,
+  Tabs,
+  Text,
+  ThemeIcon,
+  Timeline,
+} from '@mantine/core';
 import {
   IconArrowRight,
-  IconBulb,
+  IconBan,
+  IconBolt,
+  IconChecks,
   IconClipboardList,
   IconHistory,
   IconMapPin,
@@ -11,94 +23,65 @@ import {
   IconTruck,
 } from '@tabler/icons-react';
 
-import { obtenerReclamo } from '../../api/reclamos';
+import { obtenerHistorialReclamo, obtenerReclamo } from '../../api/reclamos';
 import { formatearIdReclamo } from '../../utils/ids';
 import { notifyError } from '../../utils/notifications';
 import { ClaimPhotosManager } from './ClaimPhotosManager';
 import { PriorityBadge } from './PriorityBadge';
+import { StatusBadge } from './StatusBadge';
+import { colorPorEstado, etiquetaPorEstado, proximoPasoPorEstado } from './estados';
 
-// Suma `dias` a la fecha de creación del reclamo, para que cada evento del
-// historial mockeado quede en una fecha posterior al anterior.
-function fechaMock(reclamo, dias) {
-  if (!reclamo?.fecha_creacion) return null;
-  const fecha = new Date(reclamo.fecha_creacion);
-  fecha.setDate(fecha.getDate() + dias);
-  return fecha;
+const iconoPorEstado = {
+  PENDIENTE_REVISION: IconClipboardList,
+  PENDIENTE_PRESUPUESTO: IconReceipt2,
+  EN_EVALUACION: IconReceipt2,
+  APROBADO: IconChecks,
+  EN_EJECUCION: IconTruck,
+  FINALIZADO: IconChecks,
+  DESIERTO: IconBan,
+  RECHAZADO: IconBan,
+  CANCELADO: IconBan,
+};
+
+function tituloEvento(evento) {
+  if (evento.estado_anterior === null) return 'Reclamo creado';
+  return `Pasó a "${etiquetaPorEstado[evento.estado_nuevo]}"`;
 }
 
-// TODO: reemplazar por la acción sugerida real cuando el backend la calcule
-const PROXIMA_ACCION_MOCK = {
-  titulo: 'Coordinación de trabajo',
-  descripcion: 'Coordinar con Constructora Del Sur S.A. la fecha de inicio de la obra.',
-};
-
-// TODO: reemplazar por historial real cuando el backend registre eventos de tracking
-function historialMock(reclamo) {
-  return [
-    {
-      id: 1,
-      tipo: 'creacion',
-      titulo: 'Reclamo creado',
-      descripcion: `Se cargó el reclamo para ${reclamo?.nombre_escuela ?? 'la escuela'}.`,
-      fecha: fechaMock(reclamo, 0),
-    },
-    {
-      id: 2,
-      tipo: 'ia',
-      titulo: 'Presupuesto preliminar con IA',
-      descripcion: 'El sistema generó un presupuesto preliminar estimado para este reclamo.',
-      fecha: fechaMock(reclamo, 1),
-    },
-    {
-      id: 3,
-      tipo: 'presupuesto',
-      titulo: 'Presupuesto cargado',
-      descripcion: 'Constructora Del Sur S.A. cargó un presupuesto para este reclamo.',
-      fecha: fechaMock(reclamo, 3),
-    },
-    {
-      id: 4,
-      tipo: 'presupuesto',
-      titulo: 'Presupuesto cargado',
-      descripcion: 'Herrera Obras Viales cargó un presupuesto para este reclamo.',
-      fecha: fechaMock(reclamo, 4),
-    },
-    {
-      id: 5,
-      tipo: 'contratista',
-      titulo: 'Contratista elegido',
-      descripcion: 'Se seleccionó a Constructora Del Sur S.A. para realizar el trabajo.',
-      fecha: fechaMock(reclamo, 5),
-    },
-  ];
+// TODO: cuando existan roles, mostrar el nombre del usuario en los cambios MANUAL.
+function TituloEvento({ evento }) {
+  return (
+    <Group gap={6} wrap="nowrap">
+      <Text size="sm" fw={500}>
+        {tituloEvento(evento)}
+      </Text>
+      {evento.origen === 'AUTOMATICO' && (
+        <Badge
+          size="xs"
+          variant="light"
+          color="grape"
+          leftSection={<IconBolt size={10} />}
+          tt="none"
+        >
+          Automático
+        </Badge>
+      )}
+    </Group>
+  );
 }
-
-const iconoPorTipo = {
-  creacion: IconClipboardList,
-  ia: IconBulb,
-  presupuesto: IconReceipt2,
-  contratista: IconTruck,
-};
-
-const colorPorTipo = {
-  creacion: 'gray',
-  ia: 'grape',
-  presupuesto: 'blue',
-  contratista: '#1fa7b3',
-};
 
 export function ClaimDetailDrawer({ reclamoId, onClose }) {
   // Guarda el último fetch resuelto junto con el id al que corresponde: así `cargando`
   // se puede derivar comparando contra `reclamoId` en vez de duplicar estado, y una
   // respuesta vieja que llega tarde (ej. al cambiar rápido de reclamo) no pisa una más nueva.
-  const [ultimoCargado, setUltimoCargado] = useState({ id: null, reclamo: null });
+  const [ultimoCargado, setUltimoCargado] = useState({ id: null, reclamo: null, historial: [] });
 
   useEffect(() => {
     if (reclamoId === null) return;
     let vigente = true;
-    obtenerReclamo(reclamoId)
-      .then((data) => {
-        if (vigente) setUltimoCargado({ id: reclamoId, reclamo: data });
+    Promise.all([obtenerReclamo(reclamoId), obtenerHistorialReclamo(reclamoId)])
+      .then(([reclamo, historial]) => {
+        if (vigente) setUltimoCargado({ id: reclamoId, reclamo, historial });
       })
       .catch((err) => {
         if (vigente) notifyError(err.message);
@@ -108,8 +91,12 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
     };
   }, [reclamoId]);
 
-  const reclamo = ultimoCargado.id === reclamoId ? ultimoCargado.reclamo : null;
+  const cargadoCoincide = ultimoCargado.id === reclamoId;
+  const reclamo = cargadoCoincide ? ultimoCargado.reclamo : null;
+  const historial = cargadoCoincide ? ultimoCargado.historial : [];
   const cargando = reclamoId !== null && reclamo === null;
+
+  const proximoPaso = reclamo ? proximoPasoPorEstado[reclamo.estado] : null;
 
   return (
     <Drawer
@@ -128,7 +115,8 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
                 <Text size="xs" c="dimmed" ff="monospace">
                   {formatearIdReclamo(reclamo.id)}
                 </Text>
-                <PriorityBadge prioridad={reclamo.prioridad} size="xs" variant="light" />
+                <PriorityBadge prioridad={reclamo.prioridad} size="xs" />
+                <StatusBadge estado={reclamo.estado} size="xs" variant="light" />
               </Group>
               <Text fw={700} size="lg" lh={1.15}>
                 {reclamo.nombre_escuela}
@@ -150,30 +138,32 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
 
       {!cargando && reclamo && (
         <>
-          <Paper
-            radius="md"
-            p="sm"
-            mb="md"
-            style={{
-              backgroundColor: 'var(--mantine-color-teal-0)',
-              borderLeft: '4px solid #1fa7b3',
-            }}
-          >
-            <Group gap="xs" mb={4} wrap="nowrap">
-              <ThemeIcon size={24} radius="xl" variant="filled" color="teal">
-                <IconArrowRight size={14} />
-              </ThemeIcon>
-              <Text fw={700} size="sm" c="teal.9">
-                Próximo paso
+          {proximoPaso && (
+            <Paper
+              radius="md"
+              p="sm"
+              mb="md"
+              style={{
+                backgroundColor: 'var(--mantine-color-teal-0)',
+                borderLeft: '4px solid #1fa7b3',
+              }}
+            >
+              <Group gap="xs" mb={4} wrap="nowrap">
+                <ThemeIcon size={24} radius="xl" variant="filled" color="teal">
+                  <IconArrowRight size={14} />
+                </ThemeIcon>
+                <Text fw={700} size="sm" c="teal.9">
+                  Próximo paso
+                </Text>
+              </Group>
+              <Text fw={600} size="sm" ml={32}>
+                {proximoPaso.titulo}
               </Text>
-            </Group>
-            <Text fw={600} size="sm" ml={32}>
-              {PROXIMA_ACCION_MOCK.titulo}
-            </Text>
-            <Text size="sm" c="dimmed" ml={32}>
-              {PROXIMA_ACCION_MOCK.descripcion}
-            </Text>
-          </Paper>
+              <Text size="sm" c="dimmed" ml={32}>
+                {proximoPaso.descripcion}
+              </Text>
+            </Paper>
+          )}
 
           <Tabs defaultValue="avance">
             <Tabs.List>
@@ -186,28 +176,34 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
             </Tabs.List>
 
             <Tabs.Panel value="avance" pt="md">
-              <Timeline active={historialMock(reclamo).length} bulletSize={24} lineWidth={2}>
-                {historialMock(reclamo).map((evento) => {
-                  const Icono = iconoPorTipo[evento.tipo];
-                  return (
-                    <Timeline.Item
-                      key={evento.id}
-                      title={evento.titulo}
-                      bullet={<Icono size={14} />}
-                      color={colorPorTipo[evento.tipo]}
-                    >
-                      <Text size="sm" c="dimmed">
-                        {evento.descripcion}
-                      </Text>
-                      {evento.fecha && (
+              {historial.length === 0 ? (
+                <Text c="dimmed" size="sm">
+                  Todavía no hay movimientos registrados.
+                </Text>
+              ) : (
+                <Timeline active={historial.length} bulletSize={24} lineWidth={2}>
+                  {historial.map((evento) => {
+                    const Icono = iconoPorEstado[evento.estado_nuevo] ?? IconClipboardList;
+                    return (
+                      <Timeline.Item
+                        key={evento.id}
+                        title={<TituloEvento evento={evento} />}
+                        bullet={<Icono size={14} />}
+                        color={colorPorEstado[evento.estado_nuevo]}
+                      >
+                        {evento.motivo && (
+                          <Text size="sm" c="dimmed">
+                            {evento.motivo}
+                          </Text>
+                        )}
                         <Text size="xs" c="dimmed" mt={4}>
                           {new Date(evento.fecha).toLocaleString('es-AR')}
                         </Text>
-                      )}
-                    </Timeline.Item>
-                  );
-                })}
-              </Timeline>
+                      </Timeline.Item>
+                    );
+                  })}
+                </Timeline>
+              )}
             </Tabs.Panel>
 
             <Tabs.Panel value="fotos" pt="md">

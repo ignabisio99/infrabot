@@ -7,6 +7,7 @@ import {
   Container,
   Group,
   Loader,
+  Menu,
   Pagination,
   Select,
   Table,
@@ -15,20 +16,28 @@ import {
   Title,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
-import { IconEye } from '@tabler/icons-react';
+import { IconExchange, IconEye } from '@tabler/icons-react';
 
 import { RowActionsMenu } from '../../components/RowActionsMenu';
 import { eliminarReclamo, listarReclamos } from '../../api/reclamos';
 import { formatearIdReclamo } from '../../utils/ids';
 import { notifyError, notifySuccess } from '../../utils/notifications';
+import { ChangeStatusModal } from './ChangeStatusModal';
 import { ClaimDetailDrawer } from './ClaimDetailDrawer';
 import { PriorityBadge } from './PriorityBadge';
+import { StatusBadge } from './StatusBadge';
+import { ESTADOS, etiquetaPorEstado } from './estados';
 
 const opcionesPrioridad = [
   { value: '', label: 'Todas' },
   { value: 'BAJA', label: 'Baja' },
   { value: 'MEDIA', label: 'Media' },
   { value: 'ALTA', label: 'Alta' },
+];
+
+const opcionesEstado = [
+  { value: '', label: 'Todos' },
+  ...ESTADOS.map((estado) => ({ value: estado, label: etiquetaPorEstado[estado] })),
 ];
 
 const POR_PAGINA = 10;
@@ -57,8 +66,10 @@ export function ClaimsListPage() {
   const [error, setError] = useState(null);
   const [eliminandoId, setEliminandoId] = useState(null);
   const [reclamoIdSeleccionado, setReclamoIdSeleccionado] = useState(null);
+  const [reclamoParaCambiarEstado, setReclamoParaCambiarEstado] = useState(null);
 
   const [prioridadFiltro, setPrioridadFiltro] = useState('');
+  const [estadoFiltro, setEstadoFiltro] = useState('');
   const [rangoFechas, setRangoFechas] = useState([null, null]);
   const [busquedaId, setBusquedaId] = useState('');
   const [pagina, setPagina] = useState(1);
@@ -77,6 +88,8 @@ export function ClaimsListPage() {
     return reclamos.filter((reclamo) => {
       if (prioridadFiltro && reclamo.prioridad !== prioridadFiltro) return false;
 
+      if (estadoFiltro && reclamo.estado !== estadoFiltro) return false;
+
       if (!idCoincideConBusqueda(reclamo.id, busquedaId)) return false;
 
       const fecha = new Date(reclamo.fecha_creacion);
@@ -91,21 +104,23 @@ export function ClaimsListPage() {
 
       return true;
     });
-  }, [reclamos, prioridadFiltro, rangoFechas, busquedaId]);
+  }, [reclamos, prioridadFiltro, estadoFiltro, rangoFechas, busquedaId]);
 
   const hayFiltrosActivos =
     prioridadFiltro !== '' ||
+    estadoFiltro !== '' ||
     rangoFechas[0] !== null ||
     rangoFechas[1] !== null ||
     busquedaId !== '';
 
   const limpiarFiltros = () => {
     setPrioridadFiltro('');
+    setEstadoFiltro('');
     setRangoFechas([null, null]);
     setBusquedaId('');
   };
 
-  const filtroActual = `${prioridadFiltro}|${rangoFechas[0]}|${rangoFechas[1]}|${busquedaId}`;
+  const filtroActual = `${prioridadFiltro}|${estadoFiltro}|${rangoFechas[0]}|${rangoFechas[1]}|${busquedaId}`;
   const [filtroPrevio, setFiltroPrevio] = useState(filtroActual);
   if (filtroActual !== filtroPrevio) {
     setFiltroPrevio(filtroActual);
@@ -130,6 +145,14 @@ export function ClaimsListPage() {
     }
   };
 
+  const handleEstadoCambiado = (reclamoActualizado) => {
+    setReclamos((actuales) =>
+      actuales.map((reclamo) =>
+        reclamo.id === reclamoActualizado.id ? reclamoActualizado : reclamo,
+      ),
+    );
+  };
+
   return (
     <Container fluid px={0}>
       <Group justify="space-between" mb="md">
@@ -152,6 +175,13 @@ export function ClaimsListPage() {
             value={prioridadFiltro}
             onChange={(value) => setPrioridadFiltro(value ?? '')}
             w={160}
+          />
+          <Select
+            label="Estado"
+            data={opcionesEstado}
+            value={estadoFiltro}
+            onChange={(value) => setEstadoFiltro(value ?? '')}
+            w={210}
           />
           <DatePickerInput
             type="range"
@@ -197,6 +227,7 @@ export function ClaimsListPage() {
               <Table.Th>Escuela</Table.Th>
               <Table.Th>Ubicación</Table.Th>
               <Table.Th>Prioridad</Table.Th>
+              <Table.Th>Estado</Table.Th>
               <Table.Th>Categoría</Table.Th>
               <Table.Th>Descripción</Table.Th>
               <Table.Th>Fecha</Table.Th>
@@ -221,7 +252,10 @@ export function ClaimsListPage() {
                 <Table.Td>{reclamo.nombre_escuela}</Table.Td>
                 <Table.Td>{reclamo.ubicacion}</Table.Td>
                 <Table.Td>
-                  <PriorityBadge prioridad={reclamo.prioridad} variant="light" />
+                  <PriorityBadge prioridad={reclamo.prioridad} />
+                </Table.Td>
+                <Table.Td>
+                  <StatusBadge estado={reclamo.estado} variant="light" />
                 </Table.Td>
                 <Table.Td>{reclamo.categoria}</Table.Td>
                 <Table.Td>
@@ -235,6 +269,15 @@ export function ClaimsListPage() {
                     onEdit={() => navigate(`/reclamos/${reclamo.id}/editar`)}
                     onDelete={() => handleEliminar(reclamo.id)}
                     deleting={eliminandoId === reclamo.id}
+                    extraItems={
+                      <Menu.Item
+                        leftSection={<IconExchange size={14} />}
+                        onClick={() => setReclamoParaCambiarEstado(reclamo)}
+                        disabled={reclamo.estados_posibles.length === 0}
+                      >
+                        Cambiar estado
+                      </Menu.Item>
+                    }
                   />
                 </Table.Td>
               </Table.Tr>
@@ -252,6 +295,12 @@ export function ClaimsListPage() {
       <ClaimDetailDrawer
         reclamoId={reclamoIdSeleccionado}
         onClose={() => setReclamoIdSeleccionado(null)}
+      />
+
+      <ChangeStatusModal
+        reclamo={reclamoParaCambiarEstado}
+        onClose={() => setReclamoParaCambiarEstado(null)}
+        onEstadoCambiado={handleEstadoCambiado}
       />
     </Container>
   );

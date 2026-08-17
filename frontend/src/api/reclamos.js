@@ -8,6 +8,33 @@ export const obtenerReclamo = reclamosApi.obtener;
 export const actualizarReclamo = reclamosApi.actualizar;
 export const eliminarReclamo = reclamosApi.eliminar;
 
+export async function cambiarEstadoReclamo(reclamoId, estado, motivo) {
+  const response = await fetchConAuth(`${API_URL}/reclamos/${reclamoId}/estado`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ estado, motivo: motivo || null }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(
+      extraerMensajeError(error?.detail, 'No se pudo cambiar el estado del reclamo.'),
+    );
+  }
+
+  return response.json();
+}
+
+export async function obtenerHistorialReclamo(reclamoId) {
+  const response = await fetchConAuth(`${API_URL}/reclamos/${reclamoId}/historial`);
+
+  if (!response.ok) {
+    throw new Error('No se pudo obtener el historial del reclamo.');
+  }
+
+  return response.json();
+}
+
 export async function subirFotoReclamo(reclamoId, archivo) {
   const formData = new FormData();
   formData.append('archivo', archivo);

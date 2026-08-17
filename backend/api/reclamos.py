@@ -8,7 +8,15 @@ from models.foto_reclamo import FotoReclamo, TipoMedia
 from models.presupuesto import Presupuesto
 from models.reclamo import Reclamo
 from models.usuario import Usuario
-from schemas.reclamo import FotoReclamoOut, ReclamoCreate, ReclamoOut
+from models.historial_estado_reclamo import HistorialEstadoReclamo
+from schemas.reclamo import (
+    CambioEstadoReclamo,
+    FotoReclamoOut,
+    HistorialEstadoReclamoOut,
+    ReclamoCreate,
+    ReclamoOut,
+)
+from services import estados_reclamo
 
 router = APIRouter(prefix="/reclamos", tags=["reclamos"])
 
@@ -23,8 +31,9 @@ def _con_fotos(query):
 
 @router.post("", response_model=ReclamoOut, status_code=201)
 def crear_reclamo(reclamo: ReclamoCreate, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
-    nuevo_reclamo = Reclamo(**reclamo.model_dump())
+    nuevo_reclamo = Reclamo(**reclamo.model_dump(), estado=estados_reclamo.ESTADO_INICIAL)
     db.add(nuevo_reclamo)
+    estados_reclamo.registrar_estado_inicial(db, nuevo_reclamo)
     db.commit()
     db.refresh(nuevo_reclamo)
     return nuevo_reclamo
@@ -48,11 +57,53 @@ def actualizar_reclamo(reclamo_id: int, datos: ReclamoCreate, db: Session = Depe
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    # `estado` no está en ReclamoCreate a propósito: sólo se mueve por
+    # POST /reclamos/{id}/estado, que valida la transición y deja historial.
     for campo, valor in datos.model_dump().items():
         setattr(reclamo, campo, valor)
     db.commit()
     db.refresh(reclamo)
     return reclamo
+
+
+@router.post("/{reclamo_id}/estado", response_model=ReclamoOut)
+def cambiar_estado_reclamo(
+    reclamo_id: int,
+    datos: CambioEstadoReclamo,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    reclamo = _con_fotos(db.query(Reclamo)).filter(Reclamo.id == reclamo_id).first()
+    if reclamo is None:
+        raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+
+    try:
+        # TODO: validar contra el rol del usuario cuando existan (gestor/contratista).
+        estados_reclamo.cambiar_estado(
+            db, reclamo, datos.estado, motivo=datos.motivo, usuario_id=user.id
+        )
+    except estados_reclamo.TransicionInvalida as error:
+        raise HTTPException(status_code=409, detail=str(error))
+    except estados_reclamo.MotivoRequerido as error:
+        raise HTTPException(status_code=422, detail=str(error))
+
+    db.commit()
+    db.refresh(reclamo)
+    return reclamo
+
+
+@router.get("/{reclamo_id}/historial", response_model=list[HistorialEstadoReclamoOut])
+def listar_historial_reclamo(
+    reclamo_id: int, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)
+):
+    if db.get(Reclamo, reclamo_id) is None:
+        raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    return (
+        db.query(HistorialEstadoReclamo)
+        .filter(HistorialEstadoReclamo.reclamo_id == reclamo_id)
+        .order_by(HistorialEstadoReclamo.fecha, HistorialEstadoReclamo.id)
+        .all()
+    )
 
 
 @router.delete("/{reclamo_id}", status_code=204)

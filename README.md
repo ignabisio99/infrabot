@@ -118,11 +118,30 @@ La base de datos arranca vacía. Para cargar datos de prueba:
 docker compose exec backend python seed.py
 ```
 
-Para borrar todo y recargar:
+Para dejar el entorno limpio y recargar todo:
 
 ```bash
 docker compose exec backend python seed.py --reset
 ```
+
+`--reset` **recrea las tablas** a partir de los modelos, así que también es la forma de
+poner al día una base que quedó desfasada después de un `git pull` que cambió un modelo
+(`create_all` crea las tablas que faltan, pero nunca altera las que ya existen: sin esto
+la base queda vieja en silencio hasta que una consulta falla con `UndefinedColumn`).
+
+El seed deja un usuario administrador listo para entrar:
+
+| Email | Contraseña |
+|-------|-----------|
+| `admin@infrabot.dev` | `Admin123!` |
+
+Hace falta porque registrarse desde la UI no alcanza en una base nueva: la cuenta queda
+sin confirmar (el mail de confirmación necesita `SMTP_EMAIL`/`SMTP_PASSWORD` en el `.env`)
+y esperando la aprobación de un admin que todavía no existe. Si querés otras credenciales,
+se cambian en las constantes `ADMIN_EMAIL` / `ADMIN_PASSWORD` de `backend/seed.py`.
+
+> Si además cambió el `requirements.txt` o el `Dockerfile`, hay que reconstruir la imagen
+> antes: `docker compose build backend && docker compose up -d`.
 
 ## Comandos útiles
 

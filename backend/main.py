@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
+import models  # noqa: F401 - registra todos los modelos antes de create_all (ver models/__init__.py)
 from api.auth import router as auth_router
 from api.contratistas import router as contratistas_router
 from api.presupuestos import router as presupuestos_router
@@ -16,7 +17,6 @@ from api.reclamos import router as reclamos_router
 from api.whatsapp import router as whatsapp_router
 from core.database import Base, engine
 from core.storage import UPLOADS_DIR
-from models import contratista, foto_reclamo, presupuesto, reclamo, token_blacklist, usuario  # noqa: F401 - registra los modelos antes de create_all
 
 # Zona horaria UTC-3 (Argentina)
 ART = timezone(timedelta(hours=-3))
