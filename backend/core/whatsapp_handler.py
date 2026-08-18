@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from models.foto_reclamo import FotoReclamo, TipoMedia
 from models.reclamo import PrioridadReclamo, Reclamo
+from services.ai import clasificacion, completitud
 
 # Estado de conversación por usuario (en memoria)
 # Clave: número de teléfono, Valor: dict con paso actual y datos parciales
@@ -25,6 +26,53 @@ CATEGORIAS = [
     "Aberturas",
     "Otro",
 ]
+
+
+def _mensaje_paso_media(conv: dict) -> str:
+    media_count = len(conv.get("media", []))
+    if media_count > 0:
+        return (
+            f"📎 *Paso 4/4:* Ya tenés {media_count} archivo(s) adjunto(s).\n"
+            "Podés enviar más fotos/videos o escribí *listo* para continuar."
+        )
+    return (
+        "📎 *Paso 4/4:* Enviá fotos o videos del problema (opcional).\n"
+        "Podés enviar varios. Cuando termines, escribí *listo*."
+    )
+
+
+def _tras_descripcion_o_completitud(conv: dict, datos: dict) -> str:
+    """Tras descripción (o respuesta a faltante): valida completitud o avanza a media."""
+    rondas = int(conv.get("faltantes_rondas") or 0)
+    if rondas >= completitud.MAX_RONDAS_FALTANTES:
+        datos["observaciones"] = (
+            (datos.get("observaciones") or "")
+            + " [IA] Completitud parcial: se alcanzó el máximo de preguntas."
+        ).strip()
+        conv["paso"] = "media"
+        return _mensaje_paso_media(conv)
+
+    try:
+        resultado = completitud.evaluar_completitud(
+            escuela=datos.get("nombre_escuela") or "",
+            ubicacion=datos.get("ubicacion") or "",
+            descripcion=datos.get("descripcion") or "",
+        )
+    except Exception:
+        conv["paso"] = "media"
+        return _mensaje_paso_media(conv)
+
+    if resultado.completo or not resultado.faltantes:
+        conv["paso"] = "media"
+        conv.pop("faltantes_cola", None)
+        conv.pop("faltante_campo", None)
+        return _mensaje_paso_media(conv)
+
+    primera, *resto = resultado.faltantes
+    conv["paso"] = "faltantes"
+    conv["faltante_campo"] = primera.campo
+    conv["faltantes_cola"] = [{"campo": f.campo, "pregunta": f.pregunta} for f in resto]
+    return f"❓ {primera.pregunta}"
 
 
 def _formatear_reclamo(r: Reclamo) -> str:
@@ -137,19 +185,34 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
         if len(texto) < 10:
             return "⚠️ La descripción debe tener al menos 10 caracteres. Intentá de nuevo:"
         datos["descripcion"] = texto
-        datos["categoria"] = "Sin clasificar"
-        datos["prioridad"] = "MEDIA"
-        conv["paso"] = "media"
-        media_count = len(conv.get("media", []))
-        if media_count > 0:
-            return (
-                f"📎 *Paso 4/4:* Ya tenés {media_count} archivo(s) adjunto(s).\n"
-                "Podés enviar más fotos/videos o escribí *listo* para continuar."
+        try:
+            resultado = clasificacion.clasificar_texto(
+                texto,
+                escuela=datos.get("nombre_escuela"),
+                ubicacion=datos.get("ubicacion"),
             )
-        return (
-            "📎 *Paso 4/4:* Enviá fotos o videos del problema (opcional).\n"
-            "Podés enviar varios. Cuando termines, escribí *listo*."
-        )
+            datos["categoria"] = resultado.categoria
+            datos["prioridad"] = resultado.prioridad.value
+        except Exception:
+            datos["categoria"] = "Sin clasificar"
+            datos["prioridad"] = "MEDIA"
+
+        return _tras_descripcion_o_completitud(conv, datos)
+
+    if paso == "faltantes":
+        cola = conv.get("faltantes_cola") or []
+        campo_actual = conv.get("faltante_campo") or "descripcion"
+        completitud.fusionar_respuesta(datos=datos, campo=campo_actual, respuesta=texto)
+        conv["faltantes_rondas"] = int(conv.get("faltantes_rondas") or 0) + 1
+
+        # Si quedan preguntas prearmadas de la misma evaluación, seguir la cola.
+        if cola:
+            siguiente = cola.pop(0)
+            conv["faltantes_cola"] = cola
+            conv["faltante_campo"] = siguiente.get("campo") or "descripcion"
+            return f"❓ {siguiente.get('pregunta')}"
+
+        return _tras_descripcion_o_completitud(conv, datos)
 
     if paso == "media":
         if texto.lower() in ("listo", "continuar", "siguiente", "ok"):
@@ -159,6 +222,8 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
                 "✅ *Resumen del reclamo:*\n\n"
                 f"🏫 Escuela: {datos['nombre_escuela']}\n"
                 f"📍 Ubicación: {datos['ubicacion']}\n"
+                f"🏷️ Categoría: {datos.get('categoria', 'Sin clasificar')}\n"
+                f"🚦 Prioridad: {datos.get('prioridad', 'MEDIA')}\n"
                 f"📝 Descripción: {datos['descripcion']}\n"
                 f"📎 Archivos: {media_count}\n\n"
                 "¿Confirmás la carga?"
@@ -183,6 +248,7 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
                 prioridad=PrioridadReclamo(datos["prioridad"]),
                 categoria=datos["categoria"],
                 descripcion=datos["descripcion"],
+                observaciones=datos.get("observaciones"),
             )
             db.add(nuevo)
             db.commit()
@@ -297,7 +363,7 @@ def procesar_media(db: Session, usuario: str, url_local: str, mime_type: str, ca
         paso = conv["paso"]
 
         # Aceptar media en cualquier paso del flujo de creación
-        if paso in ("escuela", "ubicacion", "descripcion", "media", "confirmacion"):
+        if paso in ("escuela", "ubicacion", "descripcion", "faltantes", "media", "confirmacion"):
             conv.setdefault("media", []).append({
                 "url": url_local,
                 "mime_type": mime_type,

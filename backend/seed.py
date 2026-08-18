@@ -11,6 +11,7 @@ desarrollo listo para entrar (ver ADMIN_EMAIL / ADMIN_PASSWORD).
 
 import logging
 import sys
+from datetime import date
 
 from core.auth import hash_password
 from core.database import Base, SessionLocal, engine
@@ -19,11 +20,13 @@ from models import (
     EstadoReclamo,
     EstadoUsuario,
     HistorialEstadoReclamo,
+    IndiceInflacion,
     ItemPresupuesto,
     OrigenCambioEstado,
     Presupuesto,
     PrioridadReclamo,
     Reclamo,
+    ReferenciaCosto,
     TipoUsuario,
     Usuario,
 )
@@ -138,6 +141,127 @@ RECLAMOS = [
 ]
 
 
+# Costos de referencia placeholder (reemplazables por históricos reales del Consejo).
+REFERENCIAS_COSTO = [
+    dict(
+        categoria="Electricidad",
+        descripcion="Reparación de tablero eléctrico principal escolar",
+        monto_ars=180000,
+        fecha_referencia=date(2024, 6, 1),
+        unidad="trabajo",
+        fuente="seed_placeholder",
+    ),
+    dict(
+        categoria="Electricidad",
+        descripcion="Cambio de cables y tomas en aula",
+        monto_ars=95000,
+        fecha_referencia=date(2024, 3, 1),
+        unidad="aula",
+        fuente="seed_placeholder",
+    ),
+    dict(
+        categoria="Plomería",
+        descripcion="Reparación de pérdida de agua en baño escolar",
+        monto_ars=75000,
+        fecha_referencia=date(2024, 8, 1),
+        unidad="baño",
+        fuente="seed_placeholder",
+    ),
+    dict(
+        categoria="Plomería",
+        descripcion="Reemplazo de cañería PVC y grifería",
+        monto_ars=110000,
+        fecha_referencia=date(2024, 1, 1),
+        unidad="trabajo",
+        fuente="seed_placeholder",
+    ),
+    dict(
+        categoria="Techos",
+        descripcion="Reparación de filtraciones y chapas en techo SUM",
+        monto_ars=320000,
+        fecha_referencia=date(2024, 5, 1),
+        unidad="techo",
+        fuente="seed_placeholder",
+    ),
+    dict(
+        categoria="Techos",
+        descripcion="Sellado de goteras en aula",
+        monto_ars=85000,
+        fecha_referencia=date(2023, 11, 1),
+        unidad="aula",
+        fuente="seed_placeholder",
+    ),
+    dict(
+        categoria="Gas",
+        descripcion="Revisión y reparación de instalación de gas escolar",
+        monto_ars=150000,
+        fecha_referencia=date(2024, 4, 1),
+        unidad="trabajo",
+        fuente="seed_placeholder",
+    ),
+    dict(
+        categoria="Pintura",
+        descripcion="Pintura de aula estándar",
+        monto_ars=60000,
+        fecha_referencia=date(2024, 2, 1),
+        unidad="aula",
+        fuente="seed_placeholder",
+    ),
+    dict(
+        categoria="Pisos",
+        descripcion="Reposición de baldosas en pasillo",
+        monto_ars=140000,
+        fecha_referencia=date(2024, 7, 1),
+        unidad="pasillo",
+        fuente="seed_placeholder",
+    ),
+    dict(
+        categoria="Aberturas",
+        descripcion="Cambio de ventana de aula",
+        monto_ars=200000,
+        fecha_referencia=date(2024, 9, 1),
+        unidad="ventana",
+        fuente="seed_placeholder",
+    ),
+    dict(
+        categoria="Infraestructura",
+        descripcion="Reparación de grieta estructural en pared de patio",
+        monto_ars=250000,
+        fecha_referencia=date(2023, 12, 1),
+        unidad="trabajo",
+        fuente="seed_placeholder",
+    ),
+    dict(
+        categoria="Otro",
+        descripcion="Trabajo general de mantenimiento menor",
+        monto_ars=50000,
+        fecha_referencia=date(2024, 10, 1),
+        unidad="trabajo",
+        fuente="seed_placeholder",
+    ),
+]
+
+# Cache IPC de respaldo (valores ilustrativos; sync real vía /ai/inflacion/sync).
+INDICES_INFLACION = [
+    dict(periodo="2023-11", indice=100.0, fuente="seed_placeholder"),
+    dict(periodo="2023-12", indice=105.0, fuente="seed_placeholder"),
+    dict(periodo="2024-01", indice=110.0, fuente="seed_placeholder"),
+    dict(periodo="2024-02", indice=115.0, fuente="seed_placeholder"),
+    dict(periodo="2024-03", indice=120.0, fuente="seed_placeholder"),
+    dict(periodo="2024-04", indice=125.0, fuente="seed_placeholder"),
+    dict(periodo="2024-05", indice=130.0, fuente="seed_placeholder"),
+    dict(periodo="2024-06", indice=135.0, fuente="seed_placeholder"),
+    dict(periodo="2024-07", indice=140.0, fuente="seed_placeholder"),
+    dict(periodo="2024-08", indice=145.0, fuente="seed_placeholder"),
+    dict(periodo="2024-09", indice=150.0, fuente="seed_placeholder"),
+    dict(periodo="2024-10", indice=155.0, fuente="seed_placeholder"),
+    dict(periodo="2025-01", indice=170.0, fuente="seed_placeholder"),
+    dict(periodo="2025-06", indice=190.0, fuente="seed_placeholder"),
+    dict(periodo="2026-01", indice=210.0, fuente="seed_placeholder"),
+    dict(periodo="2026-08", indice=230.0, fuente="seed_placeholder"),
+]
+
+
 def reset_schema():
     """Borra y recrea el schema completo a partir de los modelos.
 
@@ -221,6 +345,9 @@ def seed(db):
             ],
         )
     )
+
+    db.add_all([ReferenciaCosto(**r) for r in REFERENCIAS_COSTO])
+    db.add_all([IndiceInflacion(**i) for i in INDICES_INFLACION])
     db.commit()
 
 

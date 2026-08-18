@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 import models  # noqa: F401 - registra todos los modelos antes de create_all (ver models/__init__.py)
 from api.auth import router as auth_router
+from api.ai import router as ai_router
 from api.contratistas import router as contratistas_router
 from api.presupuestos import router as presupuestos_router
 from api.reclamos import router as reclamos_router
@@ -89,6 +90,7 @@ app.include_router(reclamos_router)
 app.include_router(contratistas_router)
 app.include_router(presupuestos_router)
 app.include_router(whatsapp_router)
+app.include_router(ai_router)
 
 @app.get("/")
 def read_root():

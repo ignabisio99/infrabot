@@ -11,25 +11,34 @@ lista completa. Ojo que la lista tiene que estar completa igual: TokenBlacklist,
 ejemplo, no se registra solo porque core/auth.py lo importa dentro de las funciones.
 """
 
+from models.adjunto_presupuesto import AdjuntoPresupuesto, TipoAdjuntoPresupuesto
 from models.contratista import Contratista
+from models.estimacion_preliminar import EstimacionPreliminar
 from models.foto_reclamo import FotoReclamo
 from models.historial_estado_reclamo import HistorialEstadoReclamo, OrigenCambioEstado
+from models.indice_inflacion import IndiceInflacion
 from models.presupuesto import ItemPresupuesto, Presupuesto
 from models.reclamo import EstadoReclamo, PrioridadReclamo, Reclamo
+from models.referencia_costo import ReferenciaCosto
 from models.token_blacklist import TokenBlacklist
 from models.usuario import EstadoUsuario, TipoUsuario, Usuario
 
 __all__ = [
+    "AdjuntoPresupuesto",
     "Contratista",
     "EstadoReclamo",
     "EstadoUsuario",
+    "EstimacionPreliminar",
     "FotoReclamo",
     "HistorialEstadoReclamo",
+    "IndiceInflacion",
     "ItemPresupuesto",
     "OrigenCambioEstado",
     "PrioridadReclamo",
     "Presupuesto",
     "Reclamo",
+    "ReferenciaCosto",
+    "TipoAdjuntoPresupuesto",
     "TipoUsuario",
     "TokenBlacklist",
     "Usuario",
