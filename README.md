@@ -41,7 +41,9 @@ Editá el `.env` con tus valores:
 | `GOOGLE_CLIENT_ID` | Client ID de Google OAuth (Web application) |
 | `WHATSAPP_TOKEN` | Access token de Meta (WhatsApp → API Setup) |
 | `WHATSAPP_PHONE_ID` | Phone Number ID de Meta (WhatsApp → API Setup) |
-| `WHATSAPP_VERIFY_TOKEN` | String que elijas para verificar el webhook (ej: `infrabot-verify-token`) |
+| `WHATSAPP_VERIFY_TOKEN` | String que elijas para verificar el webhook |
+| `NGROK_AUTHTOKEN` | Auth token de ngrok |
+| `NGROK_DOMAIN` | Dominio estático de ngrok |
 
 Las demás variables vienen con valores por defecto para desarrollo local.
 
@@ -65,37 +67,25 @@ docker compose up
 
 ## Configurar el bot de WhatsApp
 
-El bot necesita que Meta pueda enviar mensajes a tu backend. Para desarrollo local, necesitás un túnel HTTPS.
+El bot necesita que Meta pueda enviar mensajes a tu backend. El túnel ngrok ya está incluido en el `docker-compose.yml` — se levanta automáticamente con `docker compose up`.
 
-### 1. Instalar Cloudflare Tunnel
+La URL del webhook es fija (dominio estático de ngrok) y se configura en Meta una sola vez.
 
-```bash
-curl -sSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
-chmod +x cloudflared
-sudo mv cloudflared /usr/local/bin/
-```
-
-### 2. Levantar el túnel
-
-```bash
-cloudflared tunnel --url http://localhost:8000
-```
-
-Te da una URL tipo `https://xxx-xxx-xxx.trycloudflare.com`. Esta URL cambia cada vez que levantás el túnel.
-
-### 3. Configurar el webhook en Meta
+### 1. Configurar el webhook en Meta
 
 1. Andá a https://developers.facebook.com/apps
 2. Seleccioná la app **InfraBot**
 3. En el menú lateral, hacé clic en **WhatsApp**
 4. Andá al **Paso 2: Configurar webhooks**
 5. Completá:
-   - **URL de devolución de llamada:** `https://<tu-url-cloudflare>/webhook/whatsapp`
+   - **URL de devolución de llamada:** `https://<NGROK_DOMAIN>/webhook/whatsapp` (el valor de `NGROK_DOMAIN` en tu `.env`)
    - **Token de verificación:** el mismo que pusiste en `WHATSAPP_VERIFY_TOKEN` en el `.env`
 6. Hacé clic en **Verificar y guardar**
 7. Suscribí el campo **messages** en Webhook fields
 
-### 4. Probar
+Esto se hace una sola vez. Mientras los servicios estén corriendo con `docker compose up`, el webhook funciona.
+
+### 2. Probar
 
 Mandá un mensaje de WhatsApp al número de prueba. El bot responde con un menú de botones interactivos.
 
@@ -164,9 +154,8 @@ docker compose exec db psql -U user -d infrabot -c "DELETE FROM usuario;"
 
 ## Notas
 
-- El access token de Meta (WHATSAPP_TOKEN) expira cada 24hs en modo desarrollo. Renovalo desde Meta → WhatsApp → API Setup.
-- La URL de Cloudflare cambia cada vez que reiniciás el túnel. Actualizá el webhook en Meta cuando eso pase.
-- Para números argentinos, la API de Meta requiere el formato sin el 9 (ej: `541131772043`). El bot hace esta conversión automáticamente.
+- La URL de ngrok es fija (dominio estático). Solo necesitás tener ngrok corriendo para recibir mensajes.
+- Para números argentinos, la API de Meta requiere el formato sin el 9 (ej: `541125654565`). El bot hace esta conversión automáticamente.
 
 ## Enlaces útiles
 
@@ -177,4 +166,4 @@ docker compose exec db psql -U user -d infrabot -c "DELETE FROM usuario;"
 - [Tabler Icons](https://tabler.io/icons)
 - [Meta WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api)
 - [Google OAuth](https://developers.google.com/identity/gsi/web/guides/overview)
-- [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
+- [ngrok](https://ngrok.com/docs)
