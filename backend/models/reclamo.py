@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Enum, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Enum, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from core.database import Base
@@ -47,6 +47,7 @@ class Reclamo(Base):
     categoria = Column(String(255), nullable=False)
     descripcion = Column(Text, nullable=False)
     observaciones = Column(Text, nullable=True)
+    requiere_revision = Column(Boolean, nullable=False, default=False)
     fecha_creacion = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     fotos = relationship(

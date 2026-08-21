@@ -31,7 +31,7 @@ export function NewBudgetPage() {
     setEnviando(true);
     try {
       await crearPresupuesto(payload);
-      notifySuccess('El presupuesto fue registrado correctamente.');
+      notifySuccess('El presupuesto fue registrado y auditado automáticamente.');
       setFormKey((key) => key + 1);
     } catch (error) {
       notifyError(error?.message);

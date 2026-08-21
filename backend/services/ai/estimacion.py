@@ -12,11 +12,14 @@ from core.ai.factory import get_llm_provider
 from models.estimacion_preliminar import EstimacionPreliminar
 from models.historial_estado_reclamo import OrigenCambioEstado
 from models.reclamo import EstadoReclamo, Reclamo
-from services.ai import historicos
+from models.recomendacion_ia import TipoRecomendacionIA
+from services.ai import historicos, registro
 from services.ai.prompts import SYSTEM_ESTIMACION, user_estimacion
 from services.estados_reclamo import TransicionInvalida, cambiar_estado
 
 logger = logging.getLogger(__name__)
+
+UMBRAL_DESVIO_ESTIMACION = Decimal("0.20")
 
 _SCHEMA = {
     "task": "estimacion",
@@ -37,9 +40,7 @@ def generar_estimacion(
 ) -> EstimacionPreliminar:
     """Genera y persiste una estimación preliminar. No hace commit.
 
-    Usa referencias históricas ajustadas por IPC y calcula confianza por precedentes.
-    Si `transicionar` y el reclamo está en PENDIENTE_REVISION, lo mueve a
-    PENDIENTE_PRESUPUESTO con origen AUTOMATICO.
+    Usa referencias históricas ajustadas por IPC y valida desvío vs promedio (anti-alucinación).
     """
     refs = historicos.buscar_referencias(
         db,
@@ -83,7 +84,6 @@ def generar_estimacion(
     otros = _as_decimal(raw.get("otros"))
     total = _as_decimal(raw.get("total"))
 
-    # Si el LLM no devolvió montos útiles pero hay refs, anclar al promedio ajustado.
     if total <= 0 and refs:
         promedio = sum((r.monto_ajustado for r in refs), Decimal("0")) / len(refs)
         materiales = (promedio * Decimal("0.40")).quantize(Decimal("0.01"))
@@ -97,8 +97,11 @@ def generar_estimacion(
         confianza_llm = float(raw.get("confianza", confianza_base))
     except (TypeError, ValueError):
         confianza_llm = confianza_base
-    # Mezcla: no dejar que el LLM ignore la falta de precedentes.
     confianza = max(0.0, min(1.0, (confianza_base * 0.6) + (confianza_llm * 0.4)))
+
+    requiere_revision, validacion = _validar_desvio(total, refs)
+    if requiere_revision:
+        confianza = min(confianza, 0.45)
 
     detalle_llm = raw.get("detalle") if isinstance(raw.get("detalle"), dict) else {}
     detalle = {
@@ -110,6 +113,7 @@ def generar_estimacion(
         "serie_ipc": meta_inflacion.get("serie_ipc"),
         "fuente_inflacion": meta_inflacion.get("fuente_inflacion"),
         "meta_inflacion": meta_inflacion,
+        "validacion": validacion,
     }
 
     estimacion = EstimacionPreliminar(
@@ -121,8 +125,27 @@ def generar_estimacion(
         confianza=confianza,
         detalle=json.dumps(detalle, ensure_ascii=False),
         proveedor=provider.name,
+        requiere_revision=requiere_revision,
     )
     db.add(estimacion)
+    db.flush()
+
+    registro.registrar(
+        db,
+        tipo=TipoRecomendacionIA.ESTIMACION,
+        payload={
+            "estimacion_id": estimacion.id,
+            "materiales": float(materiales),
+            "mano_obra": float(mano_obra),
+            "otros": float(otros),
+            "total": float(total),
+            "validacion": validacion,
+        },
+        reclamo_id=reclamo.id,
+        proveedor=provider.name,
+        confianza=confianza,
+        requiere_revision=requiere_revision,
+    )
 
     if transicionar and reclamo.estado == EstadoReclamo.PENDIENTE_REVISION:
         try:
@@ -148,6 +171,37 @@ def ultima_estimacion(db: Session, reclamo_id: int) -> EstimacionPreliminar | No
         .order_by(EstimacionPreliminar.fecha.desc())
         .first()
     )
+
+
+def _validar_desvio(total: Decimal, refs) -> tuple[bool, dict]:
+    if not refs:
+        return True, {
+            "requiere_revision": True,
+            "motivo": "sin_referencias",
+            "umbral": float(UMBRAL_DESVIO_ESTIMACION),
+            "desvio": None,
+            "promedio_refs": None,
+        }
+
+    promedio = sum((r.monto_ajustado for r in refs), Decimal("0")) / len(refs)
+    if promedio <= 0:
+        return True, {
+            "requiere_revision": True,
+            "motivo": "promedio_refs_invalido",
+            "umbral": float(UMBRAL_DESVIO_ESTIMACION),
+            "desvio": None,
+            "promedio_refs": float(promedio),
+        }
+
+    desvio = abs(total - promedio) / promedio
+    requiere = desvio > UMBRAL_DESVIO_ESTIMACION
+    return requiere, {
+        "requiere_revision": requiere,
+        "motivo": "desvio_vs_historicos" if requiere else "ok",
+        "umbral": float(UMBRAL_DESVIO_ESTIMACION),
+        "desvio": float(desvio.quantize(Decimal("0.0001"))),
+        "promedio_refs": float(promedio.quantize(Decimal("0.01"))),
+    }
 
 
 def _as_decimal(value) -> Decimal:

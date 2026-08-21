@@ -1,7 +1,10 @@
+import { useEffect, useState } from 'react';
 import {
+  Badge,
   Button,
   Group,
   NumberInput,
+  Paper,
   Select,
   Stack,
   Text,
@@ -10,8 +13,10 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 
+import { sugerirContratistas } from '../../api/ai';
 import { formatearIdReclamo } from '../../utils/ids';
 import { formatoMoneda } from '../../utils/formatters';
+import { notifyError } from '../../utils/notifications';
 
 const valoresPorDefecto = {
   claimId: '',
@@ -40,6 +45,32 @@ export function BudgetForm({
       },
     },
   });
+
+  const [sugeridos, setSugeridos] = useState([]);
+  const [cargandoSugeridos, setCargandoSugeridos] = useState(false);
+
+  useEffect(() => {
+    const reclamoId = form.values.claimId;
+    if (!reclamoId) {
+      setSugeridos([]);
+      return;
+    }
+    let vigente = true;
+    setCargandoSugeridos(true);
+    sugerirContratistas(Number(reclamoId))
+      .then((data) => {
+        if (vigente) setSugeridos(data.slice(0, 3));
+      })
+      .catch((err) => {
+        if (vigente) notifyError(err.message);
+      })
+      .finally(() => {
+        if (vigente) setCargandoSugeridos(false);
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [form.values.claimId]);
 
   const opcionesReclamos = reclamosDisponibles.map((reclamo) => ({
     value: String(reclamo.id),
@@ -89,6 +120,51 @@ export function BudgetForm({
           key={form.key('contractorId')}
           {...form.getInputProps('contractorId')}
         />
+
+        {form.values.claimId && (
+          <Paper withBorder p="sm" radius="md">
+            <Text fw={500} size="sm" mb="xs">
+              Contratistas sugeridos
+            </Text>
+            {cargandoSugeridos && (
+              <Text size="sm" c="dimmed">
+                Buscando sugerencias…
+              </Text>
+            )}
+            {!cargandoSugeridos && sugeridos.length === 0 && (
+              <Text size="sm" c="dimmed">
+                No hay contratistas para sugerir.
+              </Text>
+            )}
+            <Stack gap={6}>
+              {sugeridos.map((s) => (
+                <Paper key={s.contratista_id} withBorder p="xs">
+                  <Group justify="space-between" wrap="nowrap">
+                    <div>
+                      <Text size="sm" fw={500}>
+                        {s.nombre_empresa}
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        {s.especialidad} · {s.calificacion}/5 · {s.carga_activa} obra(s) activa(s)
+                      </Text>
+                    </div>
+                    <Group gap="xs" wrap="nowrap">
+                      <Badge variant="light">{s.score}</Badge>
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="light"
+                        onClick={() => form.setFieldValue('contractorId', String(s.contratista_id))}
+                      >
+                        Elegir
+                      </Button>
+                    </Group>
+                  </Group>
+                </Paper>
+              ))}
+            </Stack>
+          </Paper>
+        )}
 
         <Stack gap="xs">
           <Text fw={500} size="sm">

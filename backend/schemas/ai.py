@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from models.adjunto_presupuesto import TipoAdjuntoPresupuesto
 from models.reclamo import EstadoReclamo, PrioridadReclamo
+from models.recomendacion_ia import TipoRecomendacionIA
 from services.ai.auditoria import RecomendacionAuditoria
 
 
@@ -44,6 +45,7 @@ class EstimacionPreliminarOut(BaseModel):
     confianza: float
     detalle: str | None
     proveedor: str
+    requiere_revision: bool = False
     fecha: datetime
 
 
@@ -63,6 +65,12 @@ class AuditoriaOut(BaseModel):
 class InflacionSyncOut(BaseModel):
     filas: int
     serie_id: str
+    mensaje: str
+
+
+class ReferenciasSyncOut(BaseModel):
+    creadas: int
+    actualizadas: int
     mensaje: str
 
 
@@ -89,3 +97,57 @@ class ExtraccionPresupuestoOut(BaseModel):
     items: list[ItemExtraidoOut]
     proveedor: str
     metodo: str
+
+
+class RecomendacionIAOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    tipo: TipoRecomendacionIA
+    reclamo_id: int | None
+    presupuesto_id: int | None
+    proveedor: str | None
+    confianza: float | None
+    payload: str
+    requiere_revision: bool
+    fecha: datetime
+
+
+class ContratistaSugeridoOut(BaseModel):
+    contratista_id: int
+    nombre_empresa: str
+    especialidad: str
+    calificacion: int
+    carga_activa: int
+    score: int
+    motivos: list[str]
+
+
+class PipelineDuplicadoOut(BaseModel):
+    reclamo_id: int
+    nombre_escuela: str
+    categoria: str
+    estado: str
+    descripcion: str
+    similitud: float
+
+
+class PipelineOut(BaseModel):
+    reclamo_id: int
+    pasos: list[str]
+    categoria: str | None = None
+    prioridad: str | None = None
+    confianza: float | None = None
+    justificacion: str | None = None
+    duplicados: list[PipelineDuplicadoOut] = []
+    estimacion_id: int | None = None
+    total: float | None = None
+    requiere_revision: bool = False
+    error: str | None = None
+
+
+class SeguimientoOut(BaseModel):
+    enviados: int
+    omitidos: int
+    umbral_horas: float
+    mensaje: str

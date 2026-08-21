@@ -7,17 +7,19 @@ import {
   Container,
   Group,
   Loader,
+  Menu,
   Table,
   Text,
   Title,
 } from '@mantine/core';
-import { IconListDetails } from '@tabler/icons-react';
+import { IconListDetails, IconShieldCheck } from '@tabler/icons-react';
 
 import { RowActionsMenu } from '../../components/RowActionsMenu';
 import { eliminarPresupuesto, listarPresupuestos } from '../../api/presupuestos';
 import { formatearIdReclamo } from '../../utils/ids';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 import { formatoMoneda } from '../../utils/formatters';
+import { BudgetAuditModal } from './BudgetAuditModal';
 import { BudgetItemsModal } from './BudgetItemsModal';
 
 export function BudgetsListPage() {
@@ -27,6 +29,7 @@ export function BudgetsListPage() {
   const [error, setError] = useState(null);
   const [eliminandoId, setEliminandoId] = useState(null);
   const [presupuestoSeleccionado, setPresupuestoSeleccionado] = useState(null);
+  const [presupuestoAAuditar, setPresupuestoAAuditar] = useState(null);
 
   useEffect(() => {
     listarPresupuestos()
@@ -114,6 +117,14 @@ export function BudgetsListPage() {
                     onEdit={() => navigate(`/presupuestos/${presupuesto.id}/editar`)}
                     onDelete={() => handleEliminar(presupuesto.id)}
                     deleting={eliminandoId === presupuesto.id}
+                    extraItems={
+                      <Menu.Item
+                        leftSection={<IconShieldCheck size={14} />}
+                        onClick={() => setPresupuestoAAuditar(presupuesto)}
+                      >
+                        Ver auditoría
+                      </Menu.Item>
+                    }
                   />
                 </Table.Td>
               </Table.Tr>
@@ -125,6 +136,11 @@ export function BudgetsListPage() {
       <BudgetItemsModal
         presupuesto={presupuestoSeleccionado}
         onClose={() => setPresupuestoSeleccionado(null)}
+      />
+
+      <BudgetAuditModal
+        presupuesto={presupuestoAAuditar}
+        onClose={() => setPresupuestoAAuditar(null)}
       />
     </Container>
   );

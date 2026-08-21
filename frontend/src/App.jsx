@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { Center, Loader, Stack, Text } from '@mantine/core';
 
 import { getMe, logout } from './api/auth';
 import { AppLayout } from './layout/AppLayout';
@@ -61,8 +62,10 @@ function App() {
 
   async function verificarSesion() {
     setVerificando(true);
+    const controlador = new AbortController();
+    const timer = setTimeout(() => controlador.abort(), 8000);
     try {
-      const usuarioReal = await getMe();
+      const usuarioReal = await getMe(controlador.signal);
       if (usuarioReal) {
         localStorage.setItem('infrabot_user', JSON.stringify(usuarioReal));
         setUsuario(usuarioReal);
@@ -71,10 +74,10 @@ function App() {
         setUsuario(null);
       }
     } catch {
-      // Si no puede conectar al backend, limpiar sesión por seguridad
       localStorage.removeItem('infrabot_user');
       setUsuario(null);
     } finally {
+      clearTimeout(timer);
       setVerificando(false);
     }
   }
@@ -94,8 +97,18 @@ function App() {
     setUsuario(null);
   };
 
-  // Mientras verifica la sesión, no renderizar nada (evita flash)
-  if (verificando) return null;
+  if (verificando) {
+    return (
+      <Center h="100vh">
+        <Stack align="center" gap="xs">
+          <Loader color="teal" />
+          <Text size="sm" c="dimmed">
+            Verificando sesión…
+          </Text>
+        </Stack>
+      </Center>
+    );
+  }
 
   // No autenticado → login
   if (!usuario) {

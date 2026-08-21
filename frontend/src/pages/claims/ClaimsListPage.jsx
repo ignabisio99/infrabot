@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ActionIcon,
   Alert,
+  Badge,
   Button,
   Container,
   Group,
@@ -16,7 +17,7 @@ import {
   Title,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
-import { IconExchange, IconEye } from '@tabler/icons-react';
+import { IconAlertTriangle, IconExchange, IconEye } from '@tabler/icons-react';
 
 import { RowActionsMenu } from '../../components/RowActionsMenu';
 import { eliminarReclamo, listarReclamos } from '../../api/reclamos';
@@ -38,6 +39,12 @@ const opcionesPrioridad = [
 const opcionesEstado = [
   { value: '', label: 'Todos' },
   ...ESTADOS.map((estado) => ({ value: estado, label: etiquetaPorEstado[estado] })),
+];
+
+const opcionesRevision = [
+  { value: '', label: 'Todas' },
+  { value: 'si', label: 'Requiere revisión' },
+  { value: 'no', label: 'Sin marca de revisión' },
 ];
 
 const POR_PAGINA = 10;
@@ -70,6 +77,7 @@ export function ClaimsListPage() {
 
   const [prioridadFiltro, setPrioridadFiltro] = useState('');
   const [estadoFiltro, setEstadoFiltro] = useState('');
+  const [revisionFiltro, setRevisionFiltro] = useState('');
   const [rangoFechas, setRangoFechas] = useState([null, null]);
   const [busquedaId, setBusquedaId] = useState('');
   const [pagina, setPagina] = useState(1);
@@ -90,6 +98,9 @@ export function ClaimsListPage() {
 
       if (estadoFiltro && reclamo.estado !== estadoFiltro) return false;
 
+      if (revisionFiltro === 'si' && !reclamo.requiere_revision) return false;
+      if (revisionFiltro === 'no' && reclamo.requiere_revision) return false;
+
       if (!idCoincideConBusqueda(reclamo.id, busquedaId)) return false;
 
       const fecha = new Date(reclamo.fecha_creacion);
@@ -104,11 +115,12 @@ export function ClaimsListPage() {
 
       return true;
     });
-  }, [reclamos, prioridadFiltro, estadoFiltro, rangoFechas, busquedaId]);
+  }, [reclamos, prioridadFiltro, estadoFiltro, revisionFiltro, rangoFechas, busquedaId]);
 
   const hayFiltrosActivos =
     prioridadFiltro !== '' ||
     estadoFiltro !== '' ||
+    revisionFiltro !== '' ||
     rangoFechas[0] !== null ||
     rangoFechas[1] !== null ||
     busquedaId !== '';
@@ -116,11 +128,12 @@ export function ClaimsListPage() {
   const limpiarFiltros = () => {
     setPrioridadFiltro('');
     setEstadoFiltro('');
+    setRevisionFiltro('');
     setRangoFechas([null, null]);
     setBusquedaId('');
   };
 
-  const filtroActual = `${prioridadFiltro}|${estadoFiltro}|${rangoFechas[0]}|${rangoFechas[1]}|${busquedaId}`;
+  const filtroActual = `${prioridadFiltro}|${estadoFiltro}|${revisionFiltro}|${rangoFechas[0]}|${rangoFechas[1]}|${busquedaId}`;
   const [filtroPrevio, setFiltroPrevio] = useState(filtroActual);
   if (filtroActual !== filtroPrevio) {
     setFiltroPrevio(filtroActual);
@@ -181,6 +194,13 @@ export function ClaimsListPage() {
             data={opcionesEstado}
             value={estadoFiltro}
             onChange={(value) => setEstadoFiltro(value ?? '')}
+            w={210}
+          />
+          <Select
+            label="Revisión IA"
+            data={opcionesRevision}
+            value={revisionFiltro}
+            onChange={(value) => setRevisionFiltro(value ?? '')}
             w={210}
           />
           <DatePickerInput
@@ -255,7 +275,20 @@ export function ClaimsListPage() {
                   <PriorityBadge prioridad={reclamo.prioridad} />
                 </Table.Td>
                 <Table.Td>
-                  <StatusBadge estado={reclamo.estado} variant="light" />
+                  <Group gap={6} wrap="nowrap">
+                    <StatusBadge estado={reclamo.estado} variant="light" />
+                    {reclamo.requiere_revision && (
+                      <Badge
+                        size="xs"
+                        color="orange"
+                        variant="light"
+                        tt="none"
+                        leftSection={<IconAlertTriangle size={10} />}
+                      >
+                        Revisión
+                      </Badge>
+                    )}
+                  </Group>
                 </Table.Td>
                 <Table.Td>{reclamo.categoria}</Table.Td>
                 <Table.Td>
@@ -295,6 +328,10 @@ export function ClaimsListPage() {
       <ClaimDetailDrawer
         reclamoId={reclamoIdSeleccionado}
         onClose={() => setReclamoIdSeleccionado(null)}
+        onAbrirReclamo={setReclamoIdSeleccionado}
+        onReclamoActualizado={() => {
+          listarReclamos().then(setReclamos).catch((err) => notifyError(err.message));
+        }}
       />
 
       <ChangeStatusModal

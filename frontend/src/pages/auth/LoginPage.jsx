@@ -137,17 +137,20 @@ export function LoginPage({ onLogin }) {
         </Stack>
 
         <Paper radius="md" p="xl" shadow="xl" withBorder>
-          <Stack align="center" mb="md">
-            <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={() => setError('Error al iniciar sesión con Google')}
-              text="continue_with"
-              shape="pill"
-              width="100%"
-            />
-          </Stack>
-
-          <Divider label="o con email" labelPosition="center" mb="md" />
+          {import.meta.env.VITE_GOOGLE_CLIENT_ID ? (
+            <>
+              <Stack align="center" mb="md">
+                <GoogleLogin
+                  onSuccess={handleGoogleSuccess}
+                  onError={() => setError('Error al iniciar sesión con Google')}
+                  text="continue_with"
+                  shape="pill"
+                  width="100%"
+                />
+              </Stack>
+              <Divider label="o con email" labelPosition="center" mb="md" />
+            </>
+          ) : null}
 
           <Tabs
             value={activeTab}

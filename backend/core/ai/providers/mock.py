@@ -73,6 +73,10 @@ class MockProvider:
             }
         if task == "completitud":
             return _completitud(user)
+        if task == "duplicados_semanticos":
+            return _duplicados_semanticos(user)
+        if task == "extraccion_reclamo":
+            return _extraccion_reclamo(user)
         if task == "vision_reclamo":
             return {
                 "hallazgos": ["Humedad visible en pared (mock)"],
@@ -112,6 +116,10 @@ def _infer_task(system: str, user: str) -> str:
     blob = f"{system}\n{user}".lower()
     if "complet" in blob or "faltantes" in blob:
         return "completitud"
+    if "similitud_semantica" in blob or "candidatos:" in blob:
+        return "duplicados_semanticos"
+    if "mensaje del usuario" in blob or "texto libre" in blob:
+        return "extraccion_reclamo"
     if "clasific" in blob or "categoría" in blob or "categoria" in blob:
         return "clasificacion"
     if "foto" in blob or "hallazgos" in blob or "vision" in blob:
@@ -129,7 +137,6 @@ def _completitud(user: str) -> dict[str, Any]:
     texto = user.lower()
     faltantes = []
     if "ubicación:" in texto or "ubicacion:" in texto:
-        # Extrae línea ubicación
         for line in user.splitlines():
             if line.lower().startswith("ubicaci"):
                 valor = line.split(":", 1)[-1].strip()
@@ -155,6 +162,63 @@ def _completitud(user: str) -> dict[str, Any]:
         "completo": len(faltantes) == 0,
         "faltantes": faltantes,
         "datos_extraidos": {},
+    }
+
+
+def _duplicados_semanticos(user: str) -> dict[str, Any]:
+    scores = []
+    for line in user.splitlines():
+        if "id=" not in line:
+            continue
+        try:
+            rid_part = line.split("id=", 1)[1]
+            rid = int(rid_part.split()[0])
+            sim = 0.6
+            if "sim_jaccard=" in line:
+                sim = float(line.split("sim_jaccard=", 1)[1].split(":")[0].strip())
+            scores.append({"reclamo_id": rid, "similitud_semantica": sim})
+        except (ValueError, IndexError):
+            continue
+    return {"scores": scores}
+
+
+def _extraccion_reclamo(user: str) -> dict[str, Any]:
+    """Extrae campos del mensaje libre con heurísticas determinísticas."""
+    lineas = user.splitlines()
+    texto = "\n".join(
+        linea for linea in lineas if not linea.lower().startswith("mensaje del usuario")
+    ).strip()
+
+    escuela = None
+    match = re.search(r"escuela\s+((?:\S+\s+){0,4}\S+)", texto, re.I)
+    if match:
+        # Cortar en palabras que claramente ya no son parte del nombre
+        palabras = match.group(1).split()
+        corte = len(palabras)
+        for i, p in enumerate(palabras):
+            if p.lower() in ("hay", "en", "el", "la", "de", "del", "con", "tiene", "se"):
+                corte = i
+                break
+        nombre = " ".join(palabras[:corte]).strip()
+        if nombre:
+            escuela = f"Escuela {nombre}"
+
+    ubicacion = None
+    match = re.search(
+        r"\b(baño|bano|aula|patio|pasillo|biblioteca|comedor|laboratorio|gimnasio)"
+        r"([^,.;\n]*)",
+        texto,
+        re.I,
+    )
+    if match:
+        ubicacion = match.group(0).strip()
+
+    confianza = 0.6 if escuela else 0.3
+    return {
+        "nombre_escuela": escuela,
+        "ubicacion": ubicacion,
+        "descripcion": texto,
+        "confianza": confianza,
     }
 
 

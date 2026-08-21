@@ -12,12 +12,14 @@ from fastapi.staticfiles import StaticFiles
 import models  # noqa: F401 - registra todos los modelos antes de create_all (ver models/__init__.py)
 from api.auth import router as auth_router
 from api.ai import router as ai_router
+from api.configuracion import router as configuracion_router
 from api.contratistas import router as contratistas_router
 from api.presupuestos import router as presupuestos_router
 from api.reclamos import router as reclamos_router
 from api.whatsapp import router as whatsapp_router
 from core.database import Base, engine
 from core.storage import UPLOADS_DIR
+from services.workers import loop_cola_whatsapp, loop_seguimiento
 
 # Zona horaria UTC-3 (Argentina)
 ART = timezone(timedelta(hours=-3))
@@ -51,9 +53,20 @@ for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio
+
     Base.metadata.create_all(bind=engine)
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    stop = asyncio.Event()
+    tareas = [
+        asyncio.create_task(loop_cola_whatsapp(stop), name="cola-whatsapp"),
+        asyncio.create_task(loop_seguimiento(stop), name="seguimiento-48h"),
+    ]
     yield
+    stop.set()
+    for tarea in tareas:
+        tarea.cancel()
+    await asyncio.gather(*tareas, return_exceptions=True)
 
 
 app = FastAPI(lifespan=lifespan)
@@ -91,6 +104,7 @@ app.include_router(contratistas_router)
 app.include_router(presupuestos_router)
 app.include_router(whatsapp_router)
 app.include_router(ai_router)
+app.include_router(configuracion_router)
 
 @app.get("/")
 def read_root():

@@ -32,6 +32,7 @@ class ReclamoOut(ReclamoCreate):
 
     id: int
     estado: EstadoReclamo
+    requiere_revision: bool = False
     fecha_creacion: datetime
     fotos: list[FotoReclamoOut] = []
     # Qué transiciones habilitar en la UI para este reclamo, según su estado actual.

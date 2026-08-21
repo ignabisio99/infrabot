@@ -46,6 +46,15 @@ SYSTEM_OCR_PRESUPUESTO = """Extraé ítems de un presupuesto de obra/contratista
 Respondé solo JSON: items=[{descripcion, cantidad, costo_unitario}] en ARS.
 Si no podés leer un valor, omití el ítem. No inventes precios."""
 
+SYSTEM_EXTRACCION_RECLAMO = """Sos un asistente del Consejo Escolar que interpreta mensajes
+de texto libre de WhatsApp sobre problemas de infraestructura escolar.
+Respondé solo JSON con:
+- nombre_escuela: nombre de la escuela si se menciona (string o null)
+- ubicacion: lugar concreto dentro de la escuela si se menciona (string o null)
+- descripcion: descripción del problema, limpia y completa (string, nunca null)
+- confianza: 0 a 1 según qué tan claro quedó el pedido.
+No inventes datos que el usuario no dio."""
+
 
 def user_clasificacion(*, descripcion: str, escuela: str | None = None, ubicacion: str | None = None) -> str:
     partes = [f"Descripción del reclamo:\n{descripcion.strip()}"]
@@ -97,3 +106,7 @@ def user_completitud(*, escuela: str, ubicacion: str, descripcion: str) -> str:
 
 def user_auditoria_notas(*, resumen: str) -> str:
     return f"Resumen de auditoría:\n{resumen}"
+
+
+def user_extraccion_reclamo(*, texto: str) -> str:
+    return f"Mensaje del usuario:\n{texto.strip()}"

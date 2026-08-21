@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import relationship
 
 from core.database import Base
@@ -20,6 +20,7 @@ class EstimacionPreliminar(Base):
     confianza = Column(Float, nullable=False)
     detalle = Column(Text, nullable=True)
     proveedor = Column(String(50), nullable=False, default="mock")
+    requiere_revision = Column(Boolean, nullable=False, default=False)
     fecha = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     reclamo = relationship("Reclamo")

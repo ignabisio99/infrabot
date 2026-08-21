@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
@@ -8,8 +10,19 @@ from models.presupuesto import ItemPresupuesto, Presupuesto
 from models.reclamo import Reclamo
 from models.usuario import Usuario
 from schemas.presupuesto import PresupuestoCreate, PresupuestoOut
+from services.ai.automatico import post_presupuesto
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/presupuestos", tags=["presupuestos"])
+
+
+def _con_relaciones(query):
+    return query.options(
+        joinedload(Presupuesto.items),
+        joinedload(Presupuesto.reclamo),
+        joinedload(Presupuesto.contratista),
+    )
 
 
 def _validar_referencias(datos: PresupuestoCreate, db: Session):
@@ -32,15 +45,13 @@ def crear_presupuesto(datos: PresupuestoCreate, db: Session = Depends(get_db), _
     db.add(nuevo_presupuesto)
     db.commit()
     db.refresh(nuevo_presupuesto)
-    return nuevo_presupuesto
-
-
-def _con_relaciones(query):
-    return query.options(
-        joinedload(Presupuesto.items),
-        joinedload(Presupuesto.reclamo),
-        joinedload(Presupuesto.contratista),
-    )
+    post_presupuesto(db, nuevo_presupuesto)
+    try:
+        db.commit()
+    except Exception:
+        logger.exception("No se pudo persistir la auditoría automática del presupuesto %s", nuevo_presupuesto.id)
+        db.rollback()
+    return _con_relaciones(db.query(Presupuesto)).filter(Presupuesto.id == nuevo_presupuesto.id).first()
 
 
 @router.get("", response_model=list[PresupuestoOut])
@@ -77,7 +88,14 @@ def actualizar_presupuesto(
 
     db.commit()
     db.refresh(presupuesto)
-    return presupuesto
+    post_presupuesto(db, presupuesto)
+    try:
+        db.commit()
+        db.refresh(presupuesto)
+    except Exception:
+        logger.exception("No se pudo persistir la auditoría automática del presupuesto %s", presupuesto.id)
+        db.rollback()
+    return _con_relaciones(db.query(Presupuesto)).filter(Presupuesto.id == presupuesto.id).first()
 
 
 @router.delete("/{presupuesto_id}", status_code=204)

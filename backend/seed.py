@@ -12,10 +12,12 @@ desarrollo listo para entrar (ver ADMIN_EMAIL / ADMIN_PASSWORD).
 import logging
 import sys
 from datetime import date
+from decimal import Decimal
 
 from core.auth import hash_password
 from core.database import Base, SessionLocal, engine
 from models import (
+    ConfiguracionAuditoria,
     Contratista,
     EstadoReclamo,
     EstadoUsuario,
@@ -348,6 +350,18 @@ def seed(db):
 
     db.add_all([ReferenciaCosto(**r) for r in REFERENCIAS_COSTO])
     db.add_all([IndiceInflacion(**i) for i in INDICES_INFLACION])
+    db.add(
+        ConfiguracionAuditoria(
+            id=1,
+            umbral_aprobar=Decimal("0.05"),
+            umbral_revisar=Decimal("0.20"),
+        )
+    )
+    db.flush()
+
+    from services.ai import sync_historicos
+
+    sync_historicos.sync_desde_presupuestos(db)
     db.commit()
 
 

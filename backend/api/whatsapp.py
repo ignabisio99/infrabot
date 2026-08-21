@@ -1,17 +1,17 @@
 """Webhook de WhatsApp Cloud API (Meta).
 
-Meta envía un POST con los mensajes entrantes. El endpoint los procesa
-y responde usando la Graph API.
+Meta envía un POST con los mensajes entrantes. Se encolan en Redis (si está)
+para responder 200 rápido y reintentar si falla el procesamiento.
 """
 
+import logging
 import os
 
 from fastapi import APIRouter, Query, Request, Response
-from sqlalchemy.orm import Session
 
-from core.database import SessionLocal
-from core.whatsapp_client import descargar_media, enviar_botones, enviar_lista, enviar_mensaje
-from core.whatsapp_handler import procesar_mensaje, procesar_media
+from services.cola_whatsapp import encolar, procesar_job
+
+logger = logging.getLogger(__name__)
 
 WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "infrabot-verify-token")
 
@@ -39,10 +39,8 @@ def _extraer_texto(message: dict) -> str | None:
 
     if msg_type == "interactive":
         interactive = message.get("interactive", {})
-        # Respuesta de botón
         if interactive.get("type") == "button_reply":
             return interactive["button_reply"]["id"]
-        # Respuesta de lista
         if interactive.get("type") == "list_reply":
             return interactive["list_reply"]["id"]
 
@@ -50,7 +48,7 @@ def _extraer_texto(message: dict) -> str | None:
 
 
 def _extraer_media(message: dict) -> dict | None:
-    """Extrae información de media (imagen o video) del mensaje."""
+    """Extrae información de media (imagen, video o audio) del mensaje."""
     msg_type = message.get("type")
 
     if msg_type == "image":
@@ -71,7 +69,23 @@ def _extraer_media(message: dict) -> dict | None:
             "tipo": "video",
         }
 
+    if msg_type == "audio":
+        aud = message.get("audio", {})
+        return {
+            "media_id": aud.get("id", ""),
+            "mime_type": aud.get("mime_type", ""),
+            "caption": "",
+            "tipo": "audio",
+        }
+
     return None
+
+
+def _despachar(job: dict) -> None:
+    if encolar(job):
+        logger.info("WhatsApp encolado (%s) de %s", job.get("kind"), job.get("from"))
+        return
+    procesar_job(job)
 
 
 @router.post("/whatsapp")
@@ -89,60 +103,38 @@ async def recibir_mensaje(request: Request):
             for message in messages:
                 from_number = message["from"]
 
-                # Procesar media (foto/video)
                 media_info = _extraer_media(message)
                 if media_info:
-                    print(f"📎 Media de {from_number}: {media_info['tipo']} ({media_info['mime_type']})")
-                    # Descargar el archivo
-                    url_local, mime_type = descargar_media(media_info["media_id"])
-                    if url_local:
-                        db: Session = SessionLocal()
-                        try:
-                            respuesta = procesar_media(
-                                db,
-                                usuario=from_number,
-                                url_local=url_local,
-                                mime_type=mime_type,
-                                caption=media_info.get("caption", ""),
-                            )
-                        finally:
-                            db.close()
-                        print(f"📤 Respuesta: {str(respuesta)[:80]}...")
-                        _enviar_respuesta(from_number, respuesta)
+                    logger.info(
+                        "Media de %s: %s (%s)",
+                        from_number,
+                        media_info["tipo"],
+                        media_info["mime_type"],
+                    )
+                    if media_info["tipo"] == "audio":
+                        _despachar(
+                            {
+                                "kind": "audio",
+                                "from": from_number,
+                                "media_id": media_info["media_id"],
+                            }
+                        )
                     else:
-                        enviar_mensaje(from_number, "⚠️ No pude descargar el archivo. Intentá de nuevo.")
+                        _despachar(
+                            {
+                                "kind": "media",
+                                "from": from_number,
+                                "media_id": media_info["media_id"],
+                                "caption": media_info.get("caption") or "",
+                            }
+                        )
                     continue
 
-                # Procesar texto
                 texto = _extraer_texto(message)
                 if not texto:
                     continue
 
-                print(f"📩 Mensaje de {from_number}: {texto}")
-
-                db: Session = SessionLocal()
-                try:
-                    respuesta = procesar_mensaje(db, texto, usuario=from_number)
-                finally:
-                    db.close()
-
-                print(f"📤 Respuesta: {str(respuesta)[:80]}...")
-
-                # Enviar respuesta según el tipo
-                _enviar_respuesta(from_number, respuesta)
+                logger.info("Mensaje de %s: %s", from_number, texto)
+                _despachar({"kind": "text", "from": from_number, "texto": texto})
 
     return Response(status_code=200)
-
-
-def _enviar_respuesta(to: str, respuesta):
-    """Envía la respuesta. Si es un dict con tipo 'botones' o 'lista', usa interactivo."""
-    if isinstance(respuesta, dict):
-        tipo = respuesta.get("tipo")
-        if tipo == "botones":
-            enviar_botones(to, respuesta["body"], respuesta["botones"])
-        elif tipo == "lista":
-            enviar_lista(to, respuesta["body"], respuesta["boton_texto"], respuesta["secciones"])
-        else:
-            enviar_mensaje(to, respuesta.get("body", str(respuesta)))
-    else:
-        enviar_mensaje(to, respuesta)

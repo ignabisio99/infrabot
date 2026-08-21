@@ -31,7 +31,7 @@ export function NewClaimPage() {
           `El reclamo fue registrado, pero ${fotosFallidas} foto(s) no se pudieron subir.`,
         );
       } else {
-        notifySuccess('Tu reclamo fue registrado correctamente.');
+        notifySuccess('Tu reclamo fue registrado. La IA ya lo clasificó y estimó en segundo plano.');
       }
 
       setFotosPendientes([]);

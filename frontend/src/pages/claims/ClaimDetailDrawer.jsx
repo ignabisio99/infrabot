@@ -20,12 +20,14 @@ import {
   IconMapPin,
   IconPhoto,
   IconReceipt2,
+  IconSparkles,
   IconTruck,
 } from '@tabler/icons-react';
 
 import { obtenerHistorialReclamo, obtenerReclamo } from '../../api/reclamos';
 import { formatearIdReclamo } from '../../utils/ids';
 import { notifyError } from '../../utils/notifications';
+import { ClaimIAPanel } from './ClaimIAPanel';
 import { ClaimPhotosManager } from './ClaimPhotosManager';
 import { PriorityBadge } from './PriorityBadge';
 import { StatusBadge } from './StatusBadge';
@@ -70,11 +72,12 @@ function TituloEvento({ evento }) {
   );
 }
 
-export function ClaimDetailDrawer({ reclamoId, onClose }) {
+export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclamoActualizado }) {
   // Guarda el último fetch resuelto junto con el id al que corresponde: así `cargando`
   // se puede derivar comparando contra `reclamoId` en vez de duplicar estado, y una
   // respuesta vieja que llega tarde (ej. al cambiar rápido de reclamo) no pisa una más nueva.
   const [ultimoCargado, setUltimoCargado] = useState({ id: null, reclamo: null, historial: [] });
+  const [recarga, setRecarga] = useState(0);
 
   useEffect(() => {
     if (reclamoId === null) return;
@@ -89,7 +92,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
     return () => {
       vigente = false;
     };
-  }, [reclamoId]);
+  }, [reclamoId, recarga]);
 
   const cargadoCoincide = ultimoCargado.id === reclamoId;
   const reclamo = cargadoCoincide ? ultimoCargado.reclamo : null;
@@ -117,6 +120,11 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
                 </Text>
                 <PriorityBadge prioridad={reclamo.prioridad} size="xs" />
                 <StatusBadge estado={reclamo.estado} size="xs" variant="light" />
+                {reclamo.requiere_revision && (
+                  <Badge size="xs" color="orange" variant="light" tt="none">
+                    Revisión
+                  </Badge>
+                )}
               </Group>
               <Text fw={700} size="lg" lh={1.15}>
                 {reclamo.nombre_escuela}
@@ -165,6 +173,21 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
             </Paper>
           )}
 
+          <Text size="sm" mb={4}>
+            <Text span fw={600}>
+              Categoría:{' '}
+            </Text>
+            {reclamo.categoria}
+          </Text>
+          <Text size="sm" mb="xs">
+            {reclamo.descripcion}
+          </Text>
+          {reclamo.observaciones && (
+            <Text size="sm" c="dimmed" mb="md">
+              {reclamo.observaciones}
+            </Text>
+          )}
+
           <Tabs defaultValue="avance">
             <Tabs.List>
               <Tabs.Tab value="avance" leftSection={<IconHistory size={16} />}>
@@ -172,6 +195,9 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
               </Tabs.Tab>
               <Tabs.Tab value="fotos" leftSection={<IconPhoto size={16} />}>
                 Fotos
+              </Tabs.Tab>
+              <Tabs.Tab value="ia" leftSection={<IconSparkles size={16} />}>
+                IA
               </Tabs.Tab>
             </Tabs.List>
 
@@ -208,6 +234,17 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
 
             <Tabs.Panel value="fotos" pt="md">
               <ClaimPhotosManager reclamoId={reclamo.id} fotosIniciales={reclamo.fotos} />
+            </Tabs.Panel>
+
+            <Tabs.Panel value="ia" pt="md">
+              <ClaimIAPanel
+                reclamo={reclamo}
+                onAbrirReclamo={onAbrirReclamo}
+                onReclamoActualizado={() => {
+                  setRecarga((n) => n + 1);
+                  onReclamoActualizado?.();
+                }}
+              />
             </Tabs.Panel>
           </Tabs>
         </>

@@ -13,12 +13,17 @@ from core.ai.factory import get_llm_provider
 from models.presupuesto import Presupuesto
 from services.ai.estimacion import ultima_estimacion
 from services.ai.prompts import SYSTEM_AUDITORIA_NOTAS, user_auditoria_notas
+from services.configuracion_auditoria import (
+    UMBRAL_APROBAR_DEFAULT,
+    UMBRAL_REVISAR_DEFAULT,
+    obtener_umbrales,
+)
 
 logger = logging.getLogger(__name__)
 
-# Umbrales CU-03 (configurables a futuro).
-UMBRAL_APROBAR = Decimal("0.05")   # < 5%
-UMBRAL_REVISAR = Decimal("0.20")   # 5–20%
+# Fallback si todavía no hay fila en DB (misma idea que el seed).
+UMBRAL_APROBAR = UMBRAL_APROBAR_DEFAULT
+UMBRAL_REVISAR = UMBRAL_REVISAR_DEFAULT
 
 
 class RecomendacionAuditoria(str, Enum):
@@ -63,7 +68,7 @@ def auditar_presupuesto(db: Session, presupuesto: Presupuesto) -> InformeAuditor
             recomendacion=RecomendacionAuditoria.REVISAR,
             notas_tecnicas=(
                 "No hay estimación preliminar para este reclamo. "
-                "Generá una con POST /ai/reclamos/{id}/estimacion antes de auditar."
+                "Se genera sola al dar de alta el reclamo; si falta, regenerala desde el detalle."
             ),
             proveedor_notas="n/a",
             sin_estimacion=True,
@@ -77,9 +82,11 @@ def auditar_presupuesto(db: Session, presupuesto: Presupuesto) -> InformeAuditor
         desvio_abs = (total_presupuesto - total_est).quantize(Decimal("0.01"))
         desvio_pct = (abs(desvio_abs) / total_est).quantize(Decimal("0.0001"))
 
-    if desvio_pct < UMBRAL_APROBAR:
+    umbral_aprobar, umbral_revisar = obtener_umbrales(db)
+
+    if desvio_pct < umbral_aprobar:
         recomendacion = RecomendacionAuditoria.APROBAR
-    elif desvio_pct <= UMBRAL_REVISAR:
+    elif desvio_pct <= umbral_revisar:
         recomendacion = RecomendacionAuditoria.REVISAR
     else:
         recomendacion = RecomendacionAuditoria.RECHAZAR
@@ -119,3 +126,35 @@ def _notas_tecnicas(resumen: str) -> tuple[str, str]:
     except Exception:
         logger.exception("No se pudieron generar notas de auditoría vía LLM")
         return resumen, provider.name
+
+
+def persistir_informe(db: Session, informe: InformeAuditoria):
+    """Guarda la auditoría en recomendacion_ia (sin commit)."""
+    from models.recomendacion_ia import TipoRecomendacionIA
+    from services.ai import registro
+
+    requiere = informe.recomendacion.value in ("REVISAR", "RECHAZAR") or informe.sin_estimacion
+    registro.registrar(
+        db,
+        tipo=TipoRecomendacionIA.AUDITORIA,
+        payload={
+            "recomendacion": informe.recomendacion.value,
+            "total_presupuesto": float(informe.total_presupuesto),
+            "total_estimacion": float(informe.total_estimacion)
+            if informe.total_estimacion is not None
+            else None,
+            "desvio_absoluto": float(informe.desvio_absoluto)
+            if informe.desvio_absoluto is not None
+            else None,
+            "desvio_porcentual": float(informe.desvio_porcentual)
+            if informe.desvio_porcentual is not None
+            else None,
+            "notas_tecnicas": informe.notas_tecnicas,
+            "sin_estimacion": informe.sin_estimacion,
+        },
+        reclamo_id=informe.reclamo_id,
+        presupuesto_id=informe.presupuesto_id,
+        proveedor=informe.proveedor_notas,
+        requiere_revision=requiere,
+    )
+    return informe
