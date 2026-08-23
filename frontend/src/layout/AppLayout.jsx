@@ -26,6 +26,7 @@ import {
   IconChevronRight,
   IconLogout,
   IconUserCheck,
+  IconBrandWhatsapp,
 } from '@tabler/icons-react';
 import logo from '../assets/logo-infrabot.jpeg';
 import classes from './AppLayout.module.css';
@@ -39,6 +40,7 @@ const links = [
   { label: 'Reportes', path: '/reportes', icon: IconChartBar },
   { label: 'Solicitudes', path: '/solicitudes', icon: IconUserCheck },
   { label: 'Configuración', path: '/configuracion', icon: IconSettings },
+  { label: 'WhatsApp (sim)', path: '/whatsapp', icon: IconBrandWhatsapp },
 ];
 
 // Obtiene datos del usuario logueado desde localStorage

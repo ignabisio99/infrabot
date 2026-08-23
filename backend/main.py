@@ -17,6 +17,7 @@ from api.contratistas import router as contratistas_router
 from api.presupuestos import router as presupuestos_router
 from api.reclamos import router as reclamos_router
 from api.whatsapp import router as whatsapp_router
+from api.whatsapp_sim import router as whatsapp_sim_router
 from core.database import Base, engine
 from core.storage import UPLOADS_DIR
 from services.workers import loop_cola_whatsapp, loop_seguimiento
@@ -103,6 +104,7 @@ app.include_router(reclamos_router)
 app.include_router(contratistas_router)
 app.include_router(presupuestos_router)
 app.include_router(whatsapp_router)
+app.include_router(whatsapp_sim_router)
 app.include_router(ai_router)
 app.include_router(configuracion_router)
 

@@ -117,11 +117,12 @@ def _compilar(db: Session):
         }
 
     builder = StateGraph(EstadoPipeline)
-    builder.add_node("clasificar", nodo_clasificar)
-    builder.add_node("duplicados", nodo_duplicados)
-    builder.add_node("estimar", nodo_estimar)
-    builder.add_edge(START, "clasificar")
-    builder.add_edge("clasificar", "duplicados")
-    builder.add_edge("duplicados", "estimar")
-    builder.add_edge("estimar", END)
+    # Los nombres de nodo no pueden coincidir con claves del estado (LangGraph).
+    builder.add_node("nodo_clasificar", nodo_clasificar)
+    builder.add_node("nodo_buscar_similares", nodo_duplicados)
+    builder.add_node("nodo_estimar", nodo_estimar)
+    builder.add_edge(START, "nodo_clasificar")
+    builder.add_edge("nodo_clasificar", "nodo_buscar_similares")
+    builder.add_edge("nodo_buscar_similares", "nodo_estimar")
+    builder.add_edge("nodo_estimar", END)
     return builder.compile()

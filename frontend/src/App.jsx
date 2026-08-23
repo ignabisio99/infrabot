@@ -22,6 +22,7 @@ import { DashboardPage } from './pages/dashboard/DashboardPage';
 import { ReportsPage } from './pages/reports/ReportsPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
 import { UsersApprovalPage } from './pages/users/UsersApprovalPage';
+import { WhatsAppSimPage } from './pages/whatsapp/WhatsAppSimPage';
 
 function getUsuarioGuardado() {
   try {
@@ -154,6 +155,7 @@ function App() {
         <Route path="/reportes" element={<ReportsPage />} />
         <Route path="/solicitudes" element={<UsersApprovalPage />} />
         <Route path="/configuracion" element={<SettingsPage />} />
+        <Route path="/whatsapp" element={<WhatsAppSimPage />} />
       </Route>
     </Routes>
   );
