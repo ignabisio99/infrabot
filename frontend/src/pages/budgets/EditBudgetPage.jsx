@@ -80,6 +80,7 @@ export function EditBudgetPage() {
             onSubmit={handleSubmit}
             submitting={guardando}
             submitLabel="Guardar Cambios"
+            reclamoEditable={false}
           />
         </>
       )}

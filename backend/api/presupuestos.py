@@ -7,21 +7,35 @@ from models.contratista import Contratista
 from models.presupuesto import ItemPresupuesto, Presupuesto
 from models.reclamo import Reclamo
 from models.usuario import Usuario
-from schemas.presupuesto import PresupuestoCreate, PresupuestoOut
+from schemas.presupuesto import PresupuestoCreate, PresupuestoOut, PresupuestoUpdate
+from services import estados_reclamo
 
 router = APIRouter(prefix="/presupuestos", tags=["presupuestos"])
 
 
-def _validar_referencias(datos: PresupuestoCreate, db: Session):
-    if db.get(Reclamo, datos.reclamo_id) is None:
+def _obtener_reclamo_cotizable(reclamo_id: int, db: Session) -> Reclamo:
+    """Devuelve el reclamo sólo si su estado admite que se le carguen presupuestos."""
+    reclamo = db.get(Reclamo, reclamo_id)
+    if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
-    if db.get(Contratista, datos.contratista_id) is None:
+
+    try:
+        estados_reclamo.validar_admite_presupuesto(reclamo)
+    except estados_reclamo.ReclamoNoAdmitePresupuesto as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+    return reclamo
+
+
+def _validar_contratista(contratista_id: int, db: Session) -> None:
+    if db.get(Contratista, contratista_id) is None:
         raise HTTPException(status_code=404, detail="Contratista no encontrado")
 
 
 @router.post("", response_model=PresupuestoOut, status_code=201)
 def crear_presupuesto(datos: PresupuestoCreate, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
-    _validar_referencias(datos, db)
+    reclamo = _obtener_reclamo_cotizable(datos.reclamo_id, db)
+    _validar_contratista(datos.contratista_id, db)
 
     nuevo_presupuesto = Presupuesto(
         reclamo_id=datos.reclamo_id,
@@ -30,6 +44,8 @@ def crear_presupuesto(datos: PresupuestoCreate, db: Session = Depends(get_db), _
         items=[ItemPresupuesto(**item.model_dump()) for item in datos.items],
     )
     db.add(nuevo_presupuesto)
+    # Si es el primero, el reclamo pasa solo a EN_EVALUACION.
+    estados_reclamo.sincronizar_por_presupuestos(db, reclamo)
     db.commit()
     db.refresh(nuevo_presupuesto)
     return nuevo_presupuesto
@@ -62,15 +78,18 @@ def obtener_presupuesto(presupuesto_id: int, db: Session = Depends(get_db), _use
 
 @router.put("/{presupuesto_id}", response_model=PresupuestoOut)
 def actualizar_presupuesto(
-    presupuesto_id: int, datos: PresupuestoCreate, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)
+    presupuesto_id: int, datos: PresupuestoUpdate, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)
 ):
     presupuesto = db.get(Presupuesto, presupuesto_id)
     if presupuesto is None:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
 
-    _validar_referencias(datos, db)
+    # Crear y eliminar sincronizan el estado del reclamo; editar no, porque no cambia
+    # qué reclamos tienen presupuestos. El estado igual se mira, para que un expediente
+    # que ya eligió contratista no se siga retocando.
+    _obtener_reclamo_cotizable(presupuesto.reclamo_id, db)
+    _validar_contratista(datos.contratista_id, db)
 
-    presupuesto.reclamo_id = datos.reclamo_id
     presupuesto.contratista_id = datos.contratista_id
     presupuesto.observaciones = datos.observaciones
     presupuesto.items = [ItemPresupuesto(**item.model_dump()) for item in datos.items]
@@ -85,5 +104,9 @@ def eliminar_presupuesto(presupuesto_id: int, db: Session = Depends(get_db), _us
     presupuesto = db.get(Presupuesto, presupuesto_id)
     if presupuesto is None:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
+
+    reclamo = presupuesto.reclamo
     db.delete(presupuesto)
+    # Si era el último, el reclamo vuelve a esperar presupuestos.
+    estados_reclamo.sincronizar_por_presupuestos(db, reclamo)
     db.commit()

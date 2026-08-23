@@ -36,6 +36,8 @@ class ReclamoOut(ReclamoCreate):
     fotos: list[FotoReclamoOut] = []
     # Qué transiciones habilitar en la UI para este reclamo, según su estado actual.
     estados_posibles: list[EstadoReclamo]
+    # Si el reclamo se puede cotizar; lo usa el formulario de presupuestos.
+    admite_presupuesto: bool
 
 
 class CambioEstadoReclamo(BaseModel):

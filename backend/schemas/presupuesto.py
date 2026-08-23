@@ -21,11 +21,25 @@ class ItemPresupuestoOut(ItemPresupuestoCreate):
         return self.cantidad * self.costo_unitario
 
 
-class PresupuestoCreate(BaseModel):
-    reclamo_id: int
+class PresupuestoBase(BaseModel):
     contratista_id: int
     observaciones: str | None = None
     items: list[ItemPresupuestoCreate] = Field(min_length=1)
+
+
+class PresupuestoCreate(PresupuestoBase):
+    reclamo_id: int
+
+
+class PresupuestoUpdate(PresupuestoBase):
+    """Lo mismo que crear, pero sin `reclamo_id`: el reclamo queda fijo desde el alta.
+
+    Si el presupuesto se cargó en el reclamo equivocado, se da de baja y se carga de
+    nuevo. `extra="forbid"` para que mandarlo igual devuelva un 422 explicando el
+    error, en vez de descartarlo en silencio y hacer creer que el cambio se aplicó.
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class ReclamoResumen(BaseModel):

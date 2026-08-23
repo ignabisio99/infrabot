@@ -64,7 +64,9 @@ class Reclamo(Base):
 
     @property
     def estados_posibles(self) -> list[EstadoReclamo]:
-        """Transiciones habilitadas desde el estado actual, en el orden del enum.
+        """Transiciones que una persona puede elegir desde el estado actual, en el
+        orden del enum. No incluye las que sólo dispara el sistema, así el menú de
+        cambio de estado no ofrece nada que después vaya a fallar.
 
         El import va acá adentro porque el servicio importa este módulo: a nivel
         de módulo sería un import circular.
@@ -73,3 +75,14 @@ class Reclamo(Base):
 
         permitidos = transiciones_posibles(self.estado)
         return [estado for estado in EstadoReclamo if estado in permitidos]
+
+    @property
+    def admite_presupuesto(self) -> bool:
+        """Si en el estado actual se le pueden cargar presupuestos.
+
+        Lo consume el formulario de presupuestos para no ofrecer reclamos que el
+        backend después va a rechazar. Import local por lo mismo que arriba.
+        """
+        from services.estados_reclamo import admite_presupuesto as estado_admite_presupuesto
+
+        return estado_admite_presupuesto(self.estado)
