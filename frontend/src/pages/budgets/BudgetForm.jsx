@@ -1,4 +1,5 @@
 import {
+  Autocomplete,
   Button,
   Group,
   NumberInput,
@@ -13,11 +14,13 @@ import { useForm } from '@mantine/form';
 import { formatearIdReclamo } from '../../utils/ids';
 import { formatoMoneda } from '../../utils/formatters';
 
+const UNIDADES = ['kg', 'gramos', 'metros', 'metros²', 'metros³', 'litros', 'horas', 'cajas', 'rollos', 'bolsas'];
+
 const valoresPorDefecto = {
   claimId: '',
   contractorId: '',
   notes: '',
-  items: [{ description: '', quantity: '', unitCost: '' }],
+  items: [{ description: '', quantity: '', unit: 'unidad', unitCost: '' }],
 };
 
 export function BudgetForm({
@@ -37,6 +40,7 @@ export function BudgetForm({
       items: {
         description: (value) => (value.trim() === '' ? 'Ingrese una descripción' : null),
         quantity: (value) => (value === '' || Number(value) <= 0 ? 'Debe ser mayor a 0' : null),
+        unit: (value) => (!value || value.trim() === '' ? 'Ingrese la unidad' : null),
         unitCost: (value) => (value === '' || Number(value) < 0 ? 'No puede ser negativo' : null),
       },
     },
@@ -70,6 +74,7 @@ export function BudgetForm({
       items: values.items.map((item) => ({
         descripcion: item.description,
         cantidad: item.quantity,
+        unidad: item.unit || 'unidad',
         costo_unitario: item.unitCost,
       })),
     };
@@ -127,6 +132,15 @@ export function BudgetForm({
                 key={form.key(`items.${index}.quantity`)}
                 {...form.getInputProps(`items.${index}.quantity`)}
               />
+              <Autocomplete
+                placeholder="Unidad"
+                data={UNIDADES}
+                maxDropdownHeight={260}
+                comboboxProps={{ withinPortal: true }}
+                style={{ flex: 1 }}
+                key={form.key(`items.${index}.unit`)}
+                {...form.getInputProps(`items.${index}.unit`)}
+              />
               <NumberInput
                 placeholder="Costo unitario"
                 min={0}
@@ -152,7 +166,12 @@ export function BudgetForm({
             type="button"
             variant="light"
             onClick={() =>
-              form.insertListItem('items', { description: '', quantity: '', unitCost: '' })
+              form.insertListItem('items', {
+                description: '',
+                quantity: '',
+                unit: 'unidad',
+                unitCost: '',
+              })
             }
           >
             + Agregar ítem

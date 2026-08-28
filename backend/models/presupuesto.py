@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, Numeric, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import relationship
 
 from core.database import Base
@@ -33,6 +33,7 @@ class ItemPresupuesto(Base):
     )
     descripcion = Column(Text, nullable=False)
     cantidad = Column(Numeric(10, 2), nullable=False)
+    unidad = Column(String(20), nullable=False, default="unidad", server_default="unidad")
     costo_unitario = Column(Numeric(12, 2), nullable=False)
 
     presupuesto = relationship("Presupuesto", back_populates="items")

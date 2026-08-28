@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Badge,
+  Button,
   Drawer,
   Group,
   Loader,
@@ -14,6 +15,7 @@ import {
   IconArrowRight,
   IconBan,
   IconBolt,
+  IconBrandWhatsapp,
   IconChecks,
   IconClipboardList,
   IconHistory,
@@ -25,8 +27,11 @@ import {
 
 import { obtenerHistorialReclamo, obtenerReclamo } from '../../api/reclamos';
 import { formatearIdReclamo } from '../../utils/ids';
+import { esAdministrador } from '../../utils/auth';
 import { notifyError } from '../../utils/notifications';
+import { BudgetRequestsList } from './BudgetRequestsList';
 import { ClaimPhotosManager } from './ClaimPhotosManager';
+import { NotifyContractorsModal } from './NotifyContractorsModal';
 import { PriorityBadge } from './PriorityBadge';
 import { StatusBadge } from './StatusBadge';
 import { colorPorEstado, etiquetaPorEstado, proximoPasoPorEstado } from './estados';
@@ -91,12 +96,20 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
     };
   }, [reclamoId]);
 
+  const [notificarAbierto, setNotificarAbierto] = useState(false);
+
   const cargadoCoincide = ultimoCargado.id === reclamoId;
   const reclamo = cargadoCoincide ? ultimoCargado.reclamo : null;
   const historial = cargadoCoincide ? ultimoCargado.historial : [];
   const cargando = reclamoId !== null && reclamo === null;
 
   const proximoPaso = reclamo ? proximoPasoPorEstado[reclamo.estado] : null;
+  const esAdmin = esAdministrador();
+  const puedeNotificar = esAdmin && reclamo?.estado === 'PENDIENTE_REVISION';
+  // Una vez solicitado el presupuesto, el reclamo deja PENDIENTE_REVISION. A partir
+  // de ahí tiene sentido ver a quién se le pidió y quién ya respondió.
+  const mostrarSolicitudes =
+    esAdmin && reclamo && reclamo.estado !== 'PENDIENTE_REVISION';
 
   return (
     <Drawer
@@ -165,6 +178,18 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
             </Paper>
           )}
 
+          {puedeNotificar && (
+            <Button
+              fullWidth
+              mb="md"
+              color="teal"
+              leftSection={<IconBrandWhatsapp size={18} />}
+              onClick={() => setNotificarAbierto(true)}
+            >
+              Notificar contratistas para presupuestar
+            </Button>
+          )}
+
           <Tabs defaultValue="avance">
             <Tabs.List>
               <Tabs.Tab value="avance" leftSection={<IconHistory size={16} />}>
@@ -173,6 +198,11 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
               <Tabs.Tab value="fotos" leftSection={<IconPhoto size={16} />}>
                 Fotos
               </Tabs.Tab>
+              {mostrarSolicitudes && (
+                <Tabs.Tab value="presupuestos" leftSection={<IconReceipt2 size={16} />}>
+                  Presupuestos
+                </Tabs.Tab>
+              )}
             </Tabs.List>
 
             <Tabs.Panel value="avance" pt="md">
@@ -209,7 +239,21 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
             <Tabs.Panel value="fotos" pt="md">
               <ClaimPhotosManager reclamoId={reclamo.id} fotosIniciales={reclamo.fotos} />
             </Tabs.Panel>
+
+            {mostrarSolicitudes && (
+              <Tabs.Panel value="presupuestos" pt="md">
+                <BudgetRequestsList reclamoId={reclamo.id} />
+              </Tabs.Panel>
+            )}
           </Tabs>
+
+          {puedeNotificar && (
+            <NotifyContractorsModal
+              reclamoId={reclamo.id}
+              opened={notificarAbierto}
+              onClose={() => setNotificarAbierto(false)}
+            />
+          )}
         </>
       )}
     </Drawer>

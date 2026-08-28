@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field
 class ItemPresupuestoCreate(BaseModel):
     descripcion: str = Field(min_length=1)
     cantidad: Decimal = Field(gt=0)
+    unidad: str = Field(default="unidad", min_length=1, max_length=20)
     costo_unitario: Decimal = Field(ge=0)
 
 

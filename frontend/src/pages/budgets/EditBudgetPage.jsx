@@ -32,6 +32,7 @@ export function EditBudgetPage() {
           items: presupuesto.items.map((item) => ({
             description: item.descripcion,
             quantity: item.cantidad,
+            unit: item.unidad ?? 'unidad',
             unitCost: item.costo_unitario,
           })),
         });

@@ -29,7 +29,9 @@ export function BudgetItemsModal({ presupuesto, onClose }) {
                 {presupuesto.items.map((item) => (
                   <Table.Tr key={item.id}>
                     <Table.Td>{item.descripcion}</Table.Td>
-                    <Table.Td>{formatoNumero.format(Number(item.cantidad))}</Table.Td>
+                    <Table.Td>
+                      {formatoNumero.format(Number(item.cantidad))} {item.unidad ?? ''}
+                    </Table.Td>
                     <Table.Td>{formatoMoneda.format(Number(item.costo_unitario))}</Table.Td>
                     <Table.Td>{formatoMoneda.format(Number(item.subtotal))}</Table.Td>
                   </Table.Tr>
@@ -37,6 +39,17 @@ export function BudgetItemsModal({ presupuesto, onClose }) {
               </Table.Tbody>
             </Table>
           </ScrollArea.Autosize>
+
+          {presupuesto.observaciones && (
+            <>
+              <Text size="sm" fw={600} mb={4}>
+                Observaciones
+              </Text>
+              <Text size="sm" c="dimmed" mb="md" style={{ whiteSpace: 'pre-wrap' }}>
+                {presupuesto.observaciones}
+              </Text>
+            </>
+          )}
 
           <Divider mb="sm" />
 

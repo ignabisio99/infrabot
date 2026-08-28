@@ -8,8 +8,10 @@ from sqlalchemy.orm import Session
 
 from core.auth import create_access_token, decode_access_token, hash_password, invalidar_token, verify_password
 from core.database import get_db
+from core.dependencies import get_current_admin
 from core.email import enviar_confirmacion, enviar_aprobacion
-from models.usuario import EstadoUsuario, Usuario
+from models.contratista import Contratista
+from models.usuario import EstadoUsuario, TipoUsuario, Usuario
 from schemas.usuario import (
     CompletarPerfil,
     LoginOut,
@@ -161,9 +163,38 @@ def completar_perfil_usuario(usuario_id: int, datos: CompletarPerfil, db: Sessio
     )
 
 
+def _crear_ficha_contratista(db: Session, usuario: Usuario) -> None:
+    """Crea (si no existe) la ficha de Contratista vinculada a un usuario contratista.
+
+    Se llama al aprobar un usuario tipo CONTRATISTA para que quede listo para recibir
+    solicitudes de presupuesto sin que un admin lo cargue a mano.
+    """
+    if usuario.tipo != TipoUsuario.CONTRATISTA:
+        return
+
+    # Si ya tiene una ficha vinculada, no duplicar.
+    ya_vinculado = db.query(Contratista).filter(Contratista.usuario_id == usuario.id).first()
+    if ya_vinculado:
+        return
+
+    ficha = Contratista(
+        nombre_empresa=usuario.nombre_empresa or usuario.nombre,
+        telefono=usuario.telefono or "",
+        direccion=usuario.direccion or "",
+        especialidad=usuario.especialidad or "General",
+        calificacion=None,  # N/A hasta que un admin la asigne
+        usuario_id=usuario.id,
+    )
+    db.add(ficha)
+
+
 @router.post("/aprobar/{usuario_id}", response_model=MensajeOut)
-def aprobar_usuario(usuario_id: int, db: Session = Depends(get_db)):
-    """Aprueba un usuario pendiente (solo para admins)."""
+def aprobar_usuario(usuario_id: int, db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
+    """Aprueba un usuario pendiente (solo para admins).
+
+    Si el usuario es contratista, se crea automáticamente su ficha de Contratista
+    para que pueda recibir solicitudes de presupuesto.
+    """
     usuario = db.get(Usuario, usuario_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -171,6 +202,7 @@ def aprobar_usuario(usuario_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="El usuario no está pendiente de aprobación")
 
     usuario.estado = EstadoUsuario.APROBADO
+    _crear_ficha_contratista(db, usuario)
     db.commit()
 
     enviar_aprobacion(usuario.email)
@@ -179,7 +211,7 @@ def aprobar_usuario(usuario_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/rechazar/{usuario_id}", response_model=MensajeOut)
-def rechazar_usuario(usuario_id: int, db: Session = Depends(get_db)):
+def rechazar_usuario(usuario_id: int, db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
     """Rechaza un usuario pendiente (solo para admins)."""
     usuario = db.get(Usuario, usuario_id)
     if not usuario:
@@ -194,7 +226,7 @@ def rechazar_usuario(usuario_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/pendientes", response_model=list[UsuarioOut])
-def listar_pendientes(db: Session = Depends(get_db)):
+def listar_pendientes(db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
     """Lista usuarios pendientes de aprobación."""
     return (
         db.query(Usuario)

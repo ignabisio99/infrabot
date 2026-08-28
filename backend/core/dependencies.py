@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from core.auth import decode_access_token, token_esta_invalidado
 from core.database import get_db
-from models.usuario import Usuario
+from models.usuario import TipoUsuario, Usuario
 
 COOKIE_NAME = "infrabot_session"
 
@@ -52,4 +52,16 @@ def get_current_user(
             detail="Usuario no encontrado",
         )
 
+    return usuario
+
+
+def get_current_admin(
+    usuario: Usuario = Depends(get_current_user),
+) -> Usuario:
+    """Igual que get_current_user pero exige que sea ADMINISTRADOR."""
+    if usuario.tipo != TipoUsuario.ADMINISTRADOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los administradores pueden realizar esta acción",
+        )
     return usuario

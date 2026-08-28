@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { getMe, logout } from './api/auth';
 import { AppLayout } from './layout/AppLayout';
+import { ContractorLayout } from './layout/ContractorLayout';
 import { CompletarPerfilPage } from './pages/auth/CompletarPerfilPage';
 import { ConfirmarEmailPage } from './pages/auth/ConfirmarEmailPage';
 import { LoginPage } from './pages/auth/LoginPage';
@@ -14,10 +15,14 @@ import { CalendarPage } from './pages/calendar/CalendarPage';
 import { ClaimsListPage } from './pages/claims/ClaimsListPage';
 import { EditClaimPage } from './pages/claims/EditClaimPage';
 import { NewClaimPage } from './pages/claims/NewClaimPage';
+import { PresupuestarReclamoPage } from './pages/claims/PresupuestarReclamoPage';
+import { ContractorListsPage } from './pages/contractors/ContractorListsPage';
 import { ContractorsListPage } from './pages/contractors/ContractorsListPage';
 import { EditContractorPage } from './pages/contractors/EditContractorPage';
 import { NewContractorPage } from './pages/contractors/NewContractorPage';
 import { DashboardPage } from './pages/dashboard/DashboardPage';
+import { MyPresupuestosPage } from './pages/portal/MyPresupuestosPage';
+import { MySolicitudesPage } from './pages/portal/MySolicitudesPage';
 import { ReportsPage } from './pages/reports/ReportsPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
 import { UsersApprovalPage } from './pages/users/UsersApprovalPage';
@@ -122,7 +127,26 @@ function App() {
     return <PendienteAprobacionPage onLogout={handleLogout} />;
   }
 
-  // Aprobado → app normal
+  // Contratista aprobado → portal del contratista (experiencia acotada)
+  if (usuario.tipo === 'CONTRATISTA') {
+    return (
+      <Routes>
+        <Route element={<ContractorLayout />}>
+          <Route index element={<Navigate to="/portal/solicitudes" replace />} />
+          <Route path="/portal/solicitudes" element={<MySolicitudesPage />} />
+          <Route path="/portal/presupuestos" element={<MyPresupuestosPage />} />
+          <Route
+            path="/portal/reclamos/:id/presupuestar"
+            element={<PresupuestarReclamoPage />}
+          />
+          {/* Cualquier otra ruta redirige al portal, así un contratista no accede a vistas de admin */}
+          <Route path="*" element={<Navigate to="/portal/solicitudes" replace />} />
+        </Route>
+      </Routes>
+    );
+  }
+
+  // Administrador aprobado → app completa
   return (
     <Routes>
       <Route element={<AppLayout />}>
@@ -131,8 +155,10 @@ function App() {
         <Route path="/reclamos/nuevo" element={<NewClaimPage />} />
         <Route path="/reclamos" element={<ClaimsListPage />} />
         <Route path="/reclamos/:id/editar" element={<EditClaimPage />} />
+        <Route path="/reclamos/:id/presupuestar" element={<PresupuestarReclamoPage />} />
         <Route path="/contratistas/nuevo" element={<NewContractorPage />} />
         <Route path="/contratistas" element={<ContractorsListPage />} />
+        <Route path="/contratistas/listas" element={<ContractorListsPage />} />
         <Route path="/contratistas/:id/editar" element={<EditContractorPage />} />
         <Route path="/presupuestos/nuevo" element={<NewBudgetPage />} />
         <Route path="/presupuestos" element={<BudgetsListPage />} />
@@ -141,6 +167,7 @@ function App() {
         <Route path="/reportes" element={<ReportsPage />} />
         <Route path="/solicitudes" element={<UsersApprovalPage />} />
         <Route path="/configuracion" element={<SettingsPage />} />
+        <Route path="*" element={<Navigate to="/reclamos" replace />} />
       </Route>
     </Routes>
   );

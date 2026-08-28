@@ -1,6 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Button, Container, Group, Loader, Table, Text, Title } from '@mantine/core';
+import {
+  ActionIcon,
+  Alert,
+  Button,
+  Container,
+  Group,
+  Loader,
+  Popover,
+  Table,
+  Text,
+  Title,
+} from '@mantine/core';
+import { IconNote } from '@tabler/icons-react';
 
 import { RowActionsMenu } from '../../components/RowActionsMenu';
 import { eliminarContratista, listarContratistas } from '../../api/contratistas';
@@ -73,7 +85,37 @@ export function ContractorsListPage() {
                 <Table.Td>{contratista.telefono}</Table.Td>
                 <Table.Td>{contratista.direccion}</Table.Td>
                 <Table.Td>{contratista.especialidad}</Table.Td>
-                <Table.Td>{contratista.calificacion} / 5</Table.Td>
+                <Table.Td>
+                  <Group gap={6} wrap="nowrap">
+                    <Text size="sm">
+                      {contratista.calificacion != null
+                        ? `${contratista.calificacion} / 5`
+                        : 'N/A'}
+                    </Text>
+                    {contratista.observaciones_calificacion && (
+                      <Popover width={280} position="top" withArrow shadow="md">
+                        <Popover.Target>
+                          <ActionIcon
+                            variant="subtle"
+                            color="gray"
+                            size="sm"
+                            aria-label="Ver observación de la calificación"
+                          >
+                            <IconNote size={16} />
+                          </ActionIcon>
+                        </Popover.Target>
+                        <Popover.Dropdown>
+                          <Text size="xs" fw={600} c="dimmed" mb={4}>
+                            Observación
+                          </Text>
+                          <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                            {contratista.observaciones_calificacion}
+                          </Text>
+                        </Popover.Dropdown>
+                      </Popover>
+                    )}
+                  </Group>
+                </Table.Td>
                 <Table.Td>
                   <RowActionsMenu
                     onEdit={() => navigate(`/contratistas/${contratista.id}/editar`)}

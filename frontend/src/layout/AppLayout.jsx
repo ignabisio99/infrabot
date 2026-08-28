@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   AppShell,
   Avatar,
+  Badge,
   Burger,
   Group,
   Menu,
@@ -26,18 +27,22 @@ import {
   IconChevronRight,
   IconLogout,
   IconUserCheck,
+  IconUsersGroup,
 } from '@tabler/icons-react';
 import logo from '../assets/logo-infrabot.jpeg';
+import { listarUsuariosPendientes } from '../api/usuarios';
+import { esAdministrador } from '../utils/auth';
 import classes from './AppLayout.module.css';
 
 const links = [
   { label: 'Dashboard', path: '/dashboard', icon: IconHome },
   { label: 'Reclamos', path: '/reclamos', icon: IconClipboardList },
-  { label: 'Contratistas', path: '/contratistas', icon: IconTruck },
+  { label: 'Contratistas', path: '/contratistas', icon: IconTruck, exact: true },
+  { label: 'Listas de contratistas', path: '/contratistas/listas', icon: IconUsersGroup, soloAdmin: true },
   { label: 'Presupuestos', path: '/presupuestos', icon: IconReceipt2 },
   { label: 'Calendario', path: '/calendario', icon: IconCalendar },
   { label: 'Reportes', path: '/reportes', icon: IconChartBar },
-  { label: 'Solicitudes', path: '/solicitudes', icon: IconUserCheck },
+  { label: 'Solicitudes', path: '/solicitudes', icon: IconUserCheck, mostrarPendientes: true },
   { label: 'Configuración', path: '/configuracion', icon: IconSettings },
 ];
 
@@ -67,10 +72,23 @@ export function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [usuario, setUsuario] = useState(getUsuario);
+  const [pendientesCount, setPendientesCount] = useState(0);
 
   // Recalcular usuario al navegar o al restaurar del bfcache
   useEffect(() => {
     setUsuario(getUsuario());
+  }, [location]);
+
+  // Conteo de solicitudes pendientes (solo admins). Se refresca al navegar para que
+  // el badge se actualice después de aprobar/rechazar en la página de solicitudes.
+  useEffect(() => {
+    if (!esAdministrador()) {
+      setPendientesCount(0);
+      return;
+    }
+    listarUsuariosPendientes()
+      .then((pendientes) => setPendientesCount(pendientes.length))
+      .catch(() => setPendientesCount(0));
   }, [location]);
 
   useEffect(() => {
@@ -143,14 +161,33 @@ export function AppLayout() {
       </AppShell.Header>
 
       <AppShell.Navbar p="md" style={{ backgroundColor: '#132a4d', border: 'none' }}>
-        {links.map((link) => {
+        {links
+          .filter((link) => !link.soloAdmin || esAdministrador())
+          .map((link) => {
           const Icon = link.icon;
+          const activo = link.exact
+            ? location.pathname === link.path
+            : location.pathname.startsWith(link.path);
+          const tienePendientes = link.mostrarPendientes && pendientesCount > 0;
           const item = (
             <NavLink
               className={classes.navLink}
               label={colapsado ? undefined : link.label}
               leftSection={<Icon size={18} stroke={1.5} />}
-              active={location.pathname.startsWith(link.path)}
+              rightSection={
+                tienePendientes && !colapsado ? (
+                  <Badge
+                    size="sm"
+                    circle
+                    color="red"
+                    variant="filled"
+                    style={{ boxShadow: '0 0 0 3px rgba(255,255,255,0.15)' }}
+                  >
+                    {pendientesCount}
+                  </Badge>
+                ) : undefined
+              }
+              active={activo}
               onClick={() => navigate(link.path)}
               variant="filled"
               color="#1fa7b3"
@@ -161,12 +198,40 @@ export function AppLayout() {
             />
           );
 
+          // Cuando el nav está colapsado, el badge numérico no entra: mostramos un
+          // punto rojo sobre el ícono y el conteo en el tooltip.
+          const itemConIndicador =
+            tienePendientes && colapsado ? (
+              <div style={{ position: 'relative' }}>
+                {item}
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 6,
+                    right: 10,
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    backgroundColor: 'var(--mantine-color-red-6)',
+                    border: '2px solid #132a4d',
+                  }}
+                />
+              </div>
+            ) : (
+              item
+            );
+
           return colapsado ? (
-            <Tooltip key={link.path} label={link.label} position="right" withArrow>
-              {item}
+            <Tooltip
+              key={link.path}
+              label={tienePendientes ? `${link.label} (${pendientesCount})` : link.label}
+              position="right"
+              withArrow
+            >
+              {itemConIndicador}
             </Tooltip>
           ) : (
-            <div key={link.path}>{item}</div>
+            <div key={link.path}>{itemConIndicador}</div>
           );
         })}
       </AppShell.Navbar>
