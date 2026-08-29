@@ -47,6 +47,8 @@ class Reclamo(Base):
     categoria = Column(String(255), nullable=False)
     descripcion = Column(Text, nullable=False)
     observaciones = Column(Text, nullable=True)
+    # Número de WhatsApp de quien creó el reclamo por el bot. Null si se creó desde la web.
+    telefono_creador = Column(String(50), nullable=True)
     fecha_creacion = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     fotos = relationship(

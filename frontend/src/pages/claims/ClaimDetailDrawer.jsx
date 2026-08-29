@@ -105,7 +105,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
 
   const proximoPaso = reclamo ? proximoPasoPorEstado[reclamo.estado] : null;
   const esAdmin = esAdministrador();
-  const puedeNotificar = esAdmin && reclamo?.estado === 'PENDIENTE_REVISION';
+  const puedeNotificar = esAdmin && reclamo?.estado === 'PENDIENTE_PRESUPUESTO';
   // Una vez solicitado el presupuesto, el reclamo deja PENDIENTE_REVISION. A partir
   // de ahí tiene sentido ver a quién se le pidió y quién ya respondió.
   const mostrarSolicitudes =
@@ -151,6 +151,18 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
 
       {!cargando && reclamo && (
         <>
+          {reclamo.telefono_creador && (
+            <Group gap={6} mb="md" c="dimmed">
+              <IconBrandWhatsapp size={15} color="var(--mantine-color-teal-6)" />
+              <Text size="sm">
+                Creado desde WhatsApp por{' '}
+                <Text span fw={600} c="dark">
+                  {reclamo.telefono_creador}
+                </Text>
+              </Text>
+            </Group>
+          )}
+
           {proximoPaso && (
             <Paper
               radius="md"
@@ -189,6 +201,29 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
               Notificar contratistas para presupuestar
             </Button>
           )}
+
+          <Paper withBorder radius="md" p="md" mb="md">
+            <Group gap={8} mb={6}>
+              <IconClipboardList size={16} color="var(--mantine-color-dimmed)" />
+              <Text fw={600} size="sm">
+                Descripción del problema
+              </Text>
+            </Group>
+            <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+              {reclamo.descripcion}
+            </Text>
+
+            {reclamo.observaciones && (
+              <>
+                <Text fw={600} size="sm" mt="md" mb={4}>
+                  Información adicional
+                </Text>
+                <Text size="sm" c="dimmed" style={{ whiteSpace: 'pre-wrap' }}>
+                  {reclamo.observaciones}
+                </Text>
+              </>
+            )}
+          </Paper>
 
           <Tabs defaultValue="avance">
             <Tabs.List>

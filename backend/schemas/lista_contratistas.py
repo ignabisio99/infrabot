@@ -51,3 +51,8 @@ class SolicitudPresupuestoOut(BaseModel):
     fecha_solicitud: datetime
     presupuesto_cargado: bool
     presupuesto_id: int | None = None
+
+
+class SolicitarInformacionIn(BaseModel):
+    """Pedido de información adicional de un contratista al creador del reclamo."""
+    mensaje: str = Field(min_length=5, max_length=1000)

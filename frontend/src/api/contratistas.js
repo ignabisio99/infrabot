@@ -28,6 +28,27 @@ export async function obtenerMiFicha() {
   return response.json();
 }
 
+/**
+ * El contratista pide información adicional sobre un reclamo.
+ * El bot reenvía el mensaje por WhatsApp a quien creó el reclamo.
+ */
+export async function solicitarInformacionReclamo(reclamoId, mensaje) {
+  const response = await fetchConAuth(`${API_URL}/reclamos/${reclamoId}/solicitar-informacion`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mensaje }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(
+      extraerMensajeError(error?.detail, 'No se pudo enviar la solicitud de información.'),
+    );
+  }
+
+  return response.json();
+}
+
 /** Reclamos donde el contratista logueado fue convocado a presupuestar. */
 export async function listarMisSolicitudes() {
   const response = await fetchConAuth(`${API_URL}/contratistas/mis-solicitudes`);

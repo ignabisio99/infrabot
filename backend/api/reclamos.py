@@ -7,6 +7,7 @@ from core.database import get_db
 from core.dependencies import get_current_admin, get_current_user
 from core.storage import storage
 from core.whatsapp_client import enviar_mensaje
+from core.whatsapp_handler import iniciar_espera_info
 from models.contratista import Contratista
 from models.foto_reclamo import FotoReclamo, TipoMedia
 from models.lista_contratistas import ListaContratistas
@@ -19,6 +20,7 @@ from schemas.lista_contratistas import (
     NotificacionResultado,
     NotificarContratistasIn,
     NotificarContratistasOut,
+    SolicitarInformacionIn,
     SolicitudPresupuestoOut,
 )
 from schemas.reclamo import (
@@ -181,7 +183,7 @@ def notificar_contratistas(
     reclamo_id: int,
     datos: NotificarContratistasIn,
     db: Session = Depends(get_db),
-    admin: Usuario = Depends(get_current_admin),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     """Notifica por WhatsApp a contratistas para que carguen presupuesto.
 
@@ -192,11 +194,11 @@ def notificar_contratistas(
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
 
-    # Solo se puede convocar contratistas desde el estado inicial del reclamo.
-    if reclamo.estado != EstadoReclamo.PENDIENTE_REVISION:
+    # Solo se puede convocar contratistas cuando el reclamo está pendiente de presupuesto.
+    if reclamo.estado != EstadoReclamo.PENDIENTE_PRESUPUESTO:
         raise HTTPException(
             status_code=409,
-            detail="Solo se puede notificar contratistas cuando el reclamo está en revisión inicial",
+            detail="Solo se puede notificar contratistas cuando el reclamo está pendiente de presupuesto",
         )
 
     # Resolver la lista de contratistas destino
@@ -268,15 +270,8 @@ def notificar_contratistas(
             )
         )
 
-    # Si al menos un contratista fue notificado, el reclamo pasa a esperar presupuestos.
+    # Persistir las solicitudes registradas (el reclamo ya está en PENDIENTE_PRESUPUESTO).
     if enviados > 0:
-        estados_reclamo.cambiar_estado(
-            db,
-            reclamo,
-            EstadoReclamo.PENDIENTE_PRESUPUESTO,
-            motivo=f"Se notificó a {enviados} contratista(s) para que carguen presupuesto",
-            usuario_id=admin.id,
-        )
         db.commit()
 
     return NotificarContratistasOut(
@@ -327,3 +322,67 @@ def listar_solicitudes_presupuesto(
             )
         )
     return resultado
+
+
+@router.post("/{reclamo_id}/solicitar-informacion", response_model=NotificacionResultado)
+def solicitar_informacion(
+    reclamo_id: int,
+    datos: SolicitarInformacionIn,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
+):
+    """Un contratista pide información adicional sobre el reclamo.
+
+    El bot reenvía el mensaje por WhatsApp a quien creó el reclamo (telefono_creador).
+    """
+    reclamo = db.get(Reclamo, reclamo_id)
+    if reclamo is None:
+        raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+
+    if not reclamo.telefono_creador:
+        raise HTTPException(
+            status_code=409,
+            detail="Este reclamo no fue creado por WhatsApp, no hay un contacto al que reenviar el pedido.",
+        )
+
+    # Nombre del contratista que solicita (si tiene ficha vinculada)
+    ficha = db.query(Contratista).filter(Contratista.usuario_id == usuario.id).first()
+    nombre_contratista = ficha.nombre_empresa if ficha else usuario.nombre
+
+    mensaje = (
+        f"ℹ️ *Solicitud de información — Reclamo #{reclamo_id}*\n\n"
+        f"🏫 Escuela: {reclamo.nombre_escuela}\n"
+        f"📍 Ubicación: {reclamo.ubicacion}\n\n"
+        f"El contratista *{nombre_contratista}* necesita más información para poder "
+        f"cargar el presupuesto:\n\n"
+        f"\"{datos.mensaje.strip()}\"\n\n"
+        f"Respondé a este mensaje con el texto y/o las fotos o videos que quieras sumar. "
+        f"Cuando termines, escribí *listo*."
+    )
+
+    error = None
+    ok = False
+    try:
+        respuesta = enviar_mensaje(reclamo.telefono_creador, mensaje)
+        ok = "messages" in respuesta
+        if not ok:
+            error = str(respuesta.get("error", respuesta))
+    except Exception as e:  # noqa: BLE001
+        error = str(e)
+
+    if not ok:
+        raise HTTPException(
+            status_code=502,
+            detail=f"No se pudo enviar el mensaje al creador del reclamo. {error or ''}".strip(),
+        )
+
+    # Dejar al creador esperando que responda con la información adicional.
+    iniciar_espera_info(reclamo.telefono_creador, reclamo_id)
+
+    return NotificacionResultado(
+        contratista_id=ficha.id if ficha else 0,
+        nombre_empresa=nombre_contratista,
+        telefono=reclamo.telefono_creador,
+        enviado=True,
+        error=None,
+    )

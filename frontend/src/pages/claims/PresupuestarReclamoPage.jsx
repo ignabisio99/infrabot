@@ -10,6 +10,7 @@ import {
   Divider,
   Group,
   Loader,
+  Modal,
   NumberInput,
   SimpleGrid,
   Stack,
@@ -19,15 +20,15 @@ import {
   Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { IconCircleCheck, IconMapPin } from '@tabler/icons-react';
+import { IconCircleCheck, IconInfoCircle, IconMapPin } from '@tabler/icons-react';
 
 import { API_URL } from '../../api/apiClient';
 import { obtenerReclamo } from '../../api/reclamos';
-import { obtenerMiFicha } from '../../api/contratistas';
+import { obtenerMiFicha, solicitarInformacionReclamo } from '../../api/contratistas';
 import { crearPresupuesto } from '../../api/presupuestos';
 import { formatearIdReclamo } from '../../utils/ids';
 import { formatoMoneda } from '../../utils/formatters';
-import { notifyError } from '../../utils/notifications';
+import { notifyError, notifySuccess } from '../../utils/notifications';
 import { PriorityBadge } from './PriorityBadge';
 
 // Unidades sugeridas. Al ser Autocomplete, el contratista puede escribir cualquier otra.
@@ -81,6 +82,10 @@ export function PresupuestarReclamoPage() {
   const [errorCarga, setErrorCarga] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
+
+  const [infoModalAbierto, setInfoModalAbierto] = useState(false);
+  const [mensajeInfo, setMensajeInfo] = useState('');
+  const [enviandoInfo, setEnviandoInfo] = useState(false);
 
   const form = useForm({
     initialValues: {
@@ -137,6 +142,24 @@ export function PresupuestarReclamoPage() {
       notifyError(error?.message);
     } finally {
       setEnviando(false);
+    }
+  };
+
+  const handleSolicitarInfo = async () => {
+    if (mensajeInfo.trim().length < 5) {
+      notifyError('Escribí un mensaje con lo que necesitás (mínimo 5 caracteres).');
+      return;
+    }
+    setEnviandoInfo(true);
+    try {
+      await solicitarInformacionReclamo(reclamoId, mensajeInfo.trim());
+      notifySuccess('Tu solicitud de información fue enviada a quien creó el reclamo.');
+      setInfoModalAbierto(false);
+      setMensajeInfo('');
+    } catch (error) {
+      notifyError(error?.message);
+    } finally {
+      setEnviandoInfo(false);
     }
   };
 
@@ -206,6 +229,30 @@ export function PresupuestarReclamoPage() {
           </Text>
           <MediaGaleria fotos={reclamo.fotos} />
         </div>
+
+        {reclamo.telefono_creador && (
+          <Card withBorder radius="md" bg="var(--mantine-color-orange-0)">
+            <Group justify="space-between" wrap="nowrap" gap="md">
+              <div>
+                <Text fw={600} size="sm">
+                  ¿La información del reclamo no es suficiente?
+                </Text>
+                <Text size="sm" c="dimmed">
+                  Pedile más detalles a quien lo creó antes de cargar tu presupuesto.
+                </Text>
+              </div>
+              <Button
+                variant="light"
+                color="orange"
+                leftSection={<IconInfoCircle size={18} />}
+                onClick={() => setInfoModalAbierto(true)}
+                style={{ flexShrink: 0 }}
+              >
+                Necesito más información
+              </Button>
+            </Group>
+          </Card>
+        )}
 
         <Divider label="Cargar presupuesto" labelPosition="center" />
 
@@ -297,6 +344,35 @@ export function PresupuestarReclamoPage() {
           </Stack>
         </form>
       </Stack>
+
+      <Modal
+        opened={infoModalAbierto}
+        onClose={() => setInfoModalAbierto(false)}
+        title="Solicitar más información"
+        centered
+      >
+        <Stack>
+          <Text size="sm" c="dimmed">
+            Contanos qué información necesitás para poder cargar el presupuesto. El mensaje se
+            le va a enviar por WhatsApp a la persona que creó el reclamo.
+          </Text>
+          <Textarea
+            placeholder="Ej: ¿Podrían enviar fotos del tablero desde otro ángulo? ¿Cuáles son las medidas del espacio?"
+            minRows={4}
+            autosize
+            value={mensajeInfo}
+            onChange={(e) => setMensajeInfo(e.currentTarget.value)}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setInfoModalAbierto(false)}>
+              Cancelar
+            </Button>
+            <Button color="orange" onClick={handleSolicitarInfo} loading={enviandoInfo}>
+              Enviar solicitud
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Container>
   );
 }

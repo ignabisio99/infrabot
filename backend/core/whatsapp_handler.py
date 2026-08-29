@@ -5,10 +5,15 @@ la base de datos de reclamos. Soporta un flujo de creación de
 reclamos paso a paso.
 """
 
+from datetime import datetime, timezone, timedelta
+
 from sqlalchemy.orm import Session, joinedload
 
 from models.foto_reclamo import FotoReclamo, TipoMedia
 from models.reclamo import PrioridadReclamo, Reclamo
+
+# Zona horaria UTC-3 (Argentina), para los timestamps de la info adicional.
+ART = timezone(timedelta(hours=-3))
 
 # Estado de conversación por usuario (en memoria)
 # Clave: número de teléfono, Valor: dict con paso actual y datos parciales
@@ -183,6 +188,7 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
                 prioridad=PrioridadReclamo(datos["prioridad"]),
                 categoria=datos["categoria"],
                 descripcion=datos["descripcion"],
+                telefono_creador=usuario or None,
             )
             db.add(nuevo)
             db.commit()
@@ -221,6 +227,51 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
     return "⚠️ Ocurrió un error. Escribí *nuevo* para empezar de nuevo."
 
 
+def iniciar_espera_info(telefono_creador: str, reclamo_id: int) -> None:
+    """Deja al creador del reclamo esperando que responda con información adicional.
+
+    Lo llama el endpoint de solicitar-información. Los próximos mensajes (texto o media)
+    de ese número se agregan al reclamo hasta que escriba *listo*.
+    """
+    _conversaciones[telefono_creador] = {
+        "paso": "info_adicional",
+        "reclamo_id": reclamo_id,
+        "media": [],
+    }
+
+
+def _procesar_info_adicional(db: Session, usuario: str, mensaje: str) -> str:
+    """Maneja los mensajes de texto del creador mientras aporta información adicional."""
+    conv = _conversaciones[usuario]
+    reclamo_id = conv["reclamo_id"]
+    texto = mensaje.strip()
+
+    if texto.lower() in ("listo", "terminar", "fin", "ok", "gracias"):
+        del _conversaciones[usuario]
+        return (
+            f"✅ ¡Gracias! Sumé tu información al reclamo #{reclamo_id}. "
+            "El contratista ya va a poder verla."
+        )
+
+    reclamo = db.get(Reclamo, reclamo_id)
+    if reclamo is None:
+        del _conversaciones[usuario]
+        return "⚠️ No encontré el reclamo. Escribí *ayuda* para ver los comandos."
+
+    # Anexar el texto a las observaciones del reclamo
+    prefijo = "\n\n" if reclamo.observaciones else ""
+    fecha = datetime.now(ART).strftime("%d/%m/%Y %H:%M")
+    reclamo.observaciones = (
+        (reclamo.observaciones or "") + f"{prefijo}[Info adicional {fecha}] {texto}"
+    )
+    db.commit()
+
+    return (
+        "📝 Anoté tu respuesta en el reclamo.\n"
+        "Podés seguir enviando texto o fotos/videos, o escribí *listo* cuando termines."
+    )
+
+
 def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
     """Recibe un mensaje de texto y devuelve la respuesta del bot."""
     texto = mensaje.strip().lower()
@@ -229,6 +280,10 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
     if texto == "cancelar" and usuario in _conversaciones:
         del _conversaciones[usuario]
         return "❌ Operación cancelada. Escribí *ayuda* para ver los comandos."
+
+    # Si el creador está aportando información adicional a un reclamo
+    if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "info_adicional":
+        return _procesar_info_adicional(db, usuario, mensaje)
 
     # Si el usuario está en medio de una conversación de creación
     if usuario in _conversaciones:
@@ -291,6 +346,29 @@ def procesar_media(db: Session, usuario: str, url_local: str, mime_type: str, ca
     Si el usuario está en el flujo de creación de reclamo, lo agrega como adjunto.
     Si no, le indica que primero inicie un reclamo.
     """
+    # Si el creador está aportando información adicional, guardar el archivo en el reclamo
+    if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "info_adicional":
+        conv = _conversaciones[usuario]
+        reclamo = db.get(Reclamo, conv["reclamo_id"])
+        if reclamo is None:
+            del _conversaciones[usuario]
+            return "⚠️ No encontré el reclamo. Escribí *ayuda* para ver los comandos."
+
+        tipo = TipoMedia.VIDEO if "video" in mime_type else TipoMedia.IMAGEN
+        foto = FotoReclamo(
+            reclamo_id=reclamo.id,
+            nombre_archivo=url_local.split("/")[-1],
+            url=url_local,
+            tipo=tipo,
+        )
+        db.add(foto)
+        db.commit()
+        tipo_str = "📹 Video" if "video" in mime_type else "📷 Foto"
+        return (
+            f"{tipo_str} agregada al reclamo #{reclamo.id} ✅\n"
+            "Podés seguir enviando o escribí *listo* cuando termines."
+        )
+
     # Si está en el flujo de creación, agregar el media
     if usuario in _conversaciones:
         conv = _conversaciones[usuario]
