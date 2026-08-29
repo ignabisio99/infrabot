@@ -19,6 +19,22 @@ ART = timezone(timedelta(hours=-3))
 # Clave: número de teléfono, Valor: dict con paso actual y datos parciales
 _conversaciones: dict[str, dict] = {}
 
+# Última vez que cada número escribió (en memoria). Sirve para saludar con el menú
+# cuando vuelve después de un rato en vez de responder "no entendí".
+_ultima_actividad: dict[str, datetime] = {}
+
+# Si pasó más de este tiempo desde el último mensaje, tratamos la conversación como
+# "nueva" y mostramos el saludo con botones.
+UMBRAL_SALUDO = timedelta(hours=1)
+
+
+def _es_sesion_nueva(usuario: str) -> bool:
+    """True si el usuario no escribió en la última hora (o es su primer mensaje)."""
+    ultima = _ultima_actividad.get(usuario)
+    if ultima is None:
+        return True
+    return datetime.now(timezone.utc) - ultima > UMBRAL_SALUDO
+
 CATEGORIAS = [
     "Electricidad",
     "Plomería",
@@ -46,16 +62,29 @@ def _formatear_reclamo(r: Reclamo) -> str:
     )
 
 
-def _buscar_por_id(db: Session, reclamo_id: int) -> str:
+def _buscar_por_id(db: Session, reclamo_id: int, usuario: str = "") -> str:
     reclamo = (
         db.query(Reclamo)
         .options(joinedload(Reclamo.fotos))
         .filter(Reclamo.id == reclamo_id)
         .first()
     )
-    if not reclamo:
-        return f"❌ No encontré un reclamo con ID #{reclamo_id}."
+    # Sólo se muestra si el reclamo es de este número (no espiar reclamos ajenos).
+    if not reclamo or (usuario and reclamo.telefono_creador != usuario):
+        return f"❌ No encontré un reclamo tuyo con ID #{reclamo_id}."
     return _formatear_reclamo(reclamo)
+
+
+def _procesar_buscar_id(db: Session, usuario: str, mensaje: str) -> str:
+    """Maneja el ID que ingresa el usuario tras elegir 'Buscar reclamo'."""
+    texto = mensaje.strip().replace("#", "")
+    try:
+        reclamo_id = int(texto)
+    except ValueError:
+        return "⚠️ Ingresá solo el número del reclamo (ej: *3*), o *cancelar* para volver."
+
+    del _conversaciones[usuario]
+    return _buscar_por_id(db, reclamo_id, usuario)
 
 
 def _buscar_por_escuela(db: Session, nombre: str) -> str:
@@ -74,17 +103,25 @@ def _buscar_por_escuela(db: Session, nombre: str) -> str:
     return resultado
 
 
-def _listar_recientes(db: Session) -> str:
+def _listar_recientes(db: Session, usuario: str = "") -> str:
+    """Últimos reclamos cargados por este número de WhatsApp."""
+    if not usuario:
+        return "No pude identificar tu número para buscar tus reclamos."
+
     reclamos = (
         db.query(Reclamo)
         .options(joinedload(Reclamo.fotos))
+        .filter(Reclamo.telefono_creador == usuario)
         .order_by(Reclamo.fecha_creacion.desc())
         .limit(5)
         .all()
     )
     if not reclamos:
-        return "No hay reclamos registrados todavía."
-    resultado = "📋 *Últimos reclamos:*\n\n"
+        return (
+            "Todavía no cargaste ningún reclamo desde este número.\n"
+            "Escribí *nuevo* para crear el primero."
+        )
+    resultado = "📋 *Tus últimos reclamos:*\n\n"
     for r in reclamos:
         resultado += (
             f"• #{r.id} | {r.nombre_escuela} | {r.prioridad.value} | "
@@ -94,14 +131,34 @@ def _listar_recientes(db: Session) -> str:
     return resultado
 
 
-def _mostrar_ayuda():
+def _mostrar_ayuda(variante: str = "menu"):
+    """Menú principal con botones.
+
+    `variante` cambia el texto de encabezado:
+    - "saludo": bienvenida cálida (primer contacto o regreso tras un rato)
+    - "menu": menú neutro (cuando piden ayuda/menú explícitamente)
+    - "no_entendi": aclara que no se reconoció el mensaje y ofrece las opciones
+    """
+    if variante == "saludo":
+        body = (
+            "👋 ¡Hola! Soy *InfraBot*, tu asistente para la gestión de reclamos de "
+            "infraestructura escolar.\n\n"
+            "Estoy acá para ayudarte a cargar un nuevo reclamo o consultar el estado de "
+            "los que ya existen.\n\n"
+            "¿Qué te gustaría hacer?"
+        )
+    elif variante == "no_entendi":
+        body = "🤖 No entendí tu mensaje. Estas son las opciones disponibles:"
+    else:
+        body = "🤖 *InfraBot*\n\n¿Qué querés hacer?"
+
     return {
         "tipo": "botones",
-        "body": "🤖 *InfraBot*\n\n¿Qué querés hacer?",
+        "body": body,
         "botones": [
             {"id": "nuevo", "title": "📝 Nuevo reclamo"},
             {"id": "recientes", "title": "📋 Ver recientes"},
-            {"id": "ayuda_texto", "title": "❓ Más comandos"},
+            {"id": "buscar_reclamo", "title": "🔍 Buscar reclamo"},
         ],
     }
 
@@ -276,6 +333,11 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
     """Recibe un mensaje de texto y devuelve la respuesta del bot."""
     texto = mensaje.strip().lower()
 
+    # Evaluar si es una sesión nueva ANTES de registrar esta interacción.
+    sesion_nueva = _es_sesion_nueva(usuario)
+    if usuario:
+        _ultima_actividad[usuario] = datetime.now(timezone.utc)
+
     # Cancelar siempre funciona
     if texto == "cancelar" and usuario in _conversaciones:
         del _conversaciones[usuario]
@@ -285,6 +347,10 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
     if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "info_adicional":
         return _procesar_info_adicional(db, usuario, mensaje)
 
+    # Si el usuario está esperando ingresar un ID para buscar un reclamo
+    if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "buscar_id":
+        return _procesar_buscar_id(db, usuario, mensaje)
+
     # Si el usuario está en medio de una conversación de creación
     if usuario in _conversaciones:
         return _procesar_creacion(db, usuario, mensaje)
@@ -293,12 +359,21 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
     if texto in ("nuevo", "crear", "cargar", "nuevo reclamo"):
         return _iniciar_creacion(usuario)
 
+    # Botón: buscar reclamo → pedir el ID
+    if texto == "buscar_reclamo":
+        _conversaciones[usuario] = {"paso": "buscar_id"}
+        return (
+            "🔍 Escribí el número (ID) del reclamo que querés ver.\n"
+            "Por ejemplo: *3*\n\n"
+            "Escribí *cancelar* para volver."
+        )
+
     # Comando: ver #<id>
     if texto.startswith("ver #") or texto.startswith("ver#"):
         try:
             id_str = texto.replace("ver#", "").replace("ver #", "").strip()
             reclamo_id = int(id_str)
-            return _buscar_por_id(db, reclamo_id)
+            return _buscar_por_id(db, reclamo_id, usuario)
         except (ValueError, IndexError):
             return "⚠️ Formato incorrecto. Usá: *ver #<id>*\nEjemplo: ver #3"
 
@@ -309,13 +384,17 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
             return "⚠️ Escribí al menos 2 caracteres para buscar.\nEjemplo: buscar Escuela Técnica"
         return _buscar_por_escuela(db, nombre)
 
-    # Comando: recientes / últimos
+    # Comando: recientes / últimos → solo los reclamos de este número
     if texto in ("recientes", "últimos", "ultimos", "listar"):
-        return _listar_recientes(db)
+        return _listar_recientes(db, usuario)
 
-    # Comando: ayuda / help / hola
-    if texto in ("ayuda", "help", "hola", "hi", "menu", "menú", "inicio"):
-        return _mostrar_ayuda()
+    # Saludos → bienvenida cálida solo la primera vez en el rango; si repite, "no entendí"
+    if texto in ("hola", "hi", "buenas", "buenos dias", "buenos días", "buenas tardes", "buenas noches"):
+        return _mostrar_ayuda(variante="saludo" if sesion_nueva else "no_entendi")
+
+    # Comando: ayuda / help / menú → menú directo
+    if texto in ("ayuda", "help", "menu", "menú", "inicio"):
+        return _mostrar_ayuda(variante="menu")
 
     # Comando: más comandos (desde botón)
     if texto == "ayuda_texto":
@@ -332,12 +411,14 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
     # Si el mensaje es un número solo, asumir que quieren ver ese reclamo
     try:
         reclamo_id = int(texto.replace("#", "").strip())
-        return _buscar_por_id(db, reclamo_id)
+        return _buscar_por_id(db, reclamo_id, usuario)
     except ValueError:
         pass
 
-    # Mensaje no reconocido
-    return "🤖 No entendí tu mensaje. Escribí *ayuda* para ver los comandos disponibles."
+    # Mensaje no reconocido. Si vuelve tras un rato (o es su primera vez) lo recibimos
+    # con la bienvenida; si es dentro de la conversación, aclaramos que no entendimos.
+    # En ambos casos ofrecemos las opciones con botones.
+    return _mostrar_ayuda(variante="saludo" if sesion_nueva else "no_entendi")
 
 
 def procesar_media(db: Session, usuario: str, url_local: str, mime_type: str, caption: str = "") -> str:
@@ -346,6 +427,9 @@ def procesar_media(db: Session, usuario: str, url_local: str, mime_type: str, ca
     Si el usuario está en el flujo de creación de reclamo, lo agrega como adjunto.
     Si no, le indica que primero inicie un reclamo.
     """
+    if usuario:
+        _ultima_actividad[usuario] = datetime.now(timezone.utc)
+
     # Si el creador está aportando información adicional, guardar el archivo en el reclamo
     if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "info_adicional":
         conv = _conversaciones[usuario]
