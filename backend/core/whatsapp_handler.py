@@ -27,6 +27,48 @@ _ultima_actividad: dict[str, datetime] = {}
 # "nueva" y mostramos el saludo con botones.
 UMBRAL_SALUDO = timedelta(hours=1)
 
+# --- Rate limiting básico (anti-spam) ---
+# Timestamps de los últimos mensajes por número, para detectar flood.
+_historial_mensajes: dict[str, list[datetime]] = {}
+# Hasta cuándo está bloqueado cada número por haber excedido el límite.
+_bloqueados_hasta: dict[str, datetime] = {}
+
+# Máximo de mensajes permitidos dentro de la ventana antes de bloquear.
+RATE_LIMIT_MAX = 15
+RATE_LIMIT_VENTANA = timedelta(minutes=1)
+RATE_LIMIT_BLOQUEO = timedelta(minutes=5)
+
+
+def _esta_bloqueado(usuario: str) -> bool:
+    """True si el número está temporalmente bloqueado por flood."""
+    hasta = _bloqueados_hasta.get(usuario)
+    if hasta is None:
+        return False
+    if datetime.now(timezone.utc) >= hasta:
+        # Expiró el bloqueo: limpiar y permitir de nuevo.
+        del _bloqueados_hasta[usuario]
+        _historial_mensajes.pop(usuario, None)
+        return False
+    return True
+
+
+def _registrar_y_chequear_flood(usuario: str) -> bool:
+    """Registra el mensaje y devuelve True si el número acaba de superar el límite.
+
+    Cuenta los mensajes de la última ventana; si pasa el máximo, marca el bloqueo.
+    """
+    ahora = datetime.now(timezone.utc)
+    limite = ahora - RATE_LIMIT_VENTANA
+
+    marcas = [t for t in _historial_mensajes.get(usuario, []) if t > limite]
+    marcas.append(ahora)
+    _historial_mensajes[usuario] = marcas
+
+    if len(marcas) > RATE_LIMIT_MAX:
+        _bloqueados_hasta[usuario] = ahora + RATE_LIMIT_BLOQUEO
+        return True
+    return False
+
 
 def _es_sesion_nueva(usuario: str) -> bool:
     """True si el usuario no escribió en la última hora (o es su primer mensaje)."""
@@ -333,6 +375,17 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
     """Recibe un mensaje de texto y devuelve la respuesta del bot."""
     texto = mensaje.strip().lower()
 
+    # Anti-spam: si ya está bloqueado, no responder (evita seguir alimentando el flood).
+    if usuario and _esta_bloqueado(usuario):
+        return ""
+
+    # Registrar el mensaje y ver si con este superó el límite.
+    if usuario and _registrar_y_chequear_flood(usuario):
+        return (
+            "⚠️ Estás enviando demasiados mensajes muy rápido. "
+            "Esperá unos minutos antes de volver a escribir."
+        )
+
     # Evaluar si es una sesión nueva ANTES de registrar esta interacción.
     sesion_nueva = _es_sesion_nueva(usuario)
     if usuario:
@@ -427,6 +480,16 @@ def procesar_media(db: Session, usuario: str, url_local: str, mime_type: str, ca
     Si el usuario está en el flujo de creación de reclamo, lo agrega como adjunto.
     Si no, le indica que primero inicie un reclamo.
     """
+    # Anti-spam: mismo tratamiento que los mensajes de texto.
+    if usuario and _esta_bloqueado(usuario):
+        return ""
+
+    if usuario and _registrar_y_chequear_flood(usuario):
+        return (
+            "⚠️ Estás enviando demasiados mensajes muy rápido. "
+            "Esperá unos minutos antes de volver a escribir."
+        )
+
     if usuario:
         _ultima_actividad[usuario] = datetime.now(timezone.utc)
 

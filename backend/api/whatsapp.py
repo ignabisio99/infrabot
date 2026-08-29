@@ -136,6 +136,10 @@ async def recibir_mensaje(request: Request):
 
 def _enviar_respuesta(to: str, respuesta):
     """Envía la respuesta. Si es un dict con tipo 'botones' o 'lista', usa interactivo."""
+    # Respuesta vacía = no responder (ej. número bloqueado por spam).
+    if not respuesta:
+        return
+
     if isinstance(respuesta, dict):
         tipo = respuesta.get("tipo")
         if tipo == "botones":
