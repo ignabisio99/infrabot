@@ -42,3 +42,8 @@ class Usuario(Base):
     especialidad = Column(String(255), nullable=True)
 
     fecha_creacion = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    @property
+    def es_admin(self) -> bool:
+        # `tipo` es nullable: un perfil a medio completar no es admin.
+        return self.tipo is TipoUsuario.ADMINISTRADOR

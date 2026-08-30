@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Alert, Container, Group, Loader, Table, Text, Title } from '@mantine/core';
+import { Alert, Container, Loader, Table, Text, Title } from '@mantine/core';
 
 import { listarMisPresupuestos } from '../../api/contratistas';
 import { formatearIdReclamo } from '../../utils/ids';
 import { formatoMoneda } from '../../utils/formatters';
 import { BudgetItemsModal } from '../budgets/BudgetItemsModal';
+import { BudgetStatusBadge } from '../budgets/BudgetStatusBadge';
 
 export function MyPresupuestosPage() {
   const [presupuestos, setPresupuestos] = useState([]);
@@ -45,20 +46,20 @@ export function MyPresupuestosPage() {
               <Table.Th>Escuela</Table.Th>
               <Table.Th>Fecha</Table.Th>
               <Table.Th>Monto</Table.Th>
+              <Table.Th>Estado</Table.Th>
               <Table.Th>Ítems</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {presupuestos.map((p) => (
-              <Table.Tr
-                key={p.id}
-                style={{ cursor: 'pointer' }}
-                onClick={() => setSeleccionado(p)}
-              >
+              <Table.Tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => setSeleccionado(p)}>
                 <Table.Td>{formatearIdReclamo(p.reclamo.id)}</Table.Td>
                 <Table.Td>{p.reclamo.nombre_escuela}</Table.Td>
                 <Table.Td>{new Date(p.fecha).toLocaleDateString('es-AR')}</Table.Td>
                 <Table.Td>{formatoMoneda.format(Number(p.monto))}</Table.Td>
+                <Table.Td>
+                  <BudgetStatusBadge estado={p.estado} />
+                </Table.Td>
                 <Table.Td>{p.items.length}</Table.Td>
               </Table.Tr>
             ))}

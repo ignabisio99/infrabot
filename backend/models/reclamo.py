@@ -57,6 +57,12 @@ class Reclamo(Base):
         cascade="all, delete-orphan",
         order_by="FotoReclamo.id",
     )
+    presupuestos = relationship(
+        "Presupuesto",
+        back_populates="reclamo",
+        cascade="all, delete-orphan",
+        order_by="Presupuesto.id",
+    )
     historial_estados = relationship(
         "HistorialEstadoReclamo",
         back_populates="reclamo",

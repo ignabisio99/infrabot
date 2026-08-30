@@ -13,9 +13,10 @@ ejemplo, no se registra solo porque core/auth.py lo importa dentro de las funcio
 
 from models.contratista import Contratista
 from models.foto_reclamo import FotoReclamo
+from models.historial_estado_presupuesto import HistorialEstadoPresupuesto
 from models.historial_estado_reclamo import HistorialEstadoReclamo, OrigenCambioEstado
 from models.lista_contratistas import ListaContratistas, lista_contratista_asociacion
-from models.presupuesto import ItemPresupuesto, Presupuesto
+from models.presupuesto import EstadoPresupuesto, ItemPresupuesto, Presupuesto
 from models.reclamo import EstadoReclamo, PrioridadReclamo, Reclamo
 from models.solicitud_presupuesto import SolicitudPresupuesto
 from models.token_blacklist import TokenBlacklist
@@ -23,9 +24,11 @@ from models.usuario import EstadoUsuario, TipoUsuario, Usuario
 
 __all__ = [
     "Contratista",
+    "EstadoPresupuesto",
     "EstadoReclamo",
     "EstadoUsuario",
     "FotoReclamo",
+    "HistorialEstadoPresupuesto",
     "HistorialEstadoReclamo",
     "ItemPresupuesto",
     "ListaContratistas",

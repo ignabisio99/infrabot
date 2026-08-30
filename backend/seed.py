@@ -16,6 +16,7 @@ from core.auth import hash_password
 from core.database import Base, SessionLocal, engine
 from models import (
     Contratista,
+    EstadoPresupuesto,
     EstadoReclamo,
     EstadoUsuario,
     HistorialEstadoReclamo,
@@ -27,7 +28,7 @@ from models import (
     TipoUsuario,
     Usuario,
 )
-from services import estados_reclamo
+from services import estados_presupuesto, estados_reclamo
 
 # Usuario administrador para poder entrar a la app en un entorno recién creado.
 # El registro por la UI no sirve para esto: deja la cuenta sin confirmar y esperando
@@ -37,6 +38,11 @@ from services import estados_reclamo
 ADMIN_EMAIL = "admin@infrabot.dev"
 ADMIN_PASSWORD = "Admin123!"
 
+# Contraseña común de los contratistas del seed (el email lo trae cada ficha). Sin cuenta
+# el portal (/portal/*) no se puede probar: las vistas y los permisos del contratista
+# dependen de Contratista.usuario_id.
+CONTRATISTA_PASSWORD = "Contra123!"
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -44,6 +50,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# `email_cuenta` le da login al contratista. Las dos primeras compiten en el reclamo 1,
+# así que con las dos cuentas se puede ver que ninguna accede a la oferta de la otra.
+# Belgrano queda sin cuenta a propósito: es el caso de la ficha cargada por mesa de
+# entrada que nunca se registró.
 CONTRATISTAS = [
     dict(
         nombre_empresa="Electricidad del Sur SRL",
@@ -51,6 +61,7 @@ CONTRATISTAS = [
         direccion="Av. Rivadavia 4500, CABA",
         especialidad="Electricidad",
         calificacion=4,
+        email_cuenta="electricidad@infrabot.dev",
     ),
     dict(
         nombre_empresa="Plomería Integral SA",
@@ -58,6 +69,7 @@ CONTRATISTAS = [
         direccion="Calle Falsa 123, San Justo",
         especialidad="Plomería",
         calificacion=5,
+        email_cuenta="plomeria@infrabot.dev",
     ),
     dict(
         nombre_empresa="Construcciones Belgrano",
@@ -80,9 +92,24 @@ RECLAMOS = [
         categoria="Electricidad",
         descripcion="Cortocircuito en el tablero principal del ala norte del edificio.",
         observaciones="Se cortó la luz en 3 aulas.",
-        camino=[
-            dict(estado=EstadoReclamo.PENDIENTE_PRESUPUESTO),
-            dict(estado=EstadoReclamo.EN_EVALUACION, origen=OrigenCambioEstado.AUTOMATICO),
+        camino=[dict(estado=EstadoReclamo.PENDIENTE_PRESUPUESTO)],
+        presupuestos=[
+            dict(
+                contratista=0,
+                observaciones="Presupuesto para reparación del tablero.",
+                items=[
+                    dict(descripcion="Mano de obra", cantidad=8, costo_unitario=5000),
+                    dict(descripcion="Tablero eléctrico nuevo", cantidad=1, costo_unitario=45000),
+                ],
+            ),
+            dict(
+                contratista=1,
+                observaciones="Incluye certificación del tablero.",
+                items=[
+                    dict(descripcion="Mano de obra", cantidad=10, costo_unitario=5200),
+                    dict(descripcion="Tablero eléctrico nuevo", cantidad=1, costo_unitario=51000),
+                ],
+            ),
         ],
     ),
     dict(
@@ -92,12 +119,21 @@ RECLAMOS = [
         categoria="Plomería",
         descripcion="Pérdida de agua en el baño de planta baja.",
         observaciones=None,
-        camino=[
-            dict(estado=EstadoReclamo.PENDIENTE_PRESUPUESTO),
-            dict(estado=EstadoReclamo.EN_EVALUACION, origen=OrigenCambioEstado.AUTOMATICO),
-            dict(estado=EstadoReclamo.APROBADO),
-            dict(estado=EstadoReclamo.EN_EJECUCION),
+        camino=[dict(estado=EstadoReclamo.PENDIENTE_PRESUPUESTO)],
+        presupuestos=[
+            dict(
+                contratista=1,
+                observaciones=None,
+                items=[
+                    dict(descripcion="Cañería PVC 3/4", cantidad=10, costo_unitario=1200),
+                    dict(descripcion="Mano de obra", cantidad=4, costo_unitario=5000),
+                ],
+                decision=dict(estado=EstadoPresupuesto.APROBADO),
+            ),
         ],
+        # Recién acá vuelve a decidir una persona: el reclamo ya está APROBADO porque se
+        # aprobó el presupuesto.
+        camino_posterior=[dict(estado=EstadoReclamo.EN_EJECUCION)],
     ),
     dict(
         nombre_escuela="Escuela N°8 - José de San Martín",
@@ -151,6 +187,28 @@ def reset_schema():
     Base.metadata.create_all(bind=engine)
 
 
+def crear_cuentas_de_contratistas(db, contratistas, emails):
+    """Vincula cada ficha que declara `email_cuenta` con un usuario que puede entrar."""
+    for ficha, email in zip(contratistas, emails):
+        if email is None:
+            continue
+        usuario = Usuario(
+            nombre=ficha.nombre_empresa,
+            email=email,
+            password_hash=hash_password(CONTRATISTA_PASSWORD),
+            email_confirmado=True,
+            telefono=ficha.telefono,
+            direccion=ficha.direccion,
+            nombre_empresa=ficha.nombre_empresa,
+            especialidad=ficha.especialidad,
+            tipo=TipoUsuario.CONTRATISTA,
+            estado=EstadoUsuario.APROBADO,
+        )
+        db.add(usuario)
+        db.flush()
+        ficha.usuario_id = usuario.id
+
+
 def crear_admin(db):
     """Crea el admin de desarrollo si no está. Devuelve True si lo creó."""
     if db.query(Usuario).filter(Usuario.email == ADMIN_EMAIL).first() is not None:
@@ -169,58 +227,86 @@ def crear_admin(db):
     return True
 
 
-def crear_reclamos(db):
-    """Crea los reclamos y los mueve por la máquina de estados según su `camino`."""
+CAMPOS_DEL_RECLAMO = (
+    "nombre_escuela",
+    "ubicacion",
+    "prioridad",
+    "categoria",
+    "descripcion",
+    "observaciones",
+)
+
+
+def _recorrer(db, reclamo, pasos):
+    for paso in pasos:
+        estados_reclamo.cambiar_estado(
+            db,
+            reclamo,
+            paso["estado"],
+            motivo=paso.get("motivo"),
+            origen=paso.get("origen", OrigenCambioEstado.MANUAL),
+        )
+
+
+def crear_reclamos(db, contratistas):
+    """Arma los reclamos de ejemplo dejando que los estados los decidan los servicios.
+
+    Los pasos manuales están en `camino` (antes de los presupuestos) y `camino_posterior`
+    (después). Lo del medio no se escribe: pasar a EN_EVALUACION y a APROBADO lo deduce
+    `sincronizar_por_presupuestos` de los presupuestos cargados, igual que en la app. Si
+    se escribieran a mano, el seed podría contradecir a las máquinas de estado sin que
+    nada avise.
+    """
     reclamos = []
     for data in RECLAMOS:
-        camino = data["camino"]
         reclamo = Reclamo(
-            **{campo: valor for campo, valor in data.items() if campo != "camino"},
+            **{campo: data[campo] for campo in CAMPOS_DEL_RECLAMO},
             estado=estados_reclamo.ESTADO_INICIAL,
         )
         db.add(reclamo)
         estados_reclamo.registrar_estado_inicial(db, reclamo)
-        for paso in camino:
-            estados_reclamo.cambiar_estado(
-                db,
-                reclamo,
-                paso["estado"],
-                motivo=paso.get("motivo"),
-                origen=paso.get("origen", OrigenCambioEstado.MANUAL),
+        _recorrer(db, reclamo, data["camino"])
+
+        presupuestos = []
+        for datos_presupuesto in data.get("presupuestos", []):
+            presupuesto = Presupuesto(
+                reclamo=reclamo,
+                contratista=contratistas[datos_presupuesto["contratista"]],
+                observaciones=datos_presupuesto["observaciones"],
+                items=[ItemPresupuesto(**item) for item in datos_presupuesto["items"]],
+                estado=estados_presupuesto.ESTADO_INICIAL,
             )
+            db.add(presupuesto)
+            estados_presupuesto.registrar_estado_inicial(db, presupuesto)
+            presupuestos.append((presupuesto, datos_presupuesto.get("decision")))
+
+        # Primero entran todas las ofertas y después se decide, como en la realidad: si
+        # se aprobara una con las otras sin cargar, no quedarían NO_SELECCIONADO.
+        if presupuestos:
+            estados_reclamo.sincronizar_por_presupuestos(db, reclamo)
+        for presupuesto, decision in presupuestos:
+            if decision is not None:
+                estados_presupuesto.decidir(
+                    db, presupuesto, decision["estado"], motivo=decision.get("motivo")
+                )
+
+        _recorrer(db, reclamo, data.get("camino_posterior", []))
         reclamos.append(reclamo)
     return reclamos
 
 
 def seed(db):
-    contratistas = [Contratista(**data) for data in CONTRATISTAS]
+    # `email_cuenta` no es columna de Contratista: sale acá y se usa para el login.
+    emails = [data.get("email_cuenta") for data in CONTRATISTAS]
+    contratistas = [
+        Contratista(**{k: v for k, v in data.items() if k != "email_cuenta"})
+        for data in CONTRATISTAS
+    ]
     db.add_all(contratistas)
-
-    reclamos = crear_reclamos(db)
     db.flush()
 
-    db.add(
-        Presupuesto(
-            reclamo_id=reclamos[0].id,
-            contratista_id=contratistas[0].id,
-            observaciones="Presupuesto para reparación del tablero.",
-            items=[
-                ItemPresupuesto(descripcion="Mano de obra", cantidad=8, costo_unitario=5000),
-                ItemPresupuesto(descripcion="Tablero eléctrico nuevo", cantidad=1, costo_unitario=45000),
-            ],
-        )
-    )
-    db.add(
-        Presupuesto(
-            reclamo_id=reclamos[1].id,
-            contratista_id=contratistas[1].id,
-            observaciones=None,
-            items=[
-                ItemPresupuesto(descripcion="Cañería PVC 3/4", cantidad=10, costo_unitario=1200),
-                ItemPresupuesto(descripcion="Mano de obra", cantidad=4, costo_unitario=5000),
-            ],
-        )
-    )
+    crear_cuentas_de_contratistas(db, contratistas, emails)
+    crear_reclamos(db, contratistas)
     db.commit()
 
 
@@ -245,6 +331,14 @@ def main():
             return
         seed(db)
         logger.info("Datos de ejemplo cargados correctamente.")
+        for data in CONTRATISTAS:
+            if data.get("email_cuenta"):
+                logger.info(
+                    "Contratista: %s / %s (%s)",
+                    data["email_cuenta"],
+                    CONTRATISTA_PASSWORD,
+                    data["nombre_empresa"],
+                )
     finally:
         db.close()
 

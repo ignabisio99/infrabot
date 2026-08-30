@@ -9,26 +9,21 @@ Así las reglas viven en un solo lugar y cada cambio queda registrado en el hist
     PENDIENTE_PRESUPUESTO ─(llega el 1er presupuesto)*─> EN_EVALUACION
                           └─(nadie cotizó)────────────> DESIERTO ──> PENDIENTE_PRESUPUESTO
 
-    EN_EVALUACION ─(se aprueba uno)──────────────────> APROBADO ──> EN_EJECUCION ──> FINALIZADO
-                  └─(se dio de baja el último)*──────> PENDIENTE_PRESUPUESTO
+    EN_EVALUACION ─(se aprueba un presupuesto)*──> APROBADO ──> EN_EJECUCION ──> FINALIZADO
+                  └─(no queda ninguno vigente)*───> PENDIENTE_PRESUPUESTO
 
     CANCELADO: alcanzable desde cualquier estado no terminal.
 
-    (*) Las dos marcadas son exclusivas del sistema (TRANSICIONES_SOLO_AUTOMATICAS):
-    las dispara `sincronizar_por_presupuestos` y quedan en el historial con origen
-    AUTOMATICO. Son las dos caras del invariante "tiene presupuestos <=> está
-    EN_EVALUACION", que es lo que hace que el estado se pueda leer sin ir a contar.
-
-    Todavía no hay forma de decir "ninguna de estas ofertas sirve": los presupuestos no
-    tienen estado propio, así que rechazarlos no se puede representar. Mientras tanto no
-    hace falta retroceder para pedir más, porque EN_EVALUACION sigue admitiendo que
-    lleguen presupuestos nuevos.
+    (*) Las tres marcadas son exclusivas del sistema (TRANSICIONES_SOLO_AUTOMATICAS): las
+    dispara `sincronizar_por_presupuestos`, que traduce el estado de los presupuestos al
+    del reclamo, y quedan en el historial con origen AUTOMATICO. Por eso el reclamo no se
+    aprueba a mano: aprobarlo es elegir un presupuesto, y así queda registrado cuál.
 """
 
 from sqlalchemy.orm import Session
 
 from models.historial_estado_reclamo import HistorialEstadoReclamo, OrigenCambioEstado
-from models.presupuesto import Presupuesto
+from models.presupuesto import EstadoPresupuesto
 from models.reclamo import EstadoReclamo, Reclamo
 
 ESTADO_INICIAL = EstadoReclamo.PENDIENTE_REVISION
@@ -65,8 +60,8 @@ TRANSICIONES: dict[EstadoReclamo, frozenset[EstadoReclamo]] = {
             EstadoReclamo.CANCELADO,
         }
     ),
-    # La vuelta a PENDIENTE_PRESUPUESTO existe para cuando el reclamo se queda sin
-    # presupuestos, y sólo la dispara el sistema (ver TRANSICIONES_SOLO_AUTOMATICAS).
+    # Las dos salidas hacia adelante y hacia atrás las decide el estado de los
+    # presupuestos, no una persona (ver TRANSICIONES_SOLO_AUTOMATICAS).
     EstadoReclamo.EN_EVALUACION: frozenset(
         {
             EstadoReclamo.APROBADO,
@@ -86,19 +81,28 @@ TRANSICIONES: dict[EstadoReclamo, frozenset[EstadoReclamo]] = {
 }
 
 
-# Transiciones que sólo dispara el sistema. Están en TRANSICIONES (son válidas), pero
-# `cambiar_estado` las rechaza con origen MANUAL.
-#
-# Las dos son las que sostienen el invariante "tiene presupuestos <=> está
-# EN_EVALUACION", y por eso ninguna persona las decide: las decide el conteo. Moverlas a
-# mano dejaría al reclamo describiendo algo que no es (EN_EVALUACION sin nada cargado,
-# o PENDIENTE_PRESUPUESTO con presupuestos ahí), y encima haría razonar mal a
-# `sincronizar_por_presupuestos`, que asume el invariante: con el estado corrido, una
-# baja de presupuesto puede terminar empujando el reclamo hacia EN_EVALUACION.
+# Transiciones que sólo dispara el sistema: son válidas, pero `cambiar_estado` las
+# rechaza con origen MANUAL. Las decide el estado de los presupuestos, no una persona.
+# Moverlas a mano dejaría al reclamo describiendo algo que no es, y haría razonar mal a
+# `sincronizar_por_presupuestos`, que las asume ciertas.
 TRANSICIONES_SOLO_AUTOMATICAS: dict[EstadoReclamo, frozenset[EstadoReclamo]] = {
     EstadoReclamo.PENDIENTE_PRESUPUESTO: frozenset({EstadoReclamo.EN_EVALUACION}),
-    EstadoReclamo.EN_EVALUACION: frozenset({EstadoReclamo.PENDIENTE_PRESUPUESTO}),
+    EstadoReclamo.EN_EVALUACION: frozenset(
+        {EstadoReclamo.PENDIENTE_PRESUPUESTO, EstadoReclamo.APROBADO}
+    ),
 }
+
+# Los estados que se deducen de los presupuestos. Fuera de estos tres el reclamo no se
+# toca: EN_EJECUCION y FINALIZADO ya tienen un presupuesto aprobado detrás, así que
+# sincronizar los querría mandar hacia atrás a APROBADO, y CANCELADO o RECHAZADO son
+# decisiones que ganan por encima de lo que digan las ofertas.
+ESTADOS_QUE_SIGUEN_A_LOS_PRESUPUESTOS = frozenset(
+    {
+        EstadoReclamo.PENDIENTE_PRESUPUESTO,
+        EstadoReclamo.EN_EVALUACION,
+        EstadoReclamo.APROBADO,
+    }
+)
 
 
 class TransicionInvalida(Exception):
@@ -209,42 +213,41 @@ def cambiar_estado(
 
 
 def sincronizar_por_presupuestos(db: Session, reclamo: Reclamo) -> HistorialEstadoReclamo | None:
-    """Acomoda el estado del reclamo según tenga o no presupuestos cargados.
+    """Acomoda el estado del reclamo al que dicen sus presupuestos.
 
-    Se llama al crear y al dar de baja un presupuesto. Devuelve el asiento del historial
-    si hubo cambio, o None si el estado ya era el que corresponde (por ejemplo, el
-    segundo presupuesto de un reclamo que ya está EN_EVALUACION).
+    Se llama al crear o dar de baja un presupuesto y al decidir sobre uno. Devuelve el
+    asiento del historial si hubo cambio, o None si el estado ya era el que corresponde
+    (por ejemplo, el segundo presupuesto de un reclamo que ya está EN_EVALUACION).
 
-    No hace commit, pero sí `flush`: la sesión está configurada con autoflush=False,
-    así que sin esto el INSERT o el DELETE recién hecho todavía no se vería en el conteo.
+    No hace commit, pero sí `flush`: la sesión está configurada con autoflush=False, así
+    que sin esto el INSERT o el DELETE recién hecho todavía no se vería.
     """
+    # Import local: estados_presupuesto importa este módulo, a nivel de módulo sería
+    # circular.
+    from services.estados_presupuesto import ESTADOS_VIGENTES
+
     db.flush()
-    tiene_presupuestos = (
-        db.query(Presupuesto.id).filter(Presupuesto.reclamo_id == reclamo.id).first() is not None
+
+    if reclamo.estado not in ESTADOS_QUE_SIGUEN_A_LOS_PRESUPUESTOS:
+        return None
+
+    estados = {presupuesto.estado for presupuesto in reclamo.presupuestos}
+
+    if EstadoPresupuesto.APROBADO in estados:
+        destino = EstadoReclamo.APROBADO
+        motivo = "Se aprobó uno de los presupuestos"
+    elif estados & ESTADOS_VIGENTES:
+        destino = EstadoReclamo.EN_EVALUACION
+        motivo = "El reclamo tiene presupuestos para evaluar"
+    else:
+        destino = EstadoReclamo.PENDIENTE_PRESUPUESTO
+        motivo = "El reclamo se quedó sin presupuestos para evaluar"
+
+    if destino is reclamo.estado:
+        return None
+
+    # Los motivos describen la condición y no el evento que la causó: la función ve el
+    # resultado, no el disparador, así que nombrar un evento sería adivinar.
+    return cambiar_estado(
+        db, reclamo, destino, motivo=motivo, origen=OrigenCambioEstado.AUTOMATICO
     )
-
-    # Los motivos describen la condición que se observó y no el evento que la causó
-    # ("llegó un presupuesto", "se dio de baja el último"): la función ve el conteo, no
-    # el disparador, así que contar un evento sería adivinar.
-    #
-    # El usuario queda en None a propósito: un cambio AUTOMATICO no tiene una persona
-    # detrás, y el `origen` del historial ya cuenta que lo disparó el sistema.
-    if tiene_presupuestos and reclamo.estado == EstadoReclamo.PENDIENTE_PRESUPUESTO:
-        return cambiar_estado(
-            db,
-            reclamo,
-            EstadoReclamo.EN_EVALUACION,
-            motivo="El reclamo ya tiene presupuestos para evaluar",
-            origen=OrigenCambioEstado.AUTOMATICO,
-        )
-
-    if not tiene_presupuestos and reclamo.estado == EstadoReclamo.EN_EVALUACION:
-        return cambiar_estado(
-            db,
-            reclamo,
-            EstadoReclamo.PENDIENTE_PRESUPUESTO,
-            motivo="El reclamo se quedó sin presupuestos",
-            origen=OrigenCambioEstado.AUTOMATICO,
-        )
-
-    return None

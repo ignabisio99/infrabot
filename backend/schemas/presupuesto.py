@@ -3,6 +3,9 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from models.historial_estado_reclamo import OrigenCambioEstado
+from models.presupuesto import EstadoPresupuesto
+
 
 class ItemPresupuestoCreate(BaseModel):
     descripcion: str = Field(min_length=1)
@@ -68,8 +71,29 @@ class PresupuestoOut(BaseModel):
     items: list[ItemPresupuestoOut]
     reclamo: ReclamoResumen
     contratista: ContratistaResumen
+    estado: EstadoPresupuesto
+    # Qué decisiones habilitar en la UI para este presupuesto, según su estado actual.
+    estados_posibles: list[EstadoPresupuesto]
 
     @computed_field
     @property
     def monto(self) -> Decimal:
         return sum((item.subtotal for item in self.items), Decimal("0"))
+
+
+class DecisionPresupuesto(BaseModel):
+    estado: EstadoPresupuesto
+    motivo: str | None = None
+
+
+class HistorialEstadoPresupuestoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    presupuesto_id: int
+    estado_anterior: EstadoPresupuesto | None
+    estado_nuevo: EstadoPresupuesto
+    origen: OrigenCambioEstado
+    usuario_id: int | None
+    motivo: str | None
+    fecha: datetime
