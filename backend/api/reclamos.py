@@ -377,7 +377,13 @@ def solicitar_informacion(
         )
 
     # Dejar al creador esperando que responda con la información adicional.
-    iniciar_espera_info(reclamo.telefono_creador, reclamo_id)
+    # Guardamos el contacto del contratista para avisarle cuando el creador termine.
+    iniciar_espera_info(
+        reclamo.telefono_creador,
+        reclamo_id,
+        telefono_contratista=ficha.telefono if ficha else "",
+        nombre_contratista=nombre_contratista,
+    )
 
     return NotificacionResultado(
         contratista_id=ficha.id if ficha else 0,

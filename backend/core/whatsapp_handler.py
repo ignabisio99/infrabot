@@ -5,6 +5,7 @@ la base de datos de reclamos. Soporta un flujo de creación de
 reclamos paso a paso.
 """
 
+import os
 from datetime import datetime, timezone, timedelta
 
 from sqlalchemy.orm import Session, joinedload
@@ -14,6 +15,8 @@ from models.reclamo import PrioridadReclamo, Reclamo
 
 # Zona horaria UTC-3 (Argentina), para los timestamps de la info adicional.
 ART = timezone(timedelta(hours=-3))
+
+APP_URL = os.getenv("APP_URL", "http://localhost:3000")
 
 # Estado de conversación por usuario (en memoria)
 # Clave: número de teléfono, Valor: dict con paso actual y datos parciales
@@ -326,16 +329,24 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
     return "⚠️ Ocurrió un error. Escribí *nuevo* para empezar de nuevo."
 
 
-def iniciar_espera_info(telefono_creador: str, reclamo_id: int) -> None:
+def iniciar_espera_info(
+    telefono_creador: str,
+    reclamo_id: int,
+    telefono_contratista: str = "",
+    nombre_contratista: str = "",
+) -> None:
     """Deja al creador del reclamo esperando que responda con información adicional.
 
     Lo llama el endpoint de solicitar-información. Los próximos mensajes (texto o media)
-    de ese número se agregan al reclamo hasta que escriba *listo*.
+    de ese número se agregan al reclamo hasta que escriba *listo*. Guarda el contacto
+    del contratista que pidió la info para poder avisarle cuando el creador termine.
     """
     _conversaciones[telefono_creador] = {
         "paso": "info_adicional",
         "reclamo_id": reclamo_id,
         "media": [],
+        "telefono_contratista": telefono_contratista,
+        "nombre_contratista": nombre_contratista,
     }
 
 
@@ -346,7 +357,29 @@ def _procesar_info_adicional(db: Session, usuario: str, mensaje: str) -> str:
     texto = mensaje.strip()
 
     if texto.lower() in ("listo", "terminar", "fin", "ok", "gracias"):
+        telefono_contratista = conv.get("telefono_contratista")
+        nombre_contratista = conv.get("nombre_contratista", "")
         del _conversaciones[usuario]
+
+        # Avisar al contratista que ya está disponible la información que había pedido.
+        if telefono_contratista:
+            from core.whatsapp_client import enviar_mensaje
+
+            reclamo = db.get(Reclamo, reclamo_id)
+            escuela = reclamo.nombre_escuela if reclamo else ""
+            link = f"{APP_URL}/portal/reclamos/{reclamo_id}/presupuestar"
+            aviso = (
+                f"✅ *Información actualizada — Reclamo #{reclamo_id}*\n\n"
+                f"🏫 Escuela: {escuela}\n\n"
+                "La persona que creó el reclamo cargó la información adicional que "
+                "habías solicitado. Ya podés revisarla y continuar con tu presupuesto.\n\n"
+                f"Ingresá desde acá:\n{link}"
+            )
+            try:
+                enviar_mensaje(telefono_contratista, aviso)
+            except Exception as e:  # noqa: BLE001 - no romper el flujo del creador si falla el aviso
+                print(f"[WHATSAPP] No se pudo avisar al contratista: {e}")
+
         return (
             f"✅ ¡Gracias! Sumé tu información al reclamo #{reclamo_id}. "
             "El contratista ya va a poder verla."
