@@ -35,6 +35,17 @@ export async function obtenerHistorialReclamo(reclamoId) {
   return response.json();
 }
 
+/** Devuelve la coordinación de visita del reclamo, o null si no hay. */
+export async function obtenerVisitaReclamo(reclamoId) {
+  const response = await fetchConAuth(`${API_URL}/reclamos/${reclamoId}/visita`);
+
+  if (!response.ok) {
+    throw new Error('No se pudo obtener la visita del reclamo.');
+  }
+
+  return response.json();
+}
+
 export async function subirFotoReclamo(reclamoId, archivo) {
   const formData = new FormData();
   formData.append('archivo', archivo);

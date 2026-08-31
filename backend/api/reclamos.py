@@ -392,3 +392,30 @@ def solicitar_informacion(
         enviado=True,
         error=None,
     )
+
+
+@router.get("/{reclamo_id}/visita")
+def obtener_visita_reclamo(
+    reclamo_id: int,
+    db: Session = Depends(get_db),
+    _user: Usuario = Depends(get_current_user),
+):
+    """Devuelve la coordinación de visita del reclamo (o null si no hay).
+
+    No usa response_model para poder devolver null sin error cuando aún no hay visita.
+    """
+    from models.visita import Visita
+    from schemas.visita import VisitaOut
+
+    if db.get(Reclamo, reclamo_id) is None:
+        raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+
+    visita = (
+        db.query(Visita)
+        .filter(Visita.reclamo_id == reclamo_id)
+        .order_by(Visita.id.desc())
+        .first()
+    )
+    if visita is None:
+        return None
+    return VisitaOut.model_validate(visita)

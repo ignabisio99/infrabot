@@ -16,6 +16,7 @@ import {
   IconBan,
   IconBolt,
   IconBrandWhatsapp,
+  IconCalendarEvent,
   IconChecks,
   IconClipboardList,
   IconHistory,
@@ -25,7 +26,7 @@ import {
   IconTruck,
 } from '@tabler/icons-react';
 
-import { obtenerHistorialReclamo, obtenerReclamo } from '../../api/reclamos';
+import { obtenerHistorialReclamo, obtenerReclamo, obtenerVisitaReclamo } from '../../api/reclamos';
 import { formatearIdReclamo } from '../../utils/ids';
 import { esAdministrador } from '../../utils/auth';
 import { notifyError } from '../../utils/notifications';
@@ -41,6 +42,8 @@ const iconoPorEstado = {
   PENDIENTE_PRESUPUESTO: IconReceipt2,
   EN_EVALUACION: IconReceipt2,
   APROBADO: IconChecks,
+  PENDIENTE_COORDINACION: IconCalendarEvent,
+  VISITA_COORDINADA: IconCalendarEvent,
   EN_EJECUCION: IconTruck,
   FINALIZADO: IconChecks,
   DESIERTO: IconBan,
@@ -79,14 +82,23 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
   // Guarda el último fetch resuelto junto con el id al que corresponde: así `cargando`
   // se puede derivar comparando contra `reclamoId` en vez de duplicar estado, y una
   // respuesta vieja que llega tarde (ej. al cambiar rápido de reclamo) no pisa una más nueva.
-  const [ultimoCargado, setUltimoCargado] = useState({ id: null, reclamo: null, historial: [] });
+  const [ultimoCargado, setUltimoCargado] = useState({
+    id: null,
+    reclamo: null,
+    historial: [],
+    visita: null,
+  });
 
   useEffect(() => {
     if (reclamoId === null) return;
     let vigente = true;
-    Promise.all([obtenerReclamo(reclamoId), obtenerHistorialReclamo(reclamoId)])
-      .then(([reclamo, historial]) => {
-        if (vigente) setUltimoCargado({ id: reclamoId, reclamo, historial });
+    Promise.all([
+      obtenerReclamo(reclamoId),
+      obtenerHistorialReclamo(reclamoId),
+      obtenerVisitaReclamo(reclamoId),
+    ])
+      .then(([reclamo, historial, visita]) => {
+        if (vigente) setUltimoCargado({ id: reclamoId, reclamo, historial, visita });
       })
       .catch((err) => {
         if (vigente) notifyError(err.message);
@@ -101,6 +113,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
   const cargadoCoincide = ultimoCargado.id === reclamoId;
   const reclamo = cargadoCoincide ? ultimoCargado.reclamo : null;
   const historial = cargadoCoincide ? ultimoCargado.historial : [];
+  const visita = cargadoCoincide ? ultimoCargado.visita : null;
   const cargando = reclamoId !== null && reclamo === null;
 
   const proximoPaso = reclamo ? proximoPasoPorEstado[reclamo.estado] : null;
@@ -188,6 +201,42 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
                 {proximoPaso.descripcion}
               </Text>
             </Paper>
+          )}
+
+          {visita && visita.estado === 'CONFIRMADA' && visita.horario_confirmado && (
+            <Paper
+              radius="md"
+              p="sm"
+              mb="md"
+              style={{
+                backgroundColor: 'var(--mantine-color-green-0)',
+                borderLeft: '4px solid var(--mantine-color-green-6)',
+              }}
+            >
+              <Group gap="xs" mb={4} wrap="nowrap">
+                <ThemeIcon size={24} radius="xl" variant="filled" color="green">
+                  <IconCalendarEvent size={14} />
+                </ThemeIcon>
+                <Text fw={700} size="sm" c="green.9">
+                  Visita de trabajo coordinada
+                </Text>
+              </Group>
+              <Text fw={600} size="sm" ml={32}>
+                {visita.horario_confirmado}
+              </Text>
+            </Paper>
+          )}
+
+          {visita && visita.estado === 'ESPERANDO_DISPONIBILIDAD' && (
+            <Text size="sm" c="dimmed" mb="md" ml={2}>
+              🕓 Esperando que el contratista proponga horarios para la visita.
+            </Text>
+          )}
+
+          {visita && visita.estado === 'ESPERANDO_ELECCION' && (
+            <Text size="sm" c="dimmed" mb="md" ml={2}>
+              🕓 Esperando que el responsable del reclamo elija un horario para la visita.
+            </Text>
           )}
 
           {puedeNotificar && (

@@ -180,4 +180,15 @@ def decidir(
                 )
 
     estados_reclamo.sincronizar_por_presupuestos(db, reclamo)
+
+    # Al aprobar un presupuesto, arrancar la coordinación de la visita de trabajo:
+    # el bot le pide disponibilidad al contratista ganador.
+    if nuevo_estado is EstadoPresupuesto.APROBADO:
+        from services import coordinacion_visita
+
+        try:
+            coordinacion_visita.iniciar_coordinacion(db, reclamo, presupuesto.contratista)
+        except Exception as e:  # noqa: BLE001 - no bloquear la aprobación si falla el aviso
+            print(f"[VISITA] No se pudo iniciar la coordinación: {e}")
+
     return evento

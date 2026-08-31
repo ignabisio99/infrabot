@@ -21,6 +21,7 @@ from models.reclamo import EstadoReclamo, PrioridadReclamo, Reclamo
 from models.solicitud_presupuesto import SolicitudPresupuesto
 from models.token_blacklist import TokenBlacklist
 from models.usuario import EstadoUsuario, TipoUsuario, Usuario
+from models.visita import EstadoVisita, Visita
 
 __all__ = [
     "Contratista",
@@ -40,5 +41,7 @@ __all__ = [
     "TipoUsuario",
     "TokenBlacklist",
     "Usuario",
+    "EstadoVisita",
+    "Visita",
     "lista_contratista_asociacion",
 ]

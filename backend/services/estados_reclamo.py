@@ -9,7 +9,7 @@ Así las reglas viven en un solo lugar y cada cambio queda registrado en el hist
     PENDIENTE_PRESUPUESTO ─(llega el 1er presupuesto)*─> EN_EVALUACION
                           └─(nadie cotizó)────────────> DESIERTO ──> PENDIENTE_PRESUPUESTO
 
-    EN_EVALUACION ─(se aprueba un presupuesto)*──> APROBADO ──> EN_EJECUCION ──> FINALIZADO
+    EN_EVALUACION ─(se aprueba un presupuesto)*──> APROBADO ─(el bot pide disponibilidad)*─> PENDIENTE_COORDINACION ─(se confirma la fecha)*─> VISITA_COORDINADA ──> EN_EJECUCION ──> FINALIZADO
                   └─(no queda ninguno vigente)*───> PENDIENTE_PRESUPUESTO
 
     CANCELADO: alcanzable desde cualquier estado no terminal.
@@ -69,7 +69,18 @@ TRANSICIONES: dict[EstadoReclamo, frozenset[EstadoReclamo]] = {
             EstadoReclamo.CANCELADO,
         }
     ),
-    EstadoReclamo.APROBADO: frozenset({EstadoReclamo.EN_EJECUCION, EstadoReclamo.CANCELADO}),
+    # Tras aprobar, el bot arranca la coordinación de la visita con el contratista.
+    EstadoReclamo.APROBADO: frozenset(
+        {EstadoReclamo.PENDIENTE_COORDINACION, EstadoReclamo.CANCELADO}
+    ),
+    # Mientras se negocian horarios entre contratista y escuela.
+    EstadoReclamo.PENDIENTE_COORDINACION: frozenset(
+        {EstadoReclamo.VISITA_COORDINADA, EstadoReclamo.CANCELADO}
+    ),
+    # Con la visita agendada, arranca la ejecución cuando el trabajo comienza.
+    EstadoReclamo.VISITA_COORDINADA: frozenset(
+        {EstadoReclamo.EN_EJECUCION, EstadoReclamo.CANCELADO}
+    ),
     EstadoReclamo.EN_EJECUCION: frozenset({EstadoReclamo.FINALIZADO, EstadoReclamo.CANCELADO}),
     # Se puede reabrir la convocatoria tras un llamado desierto.
     EstadoReclamo.DESIERTO: frozenset(
@@ -90,6 +101,9 @@ TRANSICIONES_SOLO_AUTOMATICAS: dict[EstadoReclamo, frozenset[EstadoReclamo]] = {
     EstadoReclamo.EN_EVALUACION: frozenset(
         {EstadoReclamo.PENDIENTE_PRESUPUESTO, EstadoReclamo.APROBADO}
     ),
+    # La coordinación de la visita la maneja el bot, no una persona desde la UI.
+    EstadoReclamo.APROBADO: frozenset({EstadoReclamo.PENDIENTE_COORDINACION}),
+    EstadoReclamo.PENDIENTE_COORDINACION: frozenset({EstadoReclamo.VISITA_COORDINADA}),
 }
 
 # Los estados que se deducen de los presupuestos. Fuera de estos tres el reclamo no se

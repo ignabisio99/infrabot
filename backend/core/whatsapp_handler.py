@@ -329,6 +329,11 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
     return "⚠️ Ocurrió un error. Escribí *nuevo* para empezar de nuevo."
 
 
+def registrar_estado_conversacion(telefono: str, estado: dict) -> None:
+    """Setea el estado conversacional de un número. Lo usan los servicios (visitas)."""
+    _conversaciones[telefono] = estado
+
+
 def iniciar_espera_info(
     telefono_creador: str,
     reclamo_id: int,
@@ -404,6 +409,73 @@ def _procesar_info_adicional(db: Session, usuario: str, mensaje: str) -> str:
     )
 
 
+def _procesar_visita_disponibilidad(db: Session, usuario: str, mensaje: str) -> str:
+    """El contratista carga franjas de disponibilidad para la visita."""
+    from models.visita import Visita
+    from services import coordinacion_visita
+
+    conv = _conversaciones[usuario]
+    visita = db.get(Visita, conv["visita_id"])
+    if visita is None:
+        del _conversaciones[usuario]
+        return "⚠️ No encontré la visita a coordinar. Escribí *ayuda* para ver los comandos."
+
+    texto = mensaje.strip()
+
+    if texto.lower() in ("listo", "terminar", "fin", "ok"):
+        if coordinacion_visita.finalizar_disponibilidad(db, visita):
+            del _conversaciones[usuario]
+            return (
+                "✅ ¡Gracias! Le pasé tus opciones a quien creó el reclamo. "
+                "Te aviso apenas elija un horario."
+            )
+        return "⚠️ Todavía no cargaste ninguna opción válida. Enviá al menos una en formato *DD/MM HH:MM*."
+
+    # Validar el formato DD/MM HH:MM para poder programar recordatorios.
+    if not coordinacion_visita.formato_valido(texto):
+        return (
+            "⚠️ No pude interpretar esa fecha. Usá el formato *DD/MM HH:MM*.\n"
+            "Por ejemplo: _12/08 10:00_\n\n"
+            "Podés mandar varias juntas separadas por coma o en mensajes distintos."
+        )
+
+    cantidad = coordinacion_visita.agregar_disponibilidad(db, visita, texto)
+    palabra = "opción" if cantidad == 1 else "opciones"
+    return (
+        f"🗓️ Anoté {cantidad} {palabra}. Podés seguir cargando más "
+        "o escribí *listo* cuando termines."
+    )
+
+
+def _procesar_visita_eleccion(db: Session, usuario: str, mensaje: str) -> str:
+    """El creador del reclamo elige uno de los horarios propuestos."""
+    from models.visita import Visita
+    from services import coordinacion_visita
+
+    conv = _conversaciones[usuario]
+    visita = db.get(Visita, conv["visita_id"])
+    if visita is None:
+        del _conversaciones[usuario]
+        return "⚠️ No encontré la visita a coordinar. Escribí *ayuda* para ver los comandos."
+
+    texto = mensaje.strip().replace("#", "")
+    try:
+        indice = int(texto)
+    except ValueError:
+        return "⚠️ Respondé con el número de la opción que preferís (ej: *1*)."
+
+    elegido = coordinacion_visita.confirmar_eleccion(db, visita, indice)
+    if elegido is None:
+        return "⚠️ Ese número no corresponde a ninguna opción. Probá de nuevo."
+
+    del _conversaciones[usuario]
+    return (
+        f"✅ ¡Listo! Confirmé la visita para:\n*{elegido}*\n\n"
+        "El contratista fue notificado. Les vamos a recordar la visita el día "
+        "anterior y el mismo día."
+    )
+
+
 def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
     """Recibe un mensaje de texto y devuelve la respuesta del bot."""
     texto = mensaje.strip().lower()
@@ -436,6 +508,27 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
     # Si el usuario está esperando ingresar un ID para buscar un reclamo
     if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "buscar_id":
         return _procesar_buscar_id(db, usuario, mensaje)
+
+    # Coordinación de visita: contratista cargando disponibilidad
+    if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "visita_disponibilidad":
+        return _procesar_visita_disponibilidad(db, usuario, mensaje)
+
+    # Coordinación de visita: creador eligiendo un horario
+    if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "visita_eleccion":
+        return _procesar_visita_eleccion(db, usuario, mensaje)
+
+    # Si no hay estado en memoria (ej. el backend se reinició), reconstruirlo desde la
+    # base para no perder una coordinación de visita en curso.
+    if usuario not in _conversaciones:
+        from services.coordinacion_visita import estado_conversacion_pendiente
+
+        estado_db = estado_conversacion_pendiente(db, usuario)
+        if estado_db is not None:
+            _conversaciones[usuario] = estado_db
+            if estado_db["paso"] == "visita_disponibilidad":
+                return _procesar_visita_disponibilidad(db, usuario, mensaje)
+            if estado_db["paso"] == "visita_eleccion":
+                return _procesar_visita_eleccion(db, usuario, mensaje)
 
     # Si el usuario está en medio de una conversación de creación
     if usuario in _conversaciones:

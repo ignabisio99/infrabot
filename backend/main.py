@@ -51,9 +51,19 @@ for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio
+
+    from services.recordatorios import loop_recordatorios
+
     Base.metadata.create_all(bind=engine)
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Scheduler de recordatorios de visitas (corre en background).
+    tarea_recordatorios = asyncio.create_task(loop_recordatorios())
+
     yield
+
+    tarea_recordatorios.cancel()
 
 
 app = FastAPI(lifespan=lifespan)
