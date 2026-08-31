@@ -321,7 +321,11 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
             </Tabs.Panel>
 
             <Tabs.Panel value="fotos" pt="md">
-              <ClaimPhotosManager reclamoId={reclamo.id} fotosIniciales={reclamo.fotos} />
+              <ClaimPhotosManager
+                reclamoId={reclamo.id}
+                fotosIniciales={reclamo.fotos}
+                soloLectura
+              />
             </Tabs.Panel>
 
             {mostrarSolicitudes && (
