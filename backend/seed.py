@@ -131,9 +131,12 @@ RECLAMOS = [
                 decision=dict(estado=EstadoPresupuesto.APROBADO),
             ),
         ],
-        # Recién acá vuelve a decidir una persona: el reclamo ya está APROBADO porque se
-        # aprobó el presupuesto.
-        camino_posterior=[dict(estado=EstadoReclamo.EN_EJECUCION)],
+        # Al aprobar el presupuesto, el bot ya dejó el reclamo en PENDIENTE_COORDINACION.
+        # Para el ejemplo simulamos que se coordinó la visita y arrancó la ejecución.
+        camino_posterior=[
+            dict(estado=EstadoReclamo.VISITA_COORDINADA, origen=OrigenCambioEstado.AUTOMATICO),
+            dict(estado=EstadoReclamo.EN_EJECUCION),
+        ],
     ),
     dict(
         nombre_escuela="Escuela N°8 - José de San Martín",
