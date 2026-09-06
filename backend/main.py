@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 import models  # noqa: F401 - registra todos los modelos antes de create_all (ver models/__init__.py)
 from api.auth import router as auth_router
 from api.contratistas import router as contratistas_router
+from api.dashboard import router as dashboard_router
 from api.listas_contratistas import router as listas_contratistas_router
 from api.presupuestos import router as presupuestos_router
 from api.reclamos import router as reclamos_router
@@ -98,6 +99,7 @@ app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR, check_dir=False), name=
 app.include_router(auth_router)
 app.include_router(reclamos_router)
 app.include_router(contratistas_router)
+app.include_router(dashboard_router)
 app.include_router(listas_contratistas_router)
 app.include_router(presupuestos_router)
 app.include_router(whatsapp_router)
