@@ -23,6 +23,7 @@ import {
   IconMapPin,
   IconPhoto,
   IconReceipt2,
+  IconSparkles,
   IconTruck,
 } from '@tabler/icons-react';
 
@@ -31,6 +32,7 @@ import { formatearIdReclamo } from '../../utils/ids';
 import { esAdministrador } from '../../utils/auth';
 import { notifyError } from '../../utils/notifications';
 import { BudgetRequestsList } from './BudgetRequestsList';
+import { ClaimIAPanel } from './ClaimIAPanel';
 import { ClaimPhotosManager } from './ClaimPhotosManager';
 import { NotifyContractorsModal } from './NotifyContractorsModal';
 import { PriorityBadge } from './PriorityBadge';
@@ -78,7 +80,7 @@ function TituloEvento({ evento }) {
   );
 }
 
-export function ClaimDetailDrawer({ reclamoId, onClose }) {
+export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclamoActualizado }) {
   // Guarda el último fetch resuelto junto con el id al que corresponde: así `cargando`
   // se puede derivar comparando contra `reclamoId` en vez de duplicar estado, y una
   // respuesta vieja que llega tarde (ej. al cambiar rápido de reclamo) no pisa una más nueva.
@@ -88,6 +90,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
     historial: [],
     visita: null,
   });
+  const [recarga, setRecarga] = useState(0);
 
   useEffect(() => {
     if (reclamoId === null) return;
@@ -106,7 +109,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
     return () => {
       vigente = false;
     };
-  }, [reclamoId]);
+  }, [reclamoId, recarga]);
 
   const [notificarAbierto, setNotificarAbierto] = useState(false);
 
@@ -143,6 +146,11 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
                 </Text>
                 <PriorityBadge prioridad={reclamo.prioridad} size="xs" />
                 <StatusBadge estado={reclamo.estado} size="xs" variant="light" />
+                {reclamo.requiere_revision && (
+                  <Badge size="xs" color="orange" variant="light" tt="none">
+                    Revisión
+                  </Badge>
+                )}
               </Group>
               <Text fw={700} size="lg" lh={1.15}>
                 {reclamo.nombre_escuela}
@@ -282,6 +290,9 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
               <Tabs.Tab value="fotos" leftSection={<IconPhoto size={16} />}>
                 Fotos
               </Tabs.Tab>
+              <Tabs.Tab value="ia" leftSection={<IconSparkles size={16} />}>
+                IA
+              </Tabs.Tab>
               {mostrarSolicitudes && (
                 <Tabs.Tab value="presupuestos" leftSection={<IconReceipt2 size={16} />}>
                   Presupuestos
@@ -325,6 +336,17 @@ export function ClaimDetailDrawer({ reclamoId, onClose }) {
                 reclamoId={reclamo.id}
                 fotosIniciales={reclamo.fotos}
                 soloLectura
+              />
+            </Tabs.Panel>
+
+            <Tabs.Panel value="ia" pt="md">
+              <ClaimIAPanel
+                reclamo={reclamo}
+                onAbrirReclamo={onAbrirReclamo}
+                onReclamoActualizado={() => {
+                  setRecarga((n) => n + 1);
+                  onReclamoActualizado?.();
+                }}
               />
             </Tabs.Panel>
 

@@ -12,6 +12,17 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  adminer:
+    image: adminer:4
+    container_name: adminer_infrabot
+    restart: always
+    ports:
+      - "${ADMINER_PORT:-8082}:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+    depends_on:
+      - db
+
   backend:
     build: ./backend
     container_name: backend_app
@@ -26,12 +37,33 @@ services:
       WHATSAPP_TOKEN: ${WHATSAPP_TOKEN}
       WHATSAPP_PHONE_ID: ${WHATSAPP_PHONE_ID}
       WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
+      AI_SSL_VERIFY: ${AI_SSL_VERIFY:-true}
+      INFLACION_API_URL: ${INFLACION_API_URL:-https://apis.datos.gob.ar/series/api/series/}
+      INFLACION_SERIE_ID: ${INFLACION_SERIE_ID:-101.1_I2NG_2016_M_22}
+      AI_DUPLICADOS_SEMANTICOS: ${AI_DUPLICADOS_SEMANTICOS:-false}
+      AI_WHATSAPP: ${AI_WHATSAPP:-false}
+      AI_STT_MODEL: ${AI_STT_MODEL:-whisper-1}
+      AI_GEMINI_NATIVE_URL: ${AI_GEMINI_NATIVE_URL:-https://generativelanguage.googleapis.com/v1beta}
+      AI_STT_MOCK_TEXTO: ${AI_STT_MOCK_TEXTO:-}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      SEGUIMIENTO_HORAS: ${SEGUIMIENTO_HORAS:-48}
+      SEGUIMIENTO_INTERVALO_SEGUNDOS: ${SEGUIMIENTO_INTERVALO_SEGUNDOS:-900}
     ports:
       - "${BACKEND_PORT}:8000"
     volumes:
       - ./backend:/app
     depends_on:
       - db
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis_infrabot
+    restart: always
 
   frontend:
     build: ./frontend

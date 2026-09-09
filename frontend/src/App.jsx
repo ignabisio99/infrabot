@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { Center, Loader, Stack, Text } from '@mantine/core';
 
 import { getMe, logout } from './api/auth';
 import { AppLayout } from './layout/AppLayout';
@@ -26,6 +27,7 @@ import { MySolicitudesPage } from './pages/portal/MySolicitudesPage';
 import { ReportsPage } from './pages/reports/ReportsPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
 import { UsersApprovalPage } from './pages/users/UsersApprovalPage';
+import { WhatsAppSimPage } from './pages/whatsapp/WhatsAppSimPage';
 
 function getUsuarioGuardado() {
   try {
@@ -66,8 +68,10 @@ function App() {
 
   async function verificarSesion() {
     setVerificando(true);
+    const controlador = new AbortController();
+    const timer = setTimeout(() => controlador.abort(), 8000);
     try {
-      const usuarioReal = await getMe();
+      const usuarioReal = await getMe(controlador.signal);
       if (usuarioReal) {
         localStorage.setItem('infrabot_user', JSON.stringify(usuarioReal));
         setUsuario(usuarioReal);
@@ -76,10 +80,10 @@ function App() {
         setUsuario(null);
       }
     } catch {
-      // Si no puede conectar al backend, limpiar sesión por seguridad
       localStorage.removeItem('infrabot_user');
       setUsuario(null);
     } finally {
+      clearTimeout(timer);
       setVerificando(false);
     }
   }
@@ -99,8 +103,18 @@ function App() {
     setUsuario(null);
   };
 
-  // Mientras verifica la sesión, no renderizar nada (evita flash)
-  if (verificando) return null;
+  if (verificando) {
+    return (
+      <Center h="100vh">
+        <Stack align="center" gap="xs">
+          <Loader color="teal" />
+          <Text size="sm" c="dimmed">
+            Verificando sesión…
+          </Text>
+        </Stack>
+      </Center>
+    );
+  }
 
   // No autenticado → login
   if (!usuario) {
@@ -167,6 +181,7 @@ function App() {
         <Route path="/reportes" element={<ReportsPage />} />
         <Route path="/solicitudes" element={<UsersApprovalPage />} />
         <Route path="/configuracion" element={<SettingsPage />} />
+        <Route path="/whatsapp" element={<WhatsAppSimPage />} />
         <Route path="*" element={<Navigate to="/reclamos" replace />} />
       </Route>
     </Routes>

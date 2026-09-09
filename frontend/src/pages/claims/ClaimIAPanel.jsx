@@ -1,0 +1,364 @@
+import { useEffect, useState } from 'react';
+import {
+  Alert,
+  Anchor,
+  Badge,
+  Button,
+  Group,
+  List,
+  Paper,
+  Stack,
+  Text,
+} from '@mantine/core';
+
+import {
+  analizarMediaReclamo,
+  buscarDuplicados,
+  clasificarReclamo,
+  crearEstimacion,
+  listarRecomendaciones,
+  obtenerEstimacion,
+  orquestarReclamo,
+} from '../../api/ai';
+import { formatoMoneda } from '../../utils/formatters';
+import { formatearIdReclamo } from '../../utils/ids';
+import { notifyError, notifySuccess } from '../../utils/notifications';
+import { PriorityBadge } from './PriorityBadge';
+
+function Bloque({ titulo, children }) {
+  return (
+    <Paper withBorder radius="md" p="sm">
+      <Text fw={600} size="sm" mb="xs">
+        {titulo}
+      </Text>
+      {children}
+    </Paper>
+  );
+}
+
+function parsePayload(payload) {
+  try {
+    return JSON.parse(payload);
+  } catch {
+    return {};
+  }
+}
+
+function ultimaDeTipo(recomendaciones, tipo) {
+  return recomendaciones.find((item) => item.tipo === tipo);
+}
+
+export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) {
+  const [clasificacion, setClasificacion] = useState(null);
+  const [aplicando, setAplicando] = useState(false);
+
+  const [duplicados, setDuplicados] = useState(null);
+  const [buscandoDups, setBuscandoDups] = useState(false);
+
+  const [estimacion, setEstimacion] = useState(null);
+  const [cargandoEst, setCargandoEst] = useState(true);
+  const [generandoEst, setGenerandoEst] = useState(false);
+
+  const [vision, setVision] = useState(null);
+  const [analizando, setAnalizando] = useState(false);
+  const [orquestando, setOrquestando] = useState(false);
+  const [pipeline, setPipeline] = useState(null);
+
+  const hayFotos = (reclamo.fotos || []).some((foto) => foto.tipo === 'IMAGEN');
+
+  useEffect(() => {
+    let vigente = true;
+    setClasificacion(null);
+    setDuplicados(null);
+    setVision(null);
+    setPipeline(null);
+    setCargandoEst(true);
+    setBuscandoDups(true);
+
+    Promise.all([
+      obtenerEstimacion(reclamo.id),
+      buscarDuplicados(reclamo.id),
+      listarRecomendaciones({ reclamoId: reclamo.id }),
+    ])
+      .then(([est, dups, recs]) => {
+        if (!vigente) return;
+        setEstimacion(est);
+        setDuplicados(dups);
+        const clasif = ultimaDeTipo(recs, 'CLASIFICACION');
+        if (clasif) {
+          const payload = parsePayload(clasif.payload);
+          setClasificacion({
+            categoria: payload.categoria || reclamo.categoria,
+            prioridad: payload.prioridad || reclamo.prioridad,
+            confianza: clasif.confianza ?? 0,
+            justificacion: payload.justificacion || '',
+          });
+        }
+        const vis = ultimaDeTipo(recs, 'VISION');
+        if (vis) {
+          const payload = parsePayload(vis.payload);
+          setVision({
+            hallazgos: payload.hallazgos || [],
+            severidad: payload.severidad || 'MEDIA',
+            sugerencia_descripcion: payload.sugerencia_descripcion || '',
+          });
+        }
+      })
+      .catch((err) => {
+        if (vigente) notifyError(err.message);
+      })
+      .finally(() => {
+        if (!vigente) return;
+        setCargandoEst(false);
+        setBuscandoDups(false);
+      });
+
+    return () => {
+      vigente = false;
+    };
+  }, [reclamo.id, reclamo.categoria, reclamo.prioridad]);
+
+  const aplicar = async () => {
+    setAplicando(true);
+    try {
+      const resultado = await clasificarReclamo(reclamo.id, { aplicar: true });
+      setClasificacion(resultado);
+      notifySuccess('Se reaplicó la categoría y prioridad sugeridas.');
+      onReclamoActualizado?.();
+    } catch (err) {
+      notifyError(err.message);
+    } finally {
+      setAplicando(false);
+    }
+  };
+
+  const regenerarDuplicados = async () => {
+    setBuscandoDups(true);
+    try {
+      const resultado = await buscarDuplicados(reclamo.id);
+      setDuplicados(resultado);
+    } catch (err) {
+      notifyError(err.message);
+    } finally {
+      setBuscandoDups(false);
+    }
+  };
+
+  const generar = async () => {
+    setGenerandoEst(true);
+    try {
+      const resultado = await crearEstimacion(reclamo.id);
+      setEstimacion(resultado);
+      notifySuccess('Estimación preliminar regenerada.');
+      onReclamoActualizado?.();
+    } catch (err) {
+      notifyError(err.message);
+    } finally {
+      setGenerandoEst(false);
+    }
+  };
+
+  const analizar = async (enriquecer) => {
+    setAnalizando(true);
+    try {
+      const resultado = await analizarMediaReclamo(reclamo.id, {
+        enriquecerDescripcion: enriquecer,
+      });
+      setVision(resultado);
+      if (enriquecer) {
+        notifySuccess('Se agregó la sugerencia a las observaciones.');
+        onReclamoActualizado?.();
+      }
+    } catch (err) {
+      notifyError(err.message);
+    } finally {
+      setAnalizando(false);
+    }
+  };
+
+  const orquestar = async () => {
+    setOrquestando(true);
+    try {
+      const resultado = await orquestarReclamo(reclamo.id);
+      setPipeline(resultado);
+      if (resultado.categoria) {
+        setClasificacion({
+          categoria: resultado.categoria,
+          prioridad: resultado.prioridad,
+          confianza: resultado.confianza,
+          justificacion: resultado.justificacion,
+        });
+      }
+      if (resultado.duplicados) {
+        setDuplicados({ reclamo_id: reclamo.id, candidatos: resultado.duplicados });
+      }
+      const est = await obtenerEstimacion(reclamo.id);
+      setEstimacion(est);
+      notifySuccess('Se volvió a analizar el reclamo.');
+      onReclamoActualizado?.();
+    } catch (err) {
+      notifyError(err.message);
+    } finally {
+      setOrquestando(false);
+    }
+  };
+
+  return (
+    <Stack gap="md">
+      <Alert color="blue" title="Análisis automático">
+        La IA corre sola al registrar el reclamo y al subir fotos. Acá se ven los
+        resultados; los botones de abajo solo regeneran si hace falta.
+      </Alert>
+
+      {pipeline && (
+        <Text size="sm" c="dimmed">
+          Último recálculo: {(pipeline.pasos || []).join(' → ')}
+          {pipeline.requiere_revision ? ' · Requiere revisión' : ''}
+        </Text>
+      )}
+
+      <Bloque titulo="Clasificación">
+        <Text size="sm" c="dimmed" mb="xs">
+          En el reclamo: {reclamo.categoria} · <PriorityBadge prioridad={reclamo.prioridad} size="xs" />
+        </Text>
+        {clasificacion && (
+          <Paper radius="sm" p="xs" mb="xs" bg="gray.0">
+            <Group gap="xs" mb={4}>
+              <Text size="sm" fw={500}>
+                {clasificacion.categoria}
+              </Text>
+              <PriorityBadge prioridad={clasificacion.prioridad} size="xs" />
+              <Badge size="xs" variant="light">
+                {Math.round((clasificacion.confianza || 0) * 100)}%
+              </Badge>
+            </Group>
+            {clasificacion.justificacion && (
+              <Text size="sm">{clasificacion.justificacion}</Text>
+            )}
+          </Paper>
+        )}
+        <Button size="xs" variant="subtle" loading={aplicando} onClick={aplicar}>
+          Reaplicar clasificación
+        </Button>
+      </Bloque>
+
+      <Bloque titulo="Posibles duplicados">
+        {buscandoDups && (
+          <Text size="sm" c="dimmed" mb="xs">
+            Buscando similares…
+          </Text>
+        )}
+        {duplicados && duplicados.candidatos.length === 0 && (
+          <Text size="sm" c="dimmed">
+            No se encontraron reclamos similares.
+          </Text>
+        )}
+        {duplicados?.candidatos.map((candidato) => (
+          <Paper key={candidato.reclamo_id} withBorder p="xs" mb={6}>
+            <Group justify="space-between" wrap="nowrap">
+              <div>
+                <Anchor
+                  size="sm"
+                  fw={500}
+                  onClick={() => onAbrirReclamo?.(candidato.reclamo_id)}
+                >
+                  {formatearIdReclamo(candidato.reclamo_id)} · {candidato.nombre_escuela}
+                </Anchor>
+                <Text size="xs" c="dimmed" lineClamp={2}>
+                  {candidato.descripcion}
+                </Text>
+              </div>
+              <Badge variant="light">{Math.round(candidato.similitud * 100)}%</Badge>
+            </Group>
+          </Paper>
+        ))}
+        <Button size="xs" variant="subtle" loading={buscandoDups} onClick={regenerarDuplicados} mt="xs">
+          Volver a buscar
+        </Button>
+      </Bloque>
+
+      <Bloque titulo="Estimación preliminar">
+        {cargandoEst && (
+          <Text size="sm" c="dimmed">
+            Cargando estimación…
+          </Text>
+        )}
+        {!cargandoEst && !estimacion && (
+          <Text size="sm" c="dimmed" mb="xs">
+            Todavía no hay estimación para este reclamo.
+          </Text>
+        )}
+        {estimacion && (
+          <Stack gap={4} mb="xs">
+            <Text size="sm">
+              Materiales {formatoMoneda.format(Number(estimacion.materiales))} · Mano de obra{' '}
+              {formatoMoneda.format(Number(estimacion.mano_obra))} · Otros{' '}
+              {formatoMoneda.format(Number(estimacion.otros))}
+            </Text>
+            <Group gap="xs">
+              <Text size="sm" fw={700}>
+                Total {formatoMoneda.format(Number(estimacion.total))}
+              </Text>
+              <Badge size="xs" variant="light">
+                {Math.round(estimacion.confianza * 100)}%
+              </Badge>
+              {estimacion.requiere_revision && (
+                <Badge size="xs" color="orange">
+                  Requiere revisión
+                </Badge>
+              )}
+            </Group>
+          </Stack>
+        )}
+        <Button size="xs" variant="subtle" loading={generandoEst} onClick={generar}>
+          Regenerar estimación
+        </Button>
+      </Bloque>
+
+      <Bloque titulo="Análisis de fotos">
+        {!hayFotos && (
+          <Text size="sm" c="dimmed">
+            Este reclamo no tiene fotos de tipo imagen para analizar.
+          </Text>
+        )}
+        {vision && (
+          <Stack gap={4} mb="xs">
+            <Badge size="xs" variant="light">
+              Severidad {vision.severidad}
+            </Badge>
+            {vision.hallazgos.length > 0 && (
+              <List size="sm" spacing={2}>
+                {vision.hallazgos.map((h) => (
+                  <List.Item key={h}>{h}</List.Item>
+                ))}
+              </List>
+            )}
+            {vision.sugerencia_descripcion && (
+              <Text size="sm">{vision.sugerencia_descripcion}</Text>
+            )}
+          </Stack>
+        )}
+        {hayFotos && (
+          <Group gap="xs">
+            <Button size="xs" variant="subtle" loading={analizando} onClick={() => analizar(false)}>
+              Reanalizar fotos
+            </Button>
+            <Button size="xs" variant="subtle" loading={analizando} onClick={() => analizar(true)}>
+              Agregar sugerencia a observaciones
+            </Button>
+          </Group>
+        )}
+      </Bloque>
+
+      <Button size="xs" variant="light" loading={orquestando} onClick={orquestar}>
+        Regenerar todo el análisis
+      </Button>
+
+      {reclamo.requiere_revision && (
+        <Alert color="orange" title="Derivado a operador">
+          Este reclamo quedó marcado para revisión humana.
+        </Alert>
+      )}
+    </Stack>
+  );
+}

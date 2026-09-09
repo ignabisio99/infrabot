@@ -1,3 +1,4 @@
+import logging
 import os
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -31,7 +32,9 @@ from schemas.reclamo import (
     ReclamoOut,
 )
 from services import estados_reclamo
+from services.ai.automatico import post_alta_reclamo, post_fotos_reclamo
 
+logger = logging.getLogger(__name__)
 APP_URL = os.getenv("APP_URL", "http://localhost:3000")
 
 router = APIRouter(prefix="/reclamos", tags=["reclamos"])
@@ -52,6 +55,13 @@ def crear_reclamo(reclamo: ReclamoCreate, db: Session = Depends(get_db), _user: 
     estados_reclamo.registrar_estado_inicial(db, nuevo_reclamo)
     db.commit()
     db.refresh(nuevo_reclamo)
+    post_alta_reclamo(db, nuevo_reclamo)
+    try:
+        db.commit()
+        db.refresh(nuevo_reclamo)
+    except Exception:
+        logger.exception("No se pudo persistir la IA automática del reclamo %s", nuevo_reclamo.id)
+        db.rollback()
     return nuevo_reclamo
 
 
@@ -161,6 +171,17 @@ def subir_foto(reclamo_id: int, archivo: UploadFile = File(...), db: Session = D
     db.add(nueva_foto)
     db.commit()
     db.refresh(nueva_foto)
+    if tipo == TipoMedia.IMAGEN:
+        recargado = (
+            _con_fotos(db.query(Reclamo)).filter(Reclamo.id == reclamo_id).first()
+        )
+        if recargado is not None:
+            post_fotos_reclamo(db, recargado)
+            try:
+                db.commit()
+            except Exception:
+                logger.exception("No se pudo persistir el análisis de fotos del reclamo %s", reclamo_id)
+                db.rollback()
     return nueva_foto
 
 

@@ -55,9 +55,10 @@ export async function logout() {
   });
 }
 
-export async function getMe() {
+export async function getMe(signal) {
   const response = await fetch(`${API_URL}/auth/me`, {
     credentials: 'include',
+    signal,
   });
 
   if (!response.ok) return null;

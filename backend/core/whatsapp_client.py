@@ -113,7 +113,51 @@ EXTENSIONES_MIME = {
     "video/mp4": ".mp4",
     "video/3gpp": ".3gp",
     "video/quicktime": ".mov",
+    "audio/ogg": ".ogg",
+    "audio/mpeg": ".mp3",
+    "audio/mp4": ".m4a",
+    "audio/amr": ".amr",
+    "audio/aac": ".aac",
 }
+
+
+def _descargar_binario(media_id: str) -> tuple[bytes, str]:
+    """Descarga el media de WhatsApp y devuelve (contenido, mime_type)."""
+    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
+
+    # Paso 1: obtener la URL del archivo
+    meta_url = f"https://graph.facebook.com/v21.0/{media_id}"
+    try:
+        resp = httpx.get(meta_url, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            print(f"[WHATSAPP] Error obteniendo media URL: {resp.status_code} - {resp.text}")
+            return (b"", "")
+        data = resp.json()
+        download_url = data.get("url", "")
+        mime_type = data.get("mime_type", "")
+    except Exception as e:
+        print(f"[WHATSAPP] Excepción obteniendo media URL: {e}")
+        return (b"", "")
+
+    if not download_url:
+        return (b"", "")
+
+    # Paso 2: descargar el archivo
+    try:
+        resp = httpx.get(download_url, headers=headers, timeout=30)
+        if resp.status_code != 200:
+            print(f"[WHATSAPP] Error descargando media: {resp.status_code}")
+            return (b"", "")
+    except Exception as e:
+        print(f"[WHATSAPP] Excepción descargando media: {e}")
+        return (b"", "")
+
+    return (resp.content, mime_type)
+
+
+def descargar_media_binario(media_id: str) -> tuple[bytes, str]:
+    """Descarga un media y lo devuelve en memoria (para STT de audios)."""
+    return _descargar_binario(media_id)
 
 
 def descargar_media(media_id: str, subcarpeta: str = "reclamos") -> tuple[str, str]:
@@ -126,44 +170,19 @@ def descargar_media(media_id: str, subcarpeta: str = "reclamos") -> tuple[str, s
     Returns:
         Tuple (url_local, mime_type) o ("", "") si falla.
     """
-    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
-
-    # Paso 1: obtener la URL del archivo
-    meta_url = f"https://graph.facebook.com/v21.0/{media_id}"
-    try:
-        resp = httpx.get(meta_url, headers=headers, timeout=10)
-        if resp.status_code != 200:
-            print(f"[WHATSAPP] Error obteniendo media URL: {resp.status_code} - {resp.text}")
-            return ("", "")
-        data = resp.json()
-        download_url = data.get("url", "")
-        mime_type = data.get("mime_type", "")
-    except Exception as e:
-        print(f"[WHATSAPP] Excepción obteniendo media URL: {e}")
+    contenido, mime_type = _descargar_binario(media_id)
+    if not contenido:
         return ("", "")
 
-    if not download_url:
-        return ("", "")
-
-    # Paso 2: descargar el archivo
-    try:
-        resp = httpx.get(download_url, headers=headers, timeout=30)
-        if resp.status_code != 200:
-            print(f"[WHATSAPP] Error descargando media: {resp.status_code}")
-            return ("", "")
-    except Exception as e:
-        print(f"[WHATSAPP] Excepción descargando media: {e}")
-        return ("", "")
-
-    # Paso 3: guardar en disco
-    extension = EXTENSIONES_MIME.get(mime_type, ".bin")
+    # Guardar en disco
+    extension = EXTENSIONES_MIME.get(mime_type.split(";")[0].strip(), ".bin")
     nombre_unico = f"{uuid.uuid4().hex}{extension}"
     destino = UPLOADS_DIR / subcarpeta
     destino.mkdir(parents=True, exist_ok=True)
     ruta = destino / nombre_unico
 
     with ruta.open("wb") as f:
-        f.write(resp.content)
+        f.write(contenido)
 
     url_local = f"/uploads/{subcarpeta}/{nombre_unico}"
     print(f"[WHATSAPP] Media descargada: {url_local} ({mime_type})")

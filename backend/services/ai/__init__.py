@@ -1,0 +1,41 @@
+"""Servicios del Motor de IA."""
+
+from services.ai import (
+    auditoria,
+    automatico,
+    clasificacion,
+    completitud,
+    contratistas_sugeridos,
+    derivacion,
+    duplicados,
+    estimacion,
+    extraccion_reclamo,
+    grafo,
+    historicos,
+    inflacion,
+    ocr_presupuesto,
+    registro,
+    stt,
+    sync_historicos,
+    vision_reclamo,
+)
+
+__all__ = [
+    "auditoria",
+    "automatico",
+    "clasificacion",
+    "completitud",
+    "contratistas_sugeridos",
+    "derivacion",
+    "duplicados",
+    "estimacion",
+    "extraccion_reclamo",
+    "grafo",
+    "historicos",
+    "inflacion",
+    "ocr_presupuesto",
+    "registro",
+    "stt",
+    "sync_historicos",
+    "vision_reclamo",
+]

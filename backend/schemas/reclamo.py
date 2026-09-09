@@ -32,6 +32,7 @@ class ReclamoOut(ReclamoCreate):
 
     id: int
     estado: EstadoReclamo
+    requiere_revision: bool = False
     telefono_creador: str | None = None
     fecha_creacion: datetime
     fotos: list[FotoReclamoOut] = []

@@ -28,6 +28,7 @@ import {
   IconLogout,
   IconUserCheck,
   IconUsersGroup,
+  IconBrandWhatsapp,
 } from '@tabler/icons-react';
 import logo from '../assets/logo-infrabot.jpeg';
 import { listarUsuariosPendientes } from '../api/usuarios';
@@ -44,6 +45,7 @@ const links = [
   { label: 'Reportes', path: '/reportes', icon: IconChartBar },
   { label: 'Solicitudes', path: '/solicitudes', icon: IconUserCheck, mostrarPendientes: true },
   { label: 'Configuración', path: '/configuracion', icon: IconSettings },
+  { label: 'WhatsApp (sim)', path: '/whatsapp', icon: IconBrandWhatsapp },
 ];
 
 // Obtiene datos del usuario logueado desde localStorage

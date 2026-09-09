@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Enum, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Enum, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from core.database import Base
@@ -49,6 +49,7 @@ class Reclamo(Base):
     categoria = Column(String(255), nullable=False)
     descripcion = Column(Text, nullable=False)
     observaciones = Column(Text, nullable=True)
+    requiere_revision = Column(Boolean, nullable=False, default=False)
     # Número de WhatsApp de quien creó el reclamo por el bot. Null si se creó desde la web.
     telefono_creador = Column(String(50), nullable=True)
     fecha_creacion = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

@@ -12,13 +12,14 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { IconGavel, IconListDetails } from '@tabler/icons-react';
+import { IconGavel, IconListDetails, IconShieldCheck } from '@tabler/icons-react';
 
 import { RowActionsMenu } from '../../components/RowActionsMenu';
 import { eliminarPresupuesto, listarPresupuestos } from '../../api/presupuestos';
 import { formatearIdReclamo } from '../../utils/ids';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 import { formatoMoneda } from '../../utils/formatters';
+import { BudgetAuditModal } from './BudgetAuditModal';
 import { BudgetItemsModal } from './BudgetItemsModal';
 import { BudgetStatusBadge } from './BudgetStatusBadge';
 import { DecideBudgetModal } from './DecideBudgetModal';
@@ -31,6 +32,7 @@ export function BudgetsListPage() {
   const [error, setError] = useState(null);
   const [eliminandoId, setEliminandoId] = useState(null);
   const [presupuestoSeleccionado, setPresupuestoSeleccionado] = useState(null);
+  const [presupuestoAAuditar, setPresupuestoAAuditar] = useState(null);
   const [presupuestoADecidir, setPresupuestoADecidir] = useState(null);
 
   const cargar = useCallback(
@@ -134,13 +136,21 @@ export function BudgetsListPage() {
                     editDisabled={!estaVigente(presupuesto)}
                     deleteDisabled={!estaVigente(presupuesto)}
                     extraItems={
-                      <Menu.Item
-                        leftSection={<IconGavel size={14} />}
-                        onClick={() => setPresupuestoADecidir(presupuesto)}
-                        disabled={presupuesto.estados_posibles.length === 0}
-                      >
-                        Decidir
-                      </Menu.Item>
+                      <>
+                        <Menu.Item
+                          leftSection={<IconShieldCheck size={14} />}
+                          onClick={() => setPresupuestoAAuditar(presupuesto)}
+                        >
+                          Ver auditoría
+                        </Menu.Item>
+                        <Menu.Item
+                          leftSection={<IconGavel size={14} />}
+                          onClick={() => setPresupuestoADecidir(presupuesto)}
+                          disabled={presupuesto.estados_posibles.length === 0}
+                        >
+                          Decidir
+                        </Menu.Item>
+                      </>
                     }
                   />
                 </Table.Td>
@@ -153,6 +163,11 @@ export function BudgetsListPage() {
       <BudgetItemsModal
         presupuesto={presupuestoSeleccionado}
         onClose={() => setPresupuestoSeleccionado(null)}
+      />
+
+      <BudgetAuditModal
+        presupuesto={presupuestoAAuditar}
+        onClose={() => setPresupuestoAAuditar(null)}
       />
 
       {/* Recarga la lista entera y no la fila: aprobar uno deja a los otros del mismo

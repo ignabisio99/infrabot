@@ -10,8 +10,13 @@ from datetime import datetime, timezone, timedelta
 
 from sqlalchemy.orm import Session, joinedload
 
+from core.ai import config as ai_config
 from models.foto_reclamo import FotoReclamo, TipoMedia
 from models.reclamo import PrioridadReclamo, Reclamo
+from models.recomendacion_ia import TipoRecomendacionIA
+from services import estados_reclamo
+from services.ai import clasificacion, completitud, extraccion_reclamo, registro, stt
+from services.ai.automatico import post_alta_reclamo, post_fotos_reclamo
 
 # Zona horaria UTC-3 (Argentina), para los timestamps de la info adicional.
 ART = timezone(timedelta(hours=-3))
@@ -91,6 +96,53 @@ CATEGORIAS = [
     "Aberturas",
     "Otro",
 ]
+
+
+def _mensaje_paso_media(conv: dict) -> str:
+    media_count = len(conv.get("media", []))
+    if media_count > 0:
+        return (
+            f"📎 *Paso 4/4:* Ya tenés {media_count} archivo(s) adjunto(s).\n"
+            "Podés enviar más fotos/videos o escribí *listo* para continuar."
+        )
+    return (
+        "📎 *Paso 4/4:* Enviá fotos o videos del problema (opcional).\n"
+        "Podés enviar varios. Cuando termines, escribí *listo*."
+    )
+
+
+def _tras_descripcion_o_completitud(conv: dict, datos: dict) -> str:
+    """Tras descripción (o respuesta a faltante): valida completitud o avanza a media."""
+    rondas = int(conv.get("faltantes_rondas") or 0)
+    if rondas >= completitud.MAX_RONDAS_FALTANTES:
+        datos["observaciones"] = (
+            (datos.get("observaciones") or "")
+            + " [IA] Completitud parcial: se alcanzó el máximo de preguntas."
+        ).strip()
+        conv["paso"] = "media"
+        return _mensaje_paso_media(conv)
+
+    try:
+        resultado = completitud.evaluar_completitud(
+            escuela=datos.get("nombre_escuela") or "",
+            ubicacion=datos.get("ubicacion") or "",
+            descripcion=datos.get("descripcion") or "",
+        )
+    except Exception:
+        conv["paso"] = "media"
+        return _mensaje_paso_media(conv)
+
+    if resultado.completo or not resultado.faltantes:
+        conv["paso"] = "media"
+        conv.pop("faltantes_cola", None)
+        conv.pop("faltante_campo", None)
+        return _mensaje_paso_media(conv)
+
+    primera, *resto = resultado.faltantes
+    conv["paso"] = "faltantes"
+    conv["faltante_campo"] = primera.campo
+    conv["faltantes_cola"] = [{"campo": f.campo, "pregunta": f.pregunta} for f in resto]
+    return f"❓ {primera.pregunta}"
 
 
 def _formatear_reclamo(r: Reclamo) -> str:
@@ -197,14 +249,25 @@ def _mostrar_ayuda(variante: str = "menu"):
     else:
         body = "🤖 *InfraBot*\n\n¿Qué querés hacer?"
 
-    return {
-        "tipo": "botones",
-        "body": body,
-        "botones": [
+    # WhatsApp admite 3 botones. Con IA on se reemplaza "buscar" por el modo libre;
+    # buscar sigue disponible escribiendo el ID o *ver #<id>*.
+    if ai_config.ai_whatsapp_enabled():
+        botones = [
+            {"id": "libre", "title": "💬 Contame el problema"},
+            {"id": "nuevo", "title": "📝 Nuevo reclamo"},
+            {"id": "recientes", "title": "📋 Ver recientes"},
+        ]
+    else:
+        botones = [
             {"id": "nuevo", "title": "📝 Nuevo reclamo"},
             {"id": "recientes", "title": "📋 Ver recientes"},
             {"id": "buscar_reclamo", "title": "🔍 Buscar reclamo"},
-        ],
+        ]
+
+    return {
+        "tipo": "botones",
+        "body": body,
+        "botones": botones,
     }
 
 
@@ -220,16 +283,98 @@ def _iniciar_creacion(usuario: str) -> str:
     )
 
 
+def _iniciar_libre(usuario: str) -> str:
+    """Modo conversacional IA: el usuario cuenta el problema con sus palabras."""
+    _conversaciones[usuario] = {"paso": "libre", "modo": "ia", "datos": {}, "media": []}
+    return (
+        "💬 *Modo asistido por IA*\n\n"
+        "Contame el problema con tus palabras (o mandame un audio): "
+        "de qué escuela es, dónde es y qué pasó.\n"
+        "Podés escribir *cancelar* en cualquier momento para salir."
+    )
+
+
+def _siguiente_tras_libre(conv: dict, datos: dict) -> str:
+    """Tras la extracción libre: pide solo lo que falte y sigue el flujo común."""
+    if not datos.get("nombre_escuela"):
+        conv["paso"] = "escuela"
+        return "🏫 ¿De qué escuela es el reclamo?"
+    if not datos.get("ubicacion"):
+        conv["paso"] = "ubicacion"
+        return "📍 ¿En qué parte de la escuela es el problema? (aula, piso, sector)"
+    return _tras_descripcion_o_completitud(conv, datos)
+
+
+def _procesar_libre(db: Session, conv: dict, datos: dict, texto: str) -> str:
+    if len(texto) < 10:
+        return "⚠️ Contame un poco más del problema (mínimo 10 caracteres):"
+
+    try:
+        extraidos = extraccion_reclamo.extraer_datos_reclamo(texto)
+    except Exception:
+        extraidos = extraccion_reclamo.DatosReclamoExtraidos(
+            nombre_escuela=None,
+            ubicacion=None,
+            descripcion=texto,
+            confianza=0.0,
+            proveedor="fallback",
+        )
+
+    if extraidos.nombre_escuela:
+        datos["nombre_escuela"] = extraidos.nombre_escuela
+    if extraidos.ubicacion:
+        datos["ubicacion"] = extraidos.ubicacion
+    datos["descripcion"] = extraidos.descripcion
+
+    try:
+        resultado = clasificacion.clasificar_texto(
+            datos["descripcion"],
+            escuela=datos.get("nombre_escuela"),
+            ubicacion=datos.get("ubicacion"),
+        )
+        datos["categoria"] = resultado.categoria
+        datos["prioridad"] = resultado.prioridad.value
+        datos["confianza_clasificacion"] = resultado.confianza
+    except Exception:
+        datos["categoria"] = "Sin clasificar"
+        datos["prioridad"] = "MEDIA"
+        datos["confianza_clasificacion"] = 0.0
+
+    registro.registrar(
+        db,
+        tipo=TipoRecomendacionIA.COMPLETITUD,
+        payload={
+            "modo": "libre",
+            "texto_original": texto,
+            "nombre_escuela": extraidos.nombre_escuela,
+            "ubicacion": extraidos.ubicacion,
+            "descripcion": extraidos.descripcion,
+            "categoria": datos["categoria"],
+            "prioridad": datos["prioridad"],
+        },
+        proveedor=extraidos.proveedor,
+        confianza=extraidos.confianza,
+    )
+    db.commit()
+
+    return _siguiente_tras_libre(conv, datos)
+
+
 def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
     conv = _conversaciones[usuario]
     paso = conv["paso"]
     datos = conv["datos"]
     texto = mensaje.strip()
 
+    if paso == "libre":
+        return _procesar_libre(db, conv, datos, texto)
+
     if paso == "escuela":
         if len(texto) < 3:
             return "⚠️ El nombre debe tener al menos 3 caracteres. Intentá de nuevo:"
         datos["nombre_escuela"] = texto
+        if conv.get("modo") == "ia":
+            return _siguiente_tras_libre(conv, datos)
         conv["paso"] = "ubicacion"
         return "📍 *Paso 2/4:* ¿Cuál es la ubicación? (dirección o referencia)"
 
@@ -237,6 +382,8 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
         if len(texto) < 2:
             return "⚠️ La ubicación debe tener al menos 2 caracteres. Intentá de nuevo:"
         datos["ubicacion"] = texto
+        if conv.get("modo") == "ia":
+            return _siguiente_tras_libre(conv, datos)
         conv["paso"] = "descripcion"
         return "📝 *Paso 3/4:* Describí el problema (mínimo 10 caracteres):"
 
@@ -244,19 +391,36 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
         if len(texto) < 10:
             return "⚠️ La descripción debe tener al menos 10 caracteres. Intentá de nuevo:"
         datos["descripcion"] = texto
-        datos["categoria"] = "Sin clasificar"
-        datos["prioridad"] = "MEDIA"
-        conv["paso"] = "media"
-        media_count = len(conv.get("media", []))
-        if media_count > 0:
-            return (
-                f"📎 *Paso 4/4:* Ya tenés {media_count} archivo(s) adjunto(s).\n"
-                "Podés enviar más fotos/videos o escribí *listo* para continuar."
+        try:
+            resultado = clasificacion.clasificar_texto(
+                texto,
+                escuela=datos.get("nombre_escuela"),
+                ubicacion=datos.get("ubicacion"),
             )
-        return (
-            "📎 *Paso 4/4:* Enviá fotos o videos del problema (opcional).\n"
-            "Podés enviar varios. Cuando termines, escribí *listo*."
-        )
+            datos["categoria"] = resultado.categoria
+            datos["prioridad"] = resultado.prioridad.value
+            datos["confianza_clasificacion"] = resultado.confianza
+        except Exception:
+            datos["categoria"] = "Sin clasificar"
+            datos["prioridad"] = "MEDIA"
+            datos["confianza_clasificacion"] = 0.0
+
+        return _tras_descripcion_o_completitud(conv, datos)
+
+    if paso == "faltantes":
+        cola = conv.get("faltantes_cola") or []
+        campo_actual = conv.get("faltante_campo") or "descripcion"
+        completitud.fusionar_respuesta(datos=datos, campo=campo_actual, respuesta=texto)
+        conv["faltantes_rondas"] = int(conv.get("faltantes_rondas") or 0) + 1
+
+        # Si quedan preguntas prearmadas de la misma evaluación, seguir la cola.
+        if cola:
+            siguiente = cola.pop(0)
+            conv["faltantes_cola"] = cola
+            conv["faltante_campo"] = siguiente.get("campo") or "descripcion"
+            return f"❓ {siguiente.get('pregunta')}"
+
+        return _tras_descripcion_o_completitud(conv, datos)
 
     if paso == "media":
         if texto.lower() in ("listo", "continuar", "siguiente", "ok"):
@@ -266,6 +430,8 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
                 "✅ *Resumen del reclamo:*\n\n"
                 f"🏫 Escuela: {datos['nombre_escuela']}\n"
                 f"📍 Ubicación: {datos['ubicacion']}\n"
+                f"🏷️ Categoría: {datos.get('categoria', 'Sin clasificar')}\n"
+                f"🚦 Prioridad: {datos.get('prioridad', 'MEDIA')}\n"
                 f"📝 Descripción: {datos['descripcion']}\n"
                 f"📎 Archivos: {media_count}\n\n"
                 "¿Confirmás la carga?"
@@ -290,9 +456,12 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
                 prioridad=PrioridadReclamo(datos["prioridad"]),
                 categoria=datos["categoria"],
                 descripcion=datos["descripcion"],
+                observaciones=datos.get("observaciones"),
                 telefono_creador=usuario or None,
+                estado=estados_reclamo.ESTADO_INICIAL,
             )
             db.add(nuevo)
+            estados_reclamo.registrar_estado_inicial(db, nuevo)
             db.commit()
             db.refresh(nuevo)
 
@@ -311,11 +480,32 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
             if media_guardados > 0:
                 db.commit()
 
+            post_alta_reclamo(db, nuevo)
+            recargado = (
+                db.query(Reclamo)
+                .options(joinedload(Reclamo.fotos))
+                .filter(Reclamo.id == nuevo.id)
+                .first()
+            )
+            if recargado is not None:
+                post_fotos_reclamo(db, recargado)
+                nuevo = recargado
+            try:
+                db.commit()
+                db.refresh(nuevo)
+            except Exception:
+                db.rollback()
+
             del _conversaciones[usuario]
             media_txt = f"\n📎 Archivos adjuntos: {media_guardados}" if media_guardados else ""
+            derivacion_txt = (
+                "\n\n⚠️ Además, un operador va a revisar tu caso."
+                if nuevo.requiere_revision
+                else ""
+            )
             return (
                 f"🎉 *¡Reclamo #{nuevo.id} creado exitosamente!*\n\n"
-                f"{_formatear_reclamo(nuevo)}{media_txt}\n\n"
+                f"{_formatear_reclamo(nuevo)}{media_txt}{derivacion_txt}\n\n"
                 f"Podés ver su estado con: *ver #{nuevo.id}*"
             )
         elif texto_lower in ("no", "n", "cancelar"):
@@ -538,6 +728,15 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
     if texto in ("nuevo", "crear", "cargar", "nuevo reclamo"):
         return _iniciar_creacion(usuario)
 
+    # Comando: modo conversacional IA (opt-in)
+    if texto in ("libre", "contame el problema", "modo ia"):
+        if not ai_config.ai_whatsapp_enabled():
+            return (
+                "⚠️ El modo asistido por IA no está habilitado.\n"
+                "Escribí *nuevo* para cargar un reclamo paso a paso."
+            )
+        return _iniciar_libre(usuario)
+
     # Botón: buscar reclamo → pedir el ID
     if texto == "buscar_reclamo":
         _conversaciones[usuario] = {"paso": "buscar_id"}
@@ -648,7 +847,7 @@ def procesar_media(db: Session, usuario: str, url_local: str, mime_type: str, ca
         paso = conv["paso"]
 
         # Aceptar media en cualquier paso del flujo de creación
-        if paso in ("escuela", "ubicacion", "descripcion", "media", "confirmacion"):
+        if paso in ("libre", "escuela", "ubicacion", "descripcion", "faltantes", "media", "confirmacion"):
             conv.setdefault("media", []).append({
                 "url": url_local,
                 "mime_type": mime_type,
@@ -672,3 +871,39 @@ def procesar_media(db: Session, usuario: str, url_local: str, mime_type: str, ca
         "📎 Recibí tu archivo, pero no tenés un reclamo en curso.\n"
         "Escribí *nuevo* para crear un reclamo y poder adjuntar fotos/videos."
     )
+
+
+def procesar_audio(db: Session, usuario: str, audio: bytes, mime_type: str):
+    """Transcribe una nota de voz y la procesa como si fuera texto.
+
+    Si el usuario no tiene flujo en curso y el modo IA está habilitado,
+    arranca el modo libre directamente con el transcript.
+    """
+    try:
+        texto = stt.transcribir_audio(audio, mime_type)
+    except stt.TranscripcionError:
+        return "⚠️ No pude transcribir el audio. Probá escribir el mensaje."
+
+    registro.registrar(
+        db,
+        tipo=TipoRecomendacionIA.STT,
+        payload={"transcripcion": texto, "mime_type": mime_type},
+        proveedor=ai_config.ai_provider_name(),
+    )
+    db.commit()
+
+    prefijo = f'🎤 Entendí: "{texto}"\n\n'
+
+    if usuario not in _conversaciones:
+        if not ai_config.ai_whatsapp_enabled():
+            return (
+                prefijo
+                + "Para cargar un reclamo escribí *nuevo* y seguí los pasos."
+            )
+        _iniciar_libre(usuario)
+
+    respuesta = procesar_mensaje(db, texto, usuario)
+    if isinstance(respuesta, dict):
+        respuesta["body"] = prefijo + respuesta.get("body", "")
+        return respuesta
+    return prefijo + respuesta
