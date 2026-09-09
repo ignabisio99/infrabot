@@ -14,6 +14,7 @@ from core.ai import config as ai_config
 from models.foto_reclamo import FotoReclamo, TipoMedia
 from models.reclamo import PrioridadReclamo, Reclamo
 from models.recomendacion_ia import TipoRecomendacionIA
+from services import estados_reclamo
 from services.ai import clasificacion, completitud, extraccion_reclamo, registro, stt
 from services.ai.automatico import post_alta_reclamo, post_fotos_reclamo
 
@@ -457,8 +458,10 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
                 descripcion=datos["descripcion"],
                 observaciones=datos.get("observaciones"),
                 telefono_creador=usuario or None,
+                estado=estados_reclamo.ESTADO_INICIAL,
             )
             db.add(nuevo)
+            estados_reclamo.registrar_estado_inicial(db, nuevo)
             db.commit()
             db.refresh(nuevo)
 

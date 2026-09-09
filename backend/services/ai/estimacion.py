@@ -66,18 +66,27 @@ def generar_estimacion(
             meta_inflacion = r.meta_inflacion
 
     provider = get_llm_provider()
-    raw = provider.complete_json(
-        system=SYSTEM_ESTIMACION,
-        user=user_estimacion(
-            descripcion=reclamo.descripcion,
-            categoria=reclamo.categoria,
-            prioridad=reclamo.prioridad.value,
-            escuela=reclamo.nombre_escuela,
-            referencias=contexto_refs,
-            confianza_sugerida=confianza_base,
-        ),
-        schema_hint=_SCHEMA,
-    )
+    try:
+        raw = provider.complete_json(
+            system=SYSTEM_ESTIMACION,
+            user=user_estimacion(
+                descripcion=reclamo.descripcion,
+                categoria=reclamo.categoria,
+                prioridad=reclamo.prioridad.value,
+                escuela=reclamo.nombre_escuela,
+                referencias=contexto_refs,
+                confianza_sugerida=confianza_base,
+            ),
+            schema_hint=_SCHEMA,
+        )
+        proveedor_nombre = provider.name
+    except Exception:
+        logger.exception(
+            "LLM de estimación no disponible para reclamo %s; se usan solo históricos",
+            reclamo.id,
+        )
+        raw = {}
+        proveedor_nombre = "historicos"
 
     materiales = _as_decimal(raw.get("materiales"))
     mano_obra = _as_decimal(raw.get("mano_obra"))
@@ -124,7 +133,7 @@ def generar_estimacion(
         total=total,
         confianza=confianza,
         detalle=json.dumps(detalle, ensure_ascii=False),
-        proveedor=provider.name,
+        proveedor=proveedor_nombre,
         requiere_revision=requiere_revision,
     )
     db.add(estimacion)
@@ -142,7 +151,7 @@ def generar_estimacion(
             "validacion": validacion,
         },
         reclamo_id=reclamo.id,
-        proveedor=provider.name,
+        proveedor=proveedor_nombre,
         confianza=confianza,
         requiere_revision=requiere_revision,
     )

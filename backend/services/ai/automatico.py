@@ -24,9 +24,14 @@ logger = logging.getLogger(__name__)
 
 def post_alta_reclamo(db: Session, reclamo: Reclamo) -> None:
     """Clasifica, busca duplicados, estima y deriva a operador si corresponde."""
+    estado: dict = {}
     try:
         estado = ejecutar_pipeline(db, reclamo)
         db.flush()
+    except Exception:
+        logger.exception("IA automática falló al procesar reclamo %s", reclamo.id)
+
+    try:
         actualizado = db.get(Reclamo, reclamo.id)
         if actualizado is None:
             return
@@ -55,7 +60,7 @@ def post_alta_reclamo(db: Session, reclamo: Reclamo) -> None:
                 requiere_revision=True,
             )
     except Exception:
-        logger.exception("IA automática falló al procesar reclamo %s", reclamo.id)
+        logger.exception("Derivación automática falló en reclamo %s", reclamo.id)
 
 
 def post_fotos_reclamo(db: Session, reclamo: Reclamo) -> None:

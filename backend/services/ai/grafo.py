@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from models.reclamo import Reclamo
 from models.recomendacion_ia import TipoRecomendacionIA
 from services.ai import clasificacion, duplicados, estimacion, registro
+from services.ai.derivacion import UMBRAL_CONFIANZA_DERIVACION, evaluar_derivacion
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,20 @@ class EstadoPipeline(TypedDict, total=False):
     total: float | None
     requiere_revision: bool
     error: str | None
+
+
+def _puede_avanzar_tras_ia(reclamo: Reclamo, state: EstadoPipeline) -> bool:
+    """Sólo deja atrás PENDIENTE_REVISION si la clasificación fue del LLM y no hay que derivar."""
+    if state.get("proveedor") == "fallback":
+        return False
+    if (state.get("confianza") or 0) < UMBRAL_CONFIANZA_DERIVACION:
+        return False
+    der = evaluar_derivacion(
+        descripcion=reclamo.descripcion,
+        categoria=state.get("categoria") or reclamo.categoria,
+        confianza=state.get("confianza"),
+    )
+    return not der.derivar
 
 
 def ejecutar_pipeline(db: Session, reclamo: Reclamo) -> EstadoPipeline:
@@ -49,8 +64,21 @@ def _compilar(db: Session):
         reclamo = db.get(Reclamo, state["reclamo_id"])
         if reclamo is None:
             return {"error": "Reclamo no encontrado", "pasos": [*state.get("pasos", []), "error"]}
-        resultado = clasificacion.clasificar_reclamo(reclamo)
-        clasificacion.aplicar_clasificacion(reclamo, resultado)
+        try:
+            resultado = clasificacion.clasificar_reclamo(reclamo)
+            clasificacion.aplicar_clasificacion(reclamo, resultado)
+        except Exception:
+            logger.exception(
+                "Clasificación LLM falló en reclamo %s; se mantiene la del alta",
+                reclamo.id,
+            )
+            resultado = clasificacion.ResultadoClasificacion(
+                categoria=reclamo.categoria,
+                prioridad=reclamo.prioridad,
+                confianza=0.0,
+                justificacion="El proveedor de IA no respondió; se mantiene categoría y prioridad del alta.",
+                proveedor="fallback",
+            )
         registro.registrar(
             db,
             tipo=TipoRecomendacionIA.CLASIFICACION,
@@ -107,7 +135,14 @@ def _compilar(db: Session):
         if state.get("error"):
             return {}
         reclamo = db.get(Reclamo, state["reclamo_id"])
-        est = estimacion.generar_estimacion(db, reclamo, transicionar=True)
+        # No se salta PENDIENTE_REVISION si la IA no clasificó de verdad
+        # (LLM caído, confianza baja) o si el caso pide operador.
+        transicionar = _puede_avanzar_tras_ia(reclamo, state)
+        try:
+            est = estimacion.generar_estimacion(db, reclamo, transicionar=transicionar)
+        except Exception:
+            logger.exception("Estimación falló en reclamo %s", reclamo.id)
+            return {"pasos": [*state.get("pasos", []), "estimar_error"]}
         requiere = bool(est.requiere_revision or reclamo.requiere_revision)
         return {
             "pasos": [*state.get("pasos", []), "estimar"],
