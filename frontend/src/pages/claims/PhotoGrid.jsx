@@ -62,21 +62,23 @@ export function PhotoGrid({ items, onRemove, onSelect, removingId }) {
       {items.map((item) => (
         <div key={item.id} style={{ position: 'relative', aspectRatio: '1 / 1' }}>
           <MediaThumbnail item={item} onClick={onSelect ? () => onSelect(item) : undefined} />
-          <ActionIcon
-            variant="filled"
-            color="red"
-            size="sm"
-            radius="xl"
-            loading={removingId === item.id}
-            onClick={(event) => {
-              event.stopPropagation();
-              onRemove(item.id);
-            }}
-            aria-label="Quitar archivo"
-            style={{ position: 'absolute', top: 4, right: 4 }}
-          >
-            <IconTrash size={14} />
-          </ActionIcon>
+          {onRemove && (
+            <ActionIcon
+              variant="filled"
+              color="red"
+              size="sm"
+              radius="xl"
+              loading={removingId === item.id}
+              onClick={(event) => {
+                event.stopPropagation();
+                onRemove(item.id);
+              }}
+              aria-label="Quitar archivo"
+              style={{ position: 'absolute', top: 4, right: 4 }}
+            >
+              <IconTrash size={14} />
+            </ActionIcon>
+          )}
         </div>
       ))}
     </SimpleGrid>

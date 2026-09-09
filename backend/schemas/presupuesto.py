@@ -3,10 +3,14 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from models.historial_estado_reclamo import OrigenCambioEstado
+from models.presupuesto import EstadoPresupuesto
+
 
 class ItemPresupuestoCreate(BaseModel):
     descripcion: str = Field(min_length=1)
     cantidad: Decimal = Field(gt=0)
+    unidad: str = Field(default="unidad", min_length=1, max_length=20)
     costo_unitario: Decimal = Field(ge=0)
 
 
@@ -21,11 +25,25 @@ class ItemPresupuestoOut(ItemPresupuestoCreate):
         return self.cantidad * self.costo_unitario
 
 
-class PresupuestoCreate(BaseModel):
-    reclamo_id: int
+class PresupuestoBase(BaseModel):
     contratista_id: int
     observaciones: str | None = None
     items: list[ItemPresupuestoCreate] = Field(min_length=1)
+
+
+class PresupuestoCreate(PresupuestoBase):
+    reclamo_id: int
+
+
+class PresupuestoUpdate(PresupuestoBase):
+    """Lo mismo que crear, pero sin `reclamo_id`: el reclamo queda fijo desde el alta.
+
+    Si el presupuesto se cargó en el reclamo equivocado, se da de baja y se carga de
+    nuevo. `extra="forbid"` para que mandarlo igual devuelva un 422 explicando el
+    error, en vez de descartarlo en silencio y hacer creer que el cambio se aplicó.
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class ReclamoResumen(BaseModel):
@@ -53,8 +71,29 @@ class PresupuestoOut(BaseModel):
     items: list[ItemPresupuestoOut]
     reclamo: ReclamoResumen
     contratista: ContratistaResumen
+    estado: EstadoPresupuesto
+    # Qué decisiones habilitar en la UI para este presupuesto, según su estado actual.
+    estados_posibles: list[EstadoPresupuesto]
 
     @computed_field
     @property
     def monto(self) -> Decimal:
         return sum((item.subtotal for item in self.items), Decimal("0"))
+
+
+class DecisionPresupuesto(BaseModel):
+    estado: EstadoPresupuesto
+    motivo: str | None = None
+
+
+class HistorialEstadoPresupuestoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    presupuesto_id: int
+    estado_anterior: EstadoPresupuesto | None
+    estado_nuevo: EstadoPresupuesto
+    origen: OrigenCambioEstado
+    usuario_id: int | None
+    motivo: str | None
+    fecha: datetime

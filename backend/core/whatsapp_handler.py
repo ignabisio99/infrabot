@@ -5,6 +5,9 @@ la base de datos de reclamos. Soporta un flujo de creación de
 reclamos paso a paso.
 """
 
+import os
+from datetime import datetime, timezone, timedelta
+
 from sqlalchemy.orm import Session, joinedload
 
 from core.ai import config as ai_config
@@ -14,9 +17,72 @@ from models.recomendacion_ia import TipoRecomendacionIA
 from services.ai import clasificacion, completitud, extraccion_reclamo, registro, stt
 from services.ai.automatico import post_alta_reclamo, post_fotos_reclamo
 
+# Zona horaria UTC-3 (Argentina), para los timestamps de la info adicional.
+ART = timezone(timedelta(hours=-3))
+
+APP_URL = os.getenv("APP_URL", "http://localhost:3000")
+
 # Estado de conversación por usuario (en memoria)
 # Clave: número de teléfono, Valor: dict con paso actual y datos parciales
 _conversaciones: dict[str, dict] = {}
+
+# Última vez que cada número escribió (en memoria). Sirve para saludar con el menú
+# cuando vuelve después de un rato en vez de responder "no entendí".
+_ultima_actividad: dict[str, datetime] = {}
+
+# Si pasó más de este tiempo desde el último mensaje, tratamos la conversación como
+# "nueva" y mostramos el saludo con botones.
+UMBRAL_SALUDO = timedelta(hours=1)
+
+# --- Rate limiting básico (anti-spam) ---
+# Timestamps de los últimos mensajes por número, para detectar flood.
+_historial_mensajes: dict[str, list[datetime]] = {}
+# Hasta cuándo está bloqueado cada número por haber excedido el límite.
+_bloqueados_hasta: dict[str, datetime] = {}
+
+# Máximo de mensajes permitidos dentro de la ventana antes de bloquear.
+RATE_LIMIT_MAX = 15
+RATE_LIMIT_VENTANA = timedelta(minutes=1)
+RATE_LIMIT_BLOQUEO = timedelta(minutes=5)
+
+
+def _esta_bloqueado(usuario: str) -> bool:
+    """True si el número está temporalmente bloqueado por flood."""
+    hasta = _bloqueados_hasta.get(usuario)
+    if hasta is None:
+        return False
+    if datetime.now(timezone.utc) >= hasta:
+        # Expiró el bloqueo: limpiar y permitir de nuevo.
+        del _bloqueados_hasta[usuario]
+        _historial_mensajes.pop(usuario, None)
+        return False
+    return True
+
+
+def _registrar_y_chequear_flood(usuario: str) -> bool:
+    """Registra el mensaje y devuelve True si el número acaba de superar el límite.
+
+    Cuenta los mensajes de la última ventana; si pasa el máximo, marca el bloqueo.
+    """
+    ahora = datetime.now(timezone.utc)
+    limite = ahora - RATE_LIMIT_VENTANA
+
+    marcas = [t for t in _historial_mensajes.get(usuario, []) if t > limite]
+    marcas.append(ahora)
+    _historial_mensajes[usuario] = marcas
+
+    if len(marcas) > RATE_LIMIT_MAX:
+        _bloqueados_hasta[usuario] = ahora + RATE_LIMIT_BLOQUEO
+        return True
+    return False
+
+
+def _es_sesion_nueva(usuario: str) -> bool:
+    """True si el usuario no escribió en la última hora (o es su primer mensaje)."""
+    ultima = _ultima_actividad.get(usuario)
+    if ultima is None:
+        return True
+    return datetime.now(timezone.utc) - ultima > UMBRAL_SALUDO
 
 CATEGORIAS = [
     "Electricidad",
@@ -92,16 +158,29 @@ def _formatear_reclamo(r: Reclamo) -> str:
     )
 
 
-def _buscar_por_id(db: Session, reclamo_id: int) -> str:
+def _buscar_por_id(db: Session, reclamo_id: int, usuario: str = "") -> str:
     reclamo = (
         db.query(Reclamo)
         .options(joinedload(Reclamo.fotos))
         .filter(Reclamo.id == reclamo_id)
         .first()
     )
-    if not reclamo:
-        return f"❌ No encontré un reclamo con ID #{reclamo_id}."
+    # Sólo se muestra si el reclamo es de este número (no espiar reclamos ajenos).
+    if not reclamo or (usuario and reclamo.telefono_creador != usuario):
+        return f"❌ No encontré un reclamo tuyo con ID #{reclamo_id}."
     return _formatear_reclamo(reclamo)
+
+
+def _procesar_buscar_id(db: Session, usuario: str, mensaje: str) -> str:
+    """Maneja el ID que ingresa el usuario tras elegir 'Buscar reclamo'."""
+    texto = mensaje.strip().replace("#", "")
+    try:
+        reclamo_id = int(texto)
+    except ValueError:
+        return "⚠️ Ingresá solo el número del reclamo (ej: *3*), o *cancelar* para volver."
+
+    del _conversaciones[usuario]
+    return _buscar_por_id(db, reclamo_id, usuario)
 
 
 def _buscar_por_escuela(db: Session, nombre: str) -> str:
@@ -120,17 +199,25 @@ def _buscar_por_escuela(db: Session, nombre: str) -> str:
     return resultado
 
 
-def _listar_recientes(db: Session) -> str:
+def _listar_recientes(db: Session, usuario: str = "") -> str:
+    """Últimos reclamos cargados por este número de WhatsApp."""
+    if not usuario:
+        return "No pude identificar tu número para buscar tus reclamos."
+
     reclamos = (
         db.query(Reclamo)
         .options(joinedload(Reclamo.fotos))
+        .filter(Reclamo.telefono_creador == usuario)
         .order_by(Reclamo.fecha_creacion.desc())
         .limit(5)
         .all()
     )
     if not reclamos:
-        return "No hay reclamos registrados todavía."
-    resultado = "📋 *Últimos reclamos:*\n\n"
+        return (
+            "Todavía no cargaste ningún reclamo desde este número.\n"
+            "Escribí *nuevo* para crear el primero."
+        )
+    resultado = "📋 *Tus últimos reclamos:*\n\n"
     for r in reclamos:
         resultado += (
             f"• #{r.id} | {r.nombre_escuela} | {r.prioridad.value} | "
@@ -140,25 +227,46 @@ def _listar_recientes(db: Session) -> str:
     return resultado
 
 
-def _mostrar_ayuda():
+def _mostrar_ayuda(variante: str = "menu"):
+    """Menú principal con botones.
+
+    `variante` cambia el texto de encabezado:
+    - "saludo": bienvenida cálida (primer contacto o regreso tras un rato)
+    - "menu": menú neutro (cuando piden ayuda/menú explícitamente)
+    - "no_entendi": aclara que no se reconoció el mensaje y ofrece las opciones
+    """
+    if variante == "saludo":
+        body = (
+            "👋 ¡Hola! Soy *InfraBot*, tu asistente para la gestión de reclamos de "
+            "infraestructura escolar.\n\n"
+            "Estoy acá para ayudarte a cargar un nuevo reclamo o consultar el estado de "
+            "los que ya existen.\n\n"
+            "¿Qué te gustaría hacer?"
+        )
+    elif variante == "no_entendi":
+        body = "🤖 No entendí tu mensaje. Estas son las opciones disponibles:"
+    else:
+        body = "🤖 *InfraBot*\n\n¿Qué querés hacer?"
+
+    # WhatsApp admite 3 botones. Con IA on se reemplaza "buscar" por el modo libre;
+    # buscar sigue disponible escribiendo el ID o *ver #<id>*.
     if ai_config.ai_whatsapp_enabled():
-        return {
-            "tipo": "botones",
-            "body": "🤖 *InfraBot*\n\n¿Qué querés hacer?",
-            "botones": [
-                {"id": "libre", "title": "💬 Contame el problema"},
-                {"id": "nuevo", "title": "📝 Nuevo reclamo"},
-                {"id": "recientes", "title": "📋 Ver recientes"},
-            ],
-        }
-    return {
-        "tipo": "botones",
-        "body": "🤖 *InfraBot*\n\n¿Qué querés hacer?",
-        "botones": [
+        botones = [
+            {"id": "libre", "title": "💬 Contame el problema"},
             {"id": "nuevo", "title": "📝 Nuevo reclamo"},
             {"id": "recientes", "title": "📋 Ver recientes"},
-            {"id": "ayuda_texto", "title": "❓ Más comandos"},
-        ],
+        ]
+    else:
+        botones = [
+            {"id": "nuevo", "title": "📝 Nuevo reclamo"},
+            {"id": "recientes", "title": "📋 Ver recientes"},
+            {"id": "buscar_reclamo", "title": "🔍 Buscar reclamo"},
+        ]
+
+    return {
+        "tipo": "botones",
+        "body": body,
+        "botones": botones,
     }
 
 
@@ -348,6 +456,7 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
                 categoria=datos["categoria"],
                 descripcion=datos["descripcion"],
                 observaciones=datos.get("observaciones"),
+                telefono_creador=usuario or None,
             )
             db.add(nuevo)
             db.commit()
@@ -407,14 +516,206 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
     return "⚠️ Ocurrió un error. Escribí *nuevo* para empezar de nuevo."
 
 
+def registrar_estado_conversacion(telefono: str, estado: dict) -> None:
+    """Setea el estado conversacional de un número. Lo usan los servicios (visitas)."""
+    _conversaciones[telefono] = estado
+
+
+def iniciar_espera_info(
+    telefono_creador: str,
+    reclamo_id: int,
+    telefono_contratista: str = "",
+    nombre_contratista: str = "",
+) -> None:
+    """Deja al creador del reclamo esperando que responda con información adicional.
+
+    Lo llama el endpoint de solicitar-información. Los próximos mensajes (texto o media)
+    de ese número se agregan al reclamo hasta que escriba *listo*. Guarda el contacto
+    del contratista que pidió la info para poder avisarle cuando el creador termine.
+    """
+    _conversaciones[telefono_creador] = {
+        "paso": "info_adicional",
+        "reclamo_id": reclamo_id,
+        "media": [],
+        "telefono_contratista": telefono_contratista,
+        "nombre_contratista": nombre_contratista,
+    }
+
+
+def _procesar_info_adicional(db: Session, usuario: str, mensaje: str) -> str:
+    """Maneja los mensajes de texto del creador mientras aporta información adicional."""
+    conv = _conversaciones[usuario]
+    reclamo_id = conv["reclamo_id"]
+    texto = mensaje.strip()
+
+    if texto.lower() in ("listo", "terminar", "fin", "ok", "gracias"):
+        telefono_contratista = conv.get("telefono_contratista")
+        nombre_contratista = conv.get("nombre_contratista", "")
+        del _conversaciones[usuario]
+
+        # Avisar al contratista que ya está disponible la información que había pedido.
+        if telefono_contratista:
+            from core.whatsapp_client import enviar_mensaje
+
+            reclamo = db.get(Reclamo, reclamo_id)
+            escuela = reclamo.nombre_escuela if reclamo else ""
+            link = f"{APP_URL}/portal/reclamos/{reclamo_id}/presupuestar"
+            aviso = (
+                f"✅ *Información actualizada — Reclamo #{reclamo_id}*\n\n"
+                f"🏫 Escuela: {escuela}\n\n"
+                "La persona que creó el reclamo cargó la información adicional que "
+                "habías solicitado. Ya podés revisarla y continuar con tu presupuesto.\n\n"
+                f"Ingresá desde acá:\n{link}"
+            )
+            try:
+                enviar_mensaje(telefono_contratista, aviso)
+            except Exception as e:  # noqa: BLE001 - no romper el flujo del creador si falla el aviso
+                print(f"[WHATSAPP] No se pudo avisar al contratista: {e}")
+
+        return (
+            f"✅ ¡Gracias! Sumé tu información al reclamo #{reclamo_id}. "
+            "El contratista ya va a poder verla."
+        )
+
+    reclamo = db.get(Reclamo, reclamo_id)
+    if reclamo is None:
+        del _conversaciones[usuario]
+        return "⚠️ No encontré el reclamo. Escribí *ayuda* para ver los comandos."
+
+    # Anexar el texto a las observaciones del reclamo
+    prefijo = "\n\n" if reclamo.observaciones else ""
+    fecha = datetime.now(ART).strftime("%d/%m/%Y %H:%M")
+    reclamo.observaciones = (
+        (reclamo.observaciones or "") + f"{prefijo}[Info adicional {fecha}] {texto}"
+    )
+    db.commit()
+
+    return (
+        "📝 Anoté tu respuesta en el reclamo.\n"
+        "Podés seguir enviando texto o fotos/videos, o escribí *listo* cuando termines."
+    )
+
+
+def _procesar_visita_disponibilidad(db: Session, usuario: str, mensaje: str) -> str:
+    """El contratista carga franjas de disponibilidad para la visita."""
+    from models.visita import Visita
+    from services import coordinacion_visita
+
+    conv = _conversaciones[usuario]
+    visita = db.get(Visita, conv["visita_id"])
+    if visita is None:
+        del _conversaciones[usuario]
+        return "⚠️ No encontré la visita a coordinar. Escribí *ayuda* para ver los comandos."
+
+    texto = mensaje.strip()
+
+    if texto.lower() in ("listo", "terminar", "fin", "ok"):
+        if coordinacion_visita.finalizar_disponibilidad(db, visita):
+            del _conversaciones[usuario]
+            return (
+                "✅ ¡Gracias! Le pasé tus opciones a quien creó el reclamo. "
+                "Te aviso apenas elija un horario."
+            )
+        return "⚠️ Todavía no cargaste ninguna opción válida. Enviá al menos una en formato *DD/MM HH:MM*."
+
+    # Validar el formato DD/MM HH:MM para poder programar recordatorios.
+    if not coordinacion_visita.formato_valido(texto):
+        return (
+            "⚠️ No pude interpretar esa fecha. Usá el formato *DD/MM HH:MM*.\n"
+            "Por ejemplo: _12/08 10:00_\n\n"
+            "Podés mandar varias juntas separadas por coma o en mensajes distintos."
+        )
+
+    cantidad = coordinacion_visita.agregar_disponibilidad(db, visita, texto)
+    palabra = "opción" if cantidad == 1 else "opciones"
+    return (
+        f"🗓️ Anoté {cantidad} {palabra}. Podés seguir cargando más "
+        "o escribí *listo* cuando termines."
+    )
+
+
+def _procesar_visita_eleccion(db: Session, usuario: str, mensaje: str) -> str:
+    """El creador del reclamo elige uno de los horarios propuestos."""
+    from models.visita import Visita
+    from services import coordinacion_visita
+
+    conv = _conversaciones[usuario]
+    visita = db.get(Visita, conv["visita_id"])
+    if visita is None:
+        del _conversaciones[usuario]
+        return "⚠️ No encontré la visita a coordinar. Escribí *ayuda* para ver los comandos."
+
+    texto = mensaje.strip().replace("#", "")
+    try:
+        indice = int(texto)
+    except ValueError:
+        return "⚠️ Respondé con el número de la opción que preferís (ej: *1*)."
+
+    elegido = coordinacion_visita.confirmar_eleccion(db, visita, indice)
+    if elegido is None:
+        return "⚠️ Ese número no corresponde a ninguna opción. Probá de nuevo."
+
+    del _conversaciones[usuario]
+    return (
+        f"✅ ¡Listo! Confirmé la visita para:\n*{elegido}*\n\n"
+        "El contratista fue notificado. Les vamos a recordar la visita el día "
+        "anterior y el mismo día."
+    )
+
+
 def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
     """Recibe un mensaje de texto y devuelve la respuesta del bot."""
     texto = mensaje.strip().lower()
+
+    # Anti-spam: si ya está bloqueado, no responder (evita seguir alimentando el flood).
+    if usuario and _esta_bloqueado(usuario):
+        return ""
+
+    # Registrar el mensaje y ver si con este superó el límite.
+    if usuario and _registrar_y_chequear_flood(usuario):
+        return (
+            "⚠️ Estás enviando demasiados mensajes muy rápido. "
+            "Esperá unos minutos antes de volver a escribir."
+        )
+
+    # Evaluar si es una sesión nueva ANTES de registrar esta interacción.
+    sesion_nueva = _es_sesion_nueva(usuario)
+    if usuario:
+        _ultima_actividad[usuario] = datetime.now(timezone.utc)
 
     # Cancelar siempre funciona
     if texto == "cancelar" and usuario in _conversaciones:
         del _conversaciones[usuario]
         return "❌ Operación cancelada. Escribí *ayuda* para ver los comandos."
+
+    # Si el creador está aportando información adicional a un reclamo
+    if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "info_adicional":
+        return _procesar_info_adicional(db, usuario, mensaje)
+
+    # Si el usuario está esperando ingresar un ID para buscar un reclamo
+    if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "buscar_id":
+        return _procesar_buscar_id(db, usuario, mensaje)
+
+    # Coordinación de visita: contratista cargando disponibilidad
+    if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "visita_disponibilidad":
+        return _procesar_visita_disponibilidad(db, usuario, mensaje)
+
+    # Coordinación de visita: creador eligiendo un horario
+    if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "visita_eleccion":
+        return _procesar_visita_eleccion(db, usuario, mensaje)
+
+    # Si no hay estado en memoria (ej. el backend se reinició), reconstruirlo desde la
+    # base para no perder una coordinación de visita en curso.
+    if usuario not in _conversaciones:
+        from services.coordinacion_visita import estado_conversacion_pendiente
+
+        estado_db = estado_conversacion_pendiente(db, usuario)
+        if estado_db is not None:
+            _conversaciones[usuario] = estado_db
+            if estado_db["paso"] == "visita_disponibilidad":
+                return _procesar_visita_disponibilidad(db, usuario, mensaje)
+            if estado_db["paso"] == "visita_eleccion":
+                return _procesar_visita_eleccion(db, usuario, mensaje)
 
     # Si el usuario está en medio de una conversación de creación
     if usuario in _conversaciones:
@@ -433,12 +734,21 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
             )
         return _iniciar_libre(usuario)
 
+    # Botón: buscar reclamo → pedir el ID
+    if texto == "buscar_reclamo":
+        _conversaciones[usuario] = {"paso": "buscar_id"}
+        return (
+            "🔍 Escribí el número (ID) del reclamo que querés ver.\n"
+            "Por ejemplo: *3*\n\n"
+            "Escribí *cancelar* para volver."
+        )
+
     # Comando: ver #<id>
     if texto.startswith("ver #") or texto.startswith("ver#"):
         try:
             id_str = texto.replace("ver#", "").replace("ver #", "").strip()
             reclamo_id = int(id_str)
-            return _buscar_por_id(db, reclamo_id)
+            return _buscar_por_id(db, reclamo_id, usuario)
         except (ValueError, IndexError):
             return "⚠️ Formato incorrecto. Usá: *ver #<id>*\nEjemplo: ver #3"
 
@@ -449,13 +759,17 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
             return "⚠️ Escribí al menos 2 caracteres para buscar.\nEjemplo: buscar Escuela Técnica"
         return _buscar_por_escuela(db, nombre)
 
-    # Comando: recientes / últimos
+    # Comando: recientes / últimos → solo los reclamos de este número
     if texto in ("recientes", "últimos", "ultimos", "listar"):
-        return _listar_recientes(db)
+        return _listar_recientes(db, usuario)
 
-    # Comando: ayuda / help / hola
-    if texto in ("ayuda", "help", "hola", "hi", "menu", "menú", "inicio"):
-        return _mostrar_ayuda()
+    # Saludos → bienvenida cálida solo la primera vez en el rango; si repite, "no entendí"
+    if texto in ("hola", "hi", "buenas", "buenos dias", "buenos días", "buenas tardes", "buenas noches"):
+        return _mostrar_ayuda(variante="saludo" if sesion_nueva else "no_entendi")
+
+    # Comando: ayuda / help / menú → menú directo
+    if texto in ("ayuda", "help", "menu", "menú", "inicio"):
+        return _mostrar_ayuda(variante="menu")
 
     # Comando: más comandos (desde botón)
     if texto == "ayuda_texto":
@@ -472,12 +786,14 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
     # Si el mensaje es un número solo, asumir que quieren ver ese reclamo
     try:
         reclamo_id = int(texto.replace("#", "").strip())
-        return _buscar_por_id(db, reclamo_id)
+        return _buscar_por_id(db, reclamo_id, usuario)
     except ValueError:
         pass
 
-    # Mensaje no reconocido
-    return "🤖 No entendí tu mensaje. Escribí *ayuda* para ver los comandos disponibles."
+    # Mensaje no reconocido. Si vuelve tras un rato (o es su primera vez) lo recibimos
+    # con la bienvenida; si es dentro de la conversación, aclaramos que no entendimos.
+    # En ambos casos ofrecemos las opciones con botones.
+    return _mostrar_ayuda(variante="saludo" if sesion_nueva else "no_entendi")
 
 
 def procesar_media(db: Session, usuario: str, url_local: str, mime_type: str, caption: str = "") -> str:
@@ -486,6 +802,42 @@ def procesar_media(db: Session, usuario: str, url_local: str, mime_type: str, ca
     Si el usuario está en el flujo de creación de reclamo, lo agrega como adjunto.
     Si no, le indica que primero inicie un reclamo.
     """
+    # Anti-spam: mismo tratamiento que los mensajes de texto.
+    if usuario and _esta_bloqueado(usuario):
+        return ""
+
+    if usuario and _registrar_y_chequear_flood(usuario):
+        return (
+            "⚠️ Estás enviando demasiados mensajes muy rápido. "
+            "Esperá unos minutos antes de volver a escribir."
+        )
+
+    if usuario:
+        _ultima_actividad[usuario] = datetime.now(timezone.utc)
+
+    # Si el creador está aportando información adicional, guardar el archivo en el reclamo
+    if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "info_adicional":
+        conv = _conversaciones[usuario]
+        reclamo = db.get(Reclamo, conv["reclamo_id"])
+        if reclamo is None:
+            del _conversaciones[usuario]
+            return "⚠️ No encontré el reclamo. Escribí *ayuda* para ver los comandos."
+
+        tipo = TipoMedia.VIDEO if "video" in mime_type else TipoMedia.IMAGEN
+        foto = FotoReclamo(
+            reclamo_id=reclamo.id,
+            nombre_archivo=url_local.split("/")[-1],
+            url=url_local,
+            tipo=tipo,
+        )
+        db.add(foto)
+        db.commit()
+        tipo_str = "📹 Video" if "video" in mime_type else "📷 Foto"
+        return (
+            f"{tipo_str} agregada al reclamo #{reclamo.id} ✅\n"
+            "Podés seguir enviando o escribí *listo* cuando termines."
+        )
+
     # Si está en el flujo de creación, agregar el media
     if usuario in _conversaciones:
         conv = _conversaciones[usuario]

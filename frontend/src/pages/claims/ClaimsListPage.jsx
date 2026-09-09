@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ActionIcon,
   Alert,
@@ -27,18 +27,14 @@ import { ChangeStatusModal } from './ChangeStatusModal';
 import { ClaimDetailDrawer } from './ClaimDetailDrawer';
 import { PriorityBadge } from './PriorityBadge';
 import { StatusBadge } from './StatusBadge';
-import { ESTADOS, etiquetaPorEstado } from './estados';
+import { StatusFilterPopover } from './StatusFilterPopover';
+import { ESTADOS } from './estados';
 
 const opcionesPrioridad = [
   { value: '', label: 'Todas' },
   { value: 'BAJA', label: 'Baja' },
   { value: 'MEDIA', label: 'Media' },
   { value: 'ALTA', label: 'Alta' },
-];
-
-const opcionesEstado = [
-  { value: '', label: 'Todos' },
-  ...ESTADOS.map((estado) => ({ value: estado, label: etiquetaPorEstado[estado] })),
 ];
 
 const opcionesRevision = [
@@ -58,6 +54,19 @@ function parsearFechaFiltro(valor) {
   return new Date(anio, mes - 1, dia);
 }
 
+// El Dashboard enlaza acá con los filtros ya elegidos: uno o varios estados separados por
+// coma (/reclamos?estado=EN_EVALUACION, /reclamos?estado=APROBADO,EN_EJECUCION) y el ID
+// (/reclamos?busqueda=REC-00000007). Los estados que no existan se ignoran en vez de
+// dejar la lista vacía sin explicación.
+function estadosDeParams(searchParams) {
+  const estados = new Set(searchParams.get('estado')?.split(',') ?? []);
+  return [...estados].filter((estado) => ESTADOS.includes(estado));
+}
+
+function busquedaDeParams(searchParams) {
+  return searchParams.get('busqueda') ?? '';
+}
+
 // Acepta "34", "0034", "REC-00000034", etc: se queda solo con los dígitos
 // escritos y busca esa subcadena dentro del ID completo (con ceros a la izquierda).
 function idCoincideConBusqueda(id, busqueda) {
@@ -68,6 +77,7 @@ function idCoincideConBusqueda(id, busqueda) {
 
 export function ClaimsListPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [reclamos, setReclamos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
@@ -76,11 +86,30 @@ export function ClaimsListPage() {
   const [reclamoParaCambiarEstado, setReclamoParaCambiarEstado] = useState(null);
 
   const [prioridadFiltro, setPrioridadFiltro] = useState('');
-  const [estadoFiltro, setEstadoFiltro] = useState('');
+  const [estadosFiltro, setEstadosFiltro] = useState(() => estadosDeParams(searchParams));
   const [revisionFiltro, setRevisionFiltro] = useState('');
   const [rangoFechas, setRangoFechas] = useState([null, null]);
-  const [busquedaId, setBusquedaId] = useState('');
+  const [busquedaId, setBusquedaId] = useState(() => busquedaDeParams(searchParams));
   const [pagina, setPagina] = useState(1);
+
+  // Ir a /reclamos desde el menú lateral no remonta la página: es la misma ruta, así que
+  // los filtros seguirían aplicados aunque la URL ya no los tenga, y el listado saldría
+  // filtrado sin que nadie lo haya pedido. Mismo patrón que el reseteo de página de más
+  // abajo: ajustar el estado en el render, no en un effect.
+  //
+  // Se reinician los cuatro filtros y no sólo los dos que viajan en la URL: entrar por un
+  // link (o volver a /reclamos pelado) pide esa vista, no esa vista más la prioridad o el
+  // rango de fechas que hubieran quedado del listado anterior.
+  const paramsActuales = searchParams.toString();
+  const [paramsPrevios, setParamsPrevios] = useState(paramsActuales);
+  if (paramsActuales !== paramsPrevios) {
+    setParamsPrevios(paramsActuales);
+    setEstadosFiltro(estadosDeParams(searchParams));
+    setBusquedaId(busquedaDeParams(searchParams));
+    setPrioridadFiltro('');
+    setRevisionFiltro('');
+    setRangoFechas([null, null]);
+  }
 
   useEffect(() => {
     listarReclamos()
@@ -96,7 +125,8 @@ export function ClaimsListPage() {
     return reclamos.filter((reclamo) => {
       if (prioridadFiltro && reclamo.prioridad !== prioridadFiltro) return false;
 
-      if (estadoFiltro && reclamo.estado !== estadoFiltro) return false;
+      // Sin estados elegidos no se filtra: ninguno tildado es "todos".
+      if (estadosFiltro.length > 0 && !estadosFiltro.includes(reclamo.estado)) return false;
 
       if (revisionFiltro === 'si' && !reclamo.requiere_revision) return false;
       if (revisionFiltro === 'no' && reclamo.requiere_revision) return false;
@@ -115,11 +145,11 @@ export function ClaimsListPage() {
 
       return true;
     });
-  }, [reclamos, prioridadFiltro, estadoFiltro, revisionFiltro, rangoFechas, busquedaId]);
+  }, [reclamos, prioridadFiltro, estadosFiltro, revisionFiltro, rangoFechas, busquedaId]);
 
   const hayFiltrosActivos =
     prioridadFiltro !== '' ||
-    estadoFiltro !== '' ||
+    estadosFiltro.length > 0 ||
     revisionFiltro !== '' ||
     rangoFechas[0] !== null ||
     rangoFechas[1] !== null ||
@@ -127,13 +157,13 @@ export function ClaimsListPage() {
 
   const limpiarFiltros = () => {
     setPrioridadFiltro('');
-    setEstadoFiltro('');
+    setEstadosFiltro([]);
     setRevisionFiltro('');
     setRangoFechas([null, null]);
     setBusquedaId('');
   };
 
-  const filtroActual = `${prioridadFiltro}|${estadoFiltro}|${revisionFiltro}|${rangoFechas[0]}|${rangoFechas[1]}|${busquedaId}`;
+  const filtroActual = `${prioridadFiltro}|${estadosFiltro}|${revisionFiltro}|${rangoFechas[0]}|${rangoFechas[1]}|${busquedaId}`;
   const [filtroPrevio, setFiltroPrevio] = useState(filtroActual);
   if (filtroActual !== filtroPrevio) {
     setFiltroPrevio(filtroActual);
@@ -189,13 +219,7 @@ export function ClaimsListPage() {
             onChange={(value) => setPrioridadFiltro(value ?? '')}
             w={160}
           />
-          <Select
-            label="Estado"
-            data={opcionesEstado}
-            value={estadoFiltro}
-            onChange={(value) => setEstadoFiltro(value ?? '')}
-            w={210}
-          />
+          <StatusFilterPopover value={estadosFiltro} onChange={setEstadosFiltro} />
           <Select
             label="Revisión IA"
             data={opcionesRevision}

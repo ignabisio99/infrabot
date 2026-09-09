@@ -1,0 +1,51 @@
+"""Coordinación de la visita de trabajo entre contratista y creador del reclamo.
+
+Se crea cuando se aprueba un presupuesto. El bot pide disponibilidad al contratista,
+el creador elige un horario, y se envían recordatorios el día antes y el mismo día.
+"""
+
+import enum
+from datetime import datetime, timezone
+
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, Text
+from sqlalchemy.orm import relationship
+
+from core.database import Base
+
+
+class EstadoVisita(str, enum.Enum):
+    ESPERANDO_DISPONIBILIDAD = "ESPERANDO_DISPONIBILIDAD"  # se le pidió al contratista
+    ESPERANDO_ELECCION = "ESPERANDO_ELECCION"  # el creador debe elegir un horario
+    CONFIRMADA = "CONFIRMADA"  # hay fecha/hora acordada
+    CANCELADA = "CANCELADA"
+
+
+class Visita(Base):
+    __tablename__ = "visita"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    reclamo_id = Column(Integer, ForeignKey("reclamo.id", ondelete="CASCADE"), nullable=False)
+    contratista_id = Column(
+        Integer, ForeignKey("contratista.id", ondelete="CASCADE"), nullable=False
+    )
+    estado = Column(
+        Enum(EstadoVisita, name="estado_visita"),
+        nullable=False,
+        default=EstadoVisita.ESPERANDO_DISPONIBILIDAD,
+    )
+
+    # Disponibilidades propuestas por el contratista, una por línea (texto libre).
+    disponibilidades = Column(Text, nullable=True)
+    # Franja elegida por el creador (texto).
+    horario_confirmado = Column(Text, nullable=True)
+    # Fecha/hora concreta de la visita, para los recordatorios.
+    fecha_visita = Column(DateTime(timezone=True), nullable=True)
+
+    # Marcas para no repetir recordatorios.
+    recordatorio_dia_antes_enviado = Column(DateTime(timezone=True), nullable=True)
+    recordatorio_mismo_dia_enviado = Column(DateTime(timezone=True), nullable=True)
+
+    fecha_creacion = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    reclamo = relationship("Reclamo")
+    contratista = relationship("Contratista")

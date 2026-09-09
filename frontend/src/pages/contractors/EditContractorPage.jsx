@@ -24,7 +24,9 @@ export function EditContractorPage() {
           phone: contratista.telefono,
           address: contratista.direccion,
           specialty: contratista.especialidad,
-          rating: contratista.calificacion,
+          // El Select trabaja con strings; null/N/A queda como '' (sin selección).
+          rating: contratista.calificacion != null ? String(contratista.calificacion) : '',
+          ratingNotes: contratista.observaciones_calificacion ?? '',
         }),
       )
       .catch((err) => setErrorCarga(err.message))

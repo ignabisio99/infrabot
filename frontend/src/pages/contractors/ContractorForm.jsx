@@ -1,4 +1,4 @@
-import { TextInput, NumberInput, Button, Stack } from '@mantine/core';
+import { TextInput, Select, Textarea, Button, Stack } from '@mantine/core';
 import { useForm } from '@mantine/form';
 
 const valoresPorDefecto = {
@@ -7,7 +7,16 @@ const valoresPorDefecto = {
   address: '',
   specialty: '',
   rating: '',
+  ratingNotes: '',
 };
+
+const OPCIONES_CALIFICACION = [
+  { value: '1', label: '1' },
+  { value: '2', label: '2' },
+  { value: '3', label: '3' },
+  { value: '4', label: '4' },
+  { value: '5', label: '5' },
+];
 
 export function ContractorForm({
   initialValues = valoresPorDefecto,
@@ -22,8 +31,6 @@ export function ContractorForm({
       phone: (value) => (value.length < 6 ? 'Ingrese un teléfono válido' : null),
       address: (value) => (value.length < 3 ? 'Ingrese la dirección' : null),
       specialty: (value) => (value.length < 2 ? 'Ingrese la especialidad' : null),
-      rating: (value) =>
-        value === '' || value < 1 || value > 5 ? 'Ingrese una calificación entre 1 y 5' : null,
     },
   });
 
@@ -33,7 +40,10 @@ export function ContractorForm({
       telefono: values.phone,
       direccion: values.address,
       especialidad: values.specialty,
-      calificacion: values.rating,
+      // Vacío = N/A (null); el backend lo acepta como opcional.
+      calificacion: values.rating === '' || values.rating == null ? null : Number(values.rating),
+      observaciones_calificacion:
+        values.ratingNotes && values.ratingNotes.trim() !== '' ? values.ratingNotes : null,
     });
   };
 
@@ -68,13 +78,24 @@ export function ContractorForm({
           {...form.getInputProps('specialty')}
         />
 
-        <NumberInput
+        <Select
           label="Calificación"
-          placeholder="1 a 5"
-          min={1}
-          max={5}
+          description="Opcional. Dejala vacía si todavía no fue asignada (N/A)."
+          placeholder="Seleccioná del 1 al 5"
+          data={OPCIONES_CALIFICACION}
+          clearable
           key={form.key('rating')}
           {...form.getInputProps('rating')}
+        />
+
+        <Textarea
+          label="Observaciones de la calificación"
+          description="Opcional. Anotá algo específico sobre este contratista."
+          placeholder="Ej: cumplió en tiempo y forma en trabajos anteriores"
+          minRows={2}
+          autosize
+          key={form.key('ratingNotes')}
+          {...form.getInputProps('ratingNotes')}
         />
 
         <Button type="submit" mt="md" loading={submitting}>

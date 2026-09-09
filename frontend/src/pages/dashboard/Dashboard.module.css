@@ -1,0 +1,25 @@
+/* La primera columna mide lo que la etiqueta más larga y la última lo que el número más
+   largo: ningún nombre se corta y, como las filas son subgrids de esta grilla, todas las
+   barras arrancan y terminan en la misma línea sin depender de un ancho fijo. */
+.estados {
+  display: grid;
+  grid-template-columns: max-content 1fr max-content;
+}
+
+.estadoFila {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+  column-gap: var(--mantine-spacing-sm);
+  padding: 4px 6px;
+  border-radius: var(--mantine-radius-sm);
+}
+
+.estadoFila:hover {
+  background-color: var(--mantine-color-gray-0);
+}
+
+.filaClickeable {
+  cursor: pointer;
+}

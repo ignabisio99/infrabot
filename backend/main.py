@@ -14,6 +14,8 @@ from api.auth import router as auth_router
 from api.ai import router as ai_router
 from api.configuracion import router as configuracion_router
 from api.contratistas import router as contratistas_router
+from api.dashboard import router as dashboard_router
+from api.listas_contratistas import router as listas_contratistas_router
 from api.presupuestos import router as presupuestos_router
 from api.reclamos import router as reclamos_router
 from api.whatsapp import router as whatsapp_router
@@ -56,12 +58,15 @@ for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
 async def lifespan(app: FastAPI):
     import asyncio
 
+    from services.recordatorios import loop_recordatorios
+
     Base.metadata.create_all(bind=engine)
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     stop = asyncio.Event()
     tareas = [
         asyncio.create_task(loop_cola_whatsapp(stop), name="cola-whatsapp"),
         asyncio.create_task(loop_seguimiento(stop), name="seguimiento-48h"),
+        asyncio.create_task(loop_recordatorios(), name="recordatorios-visitas"),
     ]
     yield
     stop.set()
@@ -102,6 +107,8 @@ app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR, check_dir=False), name=
 app.include_router(auth_router)
 app.include_router(reclamos_router)
 app.include_router(contratistas_router)
+app.include_router(dashboard_router)
+app.include_router(listas_contratistas_router)
 app.include_router(presupuestos_router)
 app.include_router(whatsapp_router)
 app.include_router(whatsapp_sim_router)

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  Autocomplete,
   Badge,
   Button,
   Group,
@@ -18,11 +19,13 @@ import { formatearIdReclamo } from '../../utils/ids';
 import { formatoMoneda } from '../../utils/formatters';
 import { notifyError } from '../../utils/notifications';
 
+const UNIDADES = ['kg', 'gramos', 'metros', 'metros²', 'metros³', 'litros', 'horas', 'cajas', 'rollos', 'bolsas'];
+
 const valoresPorDefecto = {
   claimId: '',
   contractorId: '',
   notes: '',
-  items: [{ description: '', quantity: '', unitCost: '' }],
+  items: [{ description: '', quantity: '', unit: 'unidad', unitCost: '' }],
 };
 
 export function BudgetForm({
@@ -32,6 +35,7 @@ export function BudgetForm({
   onSubmit,
   submitting = false,
   submitLabel = 'Guardar Presupuesto',
+  reclamoEditable = true,
 }) {
   const form = useForm({
     initialValues,
@@ -41,6 +45,7 @@ export function BudgetForm({
       items: {
         description: (value) => (value.trim() === '' ? 'Ingrese una descripción' : null),
         quantity: (value) => (value === '' || Number(value) <= 0 ? 'Debe ser mayor a 0' : null),
+        unit: (value) => (!value || value.trim() === '' ? 'Ingrese la unidad' : null),
         unitCost: (value) => (value === '' || Number(value) < 0 ? 'No puede ser negativo' : null),
       },
     },
@@ -72,10 +77,16 @@ export function BudgetForm({
     };
   }, [form.values.claimId]);
 
-  const opcionesReclamos = reclamosDisponibles.map((reclamo) => ({
-    value: String(reclamo.id),
-    label: `${formatearIdReclamo(reclamo.id)} - ${reclamo.nombre_escuela}`,
-  }));
+  // El backend sólo acepta presupuestos sobre reclamos que estén pendientes de
+  // presupuesto o en evaluación, y lo informa en `admite_presupuesto`. El reclamo ya
+  // elegido se mantiene en la lista aunque haya dejado de admitirlos, así al editar
+  // un presupuesto el select muestra a qué reclamo pertenece.
+  const opcionesReclamos = reclamosDisponibles
+    .filter((reclamo) => reclamo.admite_presupuesto || String(reclamo.id) === initialValues.claimId)
+    .map((reclamo) => ({
+      value: String(reclamo.id),
+      label: `${formatearIdReclamo(reclamo.id)} - ${reclamo.nombre_escuela}`,
+    }));
 
   const opcionesContratistas = contratistasDisponibles.map((contratista) => ({
     value: String(contratista.id),
@@ -88,16 +99,19 @@ export function BudgetForm({
   );
 
   const handleSubmit = (values) => {
-    onSubmit({
-      reclamo_id: Number(values.claimId),
+    const datos = {
       contratista_id: Number(values.contractorId),
       observaciones: values.notes.trim() === '' ? null : values.notes,
       items: values.items.map((item) => ({
         descripcion: item.description,
         cantidad: item.quantity,
+        unidad: item.unit || 'unidad',
         costo_unitario: item.unitCost,
       })),
-    });
+    };
+
+    // Al editar, el reclamo no viaja: el PUT lo rechaza con un 422.
+    onSubmit(reclamoEditable ? { reclamo_id: Number(values.claimId), ...datos } : datos);
   };
 
   return (
@@ -106,8 +120,15 @@ export function BudgetForm({
         <Select
           label="Reclamo"
           placeholder="Seleccione un reclamo"
+          description={
+            reclamoEditable
+              ? 'Sólo se listan los reclamos pendientes de presupuesto o en evaluación.'
+              : 'Un presupuesto no se puede pasar a otro reclamo. Si se cargó en el equivocado, dalo de baja y cargalo de nuevo.'
+          }
           data={opcionesReclamos}
-          searchable
+          searchable={reclamoEditable}
+          disabled={!reclamoEditable}
+          nothingFoundMessage="Ningún reclamo está esperando presupuestos"
           key={form.key('claimId')}
           {...form.getInputProps('claimId')}
         />
@@ -187,6 +208,15 @@ export function BudgetForm({
                 key={form.key(`items.${index}.quantity`)}
                 {...form.getInputProps(`items.${index}.quantity`)}
               />
+              <Autocomplete
+                placeholder="Unidad"
+                data={UNIDADES}
+                maxDropdownHeight={260}
+                comboboxProps={{ withinPortal: true }}
+                style={{ flex: 1 }}
+                key={form.key(`items.${index}.unit`)}
+                {...form.getInputProps(`items.${index}.unit`)}
+              />
               <NumberInput
                 placeholder="Costo unitario"
                 min={0}
@@ -212,7 +242,12 @@ export function BudgetForm({
             type="button"
             variant="light"
             onClick={() =>
-              form.insertListItem('items', { description: '', quantity: '', unitCost: '' })
+              form.insertListItem('items', {
+                description: '',
+                quantity: '',
+                unit: 'unidad',
+                unitCost: '',
+              })
             }
           >
             + Agregar ítem

@@ -133,6 +133,24 @@ se cambian en las constantes `ADMIN_EMAIL` / `ADMIN_PASSWORD` de `backend/seed.p
 > Si además cambió el `requirements.txt` o el `Dockerfile`, hay que reconstruir la imagen
 > antes: `docker compose build backend && docker compose up -d`.
 
+## Tests
+
+El backend tiene tests de las agregaciones del dashboard:
+
+```bash
+docker compose exec backend python -m pytest
+```
+
+Corren contra una base aparte (`infrabot_test`) que se crea sola la primera vez, así que
+no tocan los datos de desarrollo.
+
+Para correr un archivo o un test puntual:
+
+```bash
+docker compose exec backend python -m pytest tests/test_dashboard.py
+docker compose exec backend python -m pytest -k estancados
+```
+
 ## Comandos útiles
 
 ```bash

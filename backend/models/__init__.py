@@ -16,27 +16,34 @@ from models.configuracion_auditoria import ConfiguracionAuditoria
 from models.contratista import Contratista
 from models.estimacion_preliminar import EstimacionPreliminar
 from models.foto_reclamo import FotoReclamo
+from models.historial_estado_presupuesto import HistorialEstadoPresupuesto
 from models.historial_estado_reclamo import HistorialEstadoReclamo, OrigenCambioEstado
 from models.indice_inflacion import IndiceInflacion
-from models.presupuesto import ItemPresupuesto, Presupuesto
+from models.lista_contratistas import ListaContratistas, lista_contratista_asociacion
+from models.presupuesto import EstadoPresupuesto, ItemPresupuesto, Presupuesto
 from models.reclamo import EstadoReclamo, PrioridadReclamo, Reclamo
 from models.recomendacion_ia import RecomendacionIA, TipoRecomendacionIA
 from models.recordatorio_contratista import RecordatorioContratista
 from models.referencia_costo import ReferenciaCosto
+from models.solicitud_presupuesto import SolicitudPresupuesto
 from models.token_blacklist import TokenBlacklist
 from models.usuario import EstadoUsuario, TipoUsuario, Usuario
+from models.visita import EstadoVisita, Visita
 
 __all__ = [
     "AdjuntoPresupuesto",
     "ConfiguracionAuditoria",
     "Contratista",
+    "EstadoPresupuesto",
     "EstadoReclamo",
     "EstadoUsuario",
     "EstimacionPreliminar",
     "FotoReclamo",
+    "HistorialEstadoPresupuesto",
     "HistorialEstadoReclamo",
     "IndiceInflacion",
     "ItemPresupuesto",
+    "ListaContratistas",
     "OrigenCambioEstado",
     "PrioridadReclamo",
     "Presupuesto",
@@ -44,9 +51,13 @@ __all__ = [
     "RecomendacionIA",
     "RecordatorioContratista",
     "ReferenciaCosto",
+    "SolicitudPresupuesto",
     "TipoAdjuntoPresupuesto",
     "TipoRecomendacionIA",
     "TipoUsuario",
     "TokenBlacklist",
     "Usuario",
+    "EstadoVisita",
+    "Visita",
+    "lista_contratista_asociacion",
 ]

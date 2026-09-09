@@ -53,3 +53,15 @@ def get_current_user(
         )
 
     return usuario
+
+
+def get_current_admin(
+    usuario: Usuario = Depends(get_current_user),
+) -> Usuario:
+    """Igual que get_current_user pero exige que sea ADMINISTRADOR."""
+    if not usuario.es_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los administradores pueden realizar esta acción",
+        )
+    return usuario

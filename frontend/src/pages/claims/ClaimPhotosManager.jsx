@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Image, Modal } from '@mantine/core';
+import { Image, Modal, Text } from '@mantine/core';
 
 import { API_URL } from '../../api/apiClient';
 import { eliminarFotoReclamo, subirFotoReclamo } from '../../api/reclamos';
@@ -11,7 +11,7 @@ function isVideo(item) {
   return item.tipo === 'VIDEO' || /\.(mp4|mov|webm|3gp)$/i.test(item.src);
 }
 
-export function ClaimPhotosManager({ reclamoId, fotosIniciales = [] }) {
+export function ClaimPhotosManager({ reclamoId, fotosIniciales = [], soloLectura = false }) {
   const [fotos, setFotos] = useState(fotosIniciales);
   const [subiendo, setSubiendo] = useState(false);
   const [eliminandoId, setEliminandoId] = useState(null);
@@ -52,15 +52,23 @@ export function ClaimPhotosManager({ reclamoId, fotosIniciales = [] }) {
 
   return (
     <div>
-      <PhotoDropzone
-        onDrop={handleDrop}
-        loading={subiendo}
-        helperText="JPG, PNG, WEBP, MP4, MOV o WEBM — hasta 50MB cada uno"
-      />
+      {!soloLectura && (
+        <PhotoDropzone
+          onDrop={handleDrop}
+          loading={subiendo}
+          helperText="JPG, PNG, WEBP, MP4, MOV o WEBM — hasta 50MB cada uno"
+        />
+      )}
+
+      {soloLectura && items.length === 0 && (
+        <Text c="dimmed" size="sm">
+          Este reclamo no tiene fotos ni videos.
+        </Text>
+      )}
 
       <PhotoGrid
         items={items}
-        onRemove={handleEliminar}
+        onRemove={soloLectura ? undefined : handleEliminar}
         onSelect={setMediaAmpliada}
         removingId={eliminandoId}
       />

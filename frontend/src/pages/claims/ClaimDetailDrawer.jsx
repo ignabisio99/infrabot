@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Badge,
+  Button,
   Drawer,
   Group,
   Loader,
@@ -14,6 +15,8 @@ import {
   IconArrowRight,
   IconBan,
   IconBolt,
+  IconBrandWhatsapp,
+  IconCalendarEvent,
   IconChecks,
   IconClipboardList,
   IconHistory,
@@ -24,11 +27,14 @@ import {
   IconTruck,
 } from '@tabler/icons-react';
 
-import { obtenerHistorialReclamo, obtenerReclamo } from '../../api/reclamos';
+import { obtenerHistorialReclamo, obtenerReclamo, obtenerVisitaReclamo } from '../../api/reclamos';
 import { formatearIdReclamo } from '../../utils/ids';
+import { esAdministrador } from '../../utils/auth';
 import { notifyError } from '../../utils/notifications';
+import { BudgetRequestsList } from './BudgetRequestsList';
 import { ClaimIAPanel } from './ClaimIAPanel';
 import { ClaimPhotosManager } from './ClaimPhotosManager';
+import { NotifyContractorsModal } from './NotifyContractorsModal';
 import { PriorityBadge } from './PriorityBadge';
 import { StatusBadge } from './StatusBadge';
 import { colorPorEstado, etiquetaPorEstado, proximoPasoPorEstado } from './estados';
@@ -38,6 +44,8 @@ const iconoPorEstado = {
   PENDIENTE_PRESUPUESTO: IconReceipt2,
   EN_EVALUACION: IconReceipt2,
   APROBADO: IconChecks,
+  PENDIENTE_COORDINACION: IconCalendarEvent,
+  VISITA_COORDINADA: IconCalendarEvent,
   EN_EJECUCION: IconTruck,
   FINALIZADO: IconChecks,
   DESIERTO: IconBan,
@@ -76,15 +84,24 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
   // Guarda el último fetch resuelto junto con el id al que corresponde: así `cargando`
   // se puede derivar comparando contra `reclamoId` en vez de duplicar estado, y una
   // respuesta vieja que llega tarde (ej. al cambiar rápido de reclamo) no pisa una más nueva.
-  const [ultimoCargado, setUltimoCargado] = useState({ id: null, reclamo: null, historial: [] });
+  const [ultimoCargado, setUltimoCargado] = useState({
+    id: null,
+    reclamo: null,
+    historial: [],
+    visita: null,
+  });
   const [recarga, setRecarga] = useState(0);
 
   useEffect(() => {
     if (reclamoId === null) return;
     let vigente = true;
-    Promise.all([obtenerReclamo(reclamoId), obtenerHistorialReclamo(reclamoId)])
-      .then(([reclamo, historial]) => {
-        if (vigente) setUltimoCargado({ id: reclamoId, reclamo, historial });
+    Promise.all([
+      obtenerReclamo(reclamoId),
+      obtenerHistorialReclamo(reclamoId),
+      obtenerVisitaReclamo(reclamoId),
+    ])
+      .then(([reclamo, historial, visita]) => {
+        if (vigente) setUltimoCargado({ id: reclamoId, reclamo, historial, visita });
       })
       .catch((err) => {
         if (vigente) notifyError(err.message);
@@ -94,12 +111,21 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
     };
   }, [reclamoId, recarga]);
 
+  const [notificarAbierto, setNotificarAbierto] = useState(false);
+
   const cargadoCoincide = ultimoCargado.id === reclamoId;
   const reclamo = cargadoCoincide ? ultimoCargado.reclamo : null;
   const historial = cargadoCoincide ? ultimoCargado.historial : [];
+  const visita = cargadoCoincide ? ultimoCargado.visita : null;
   const cargando = reclamoId !== null && reclamo === null;
 
   const proximoPaso = reclamo ? proximoPasoPorEstado[reclamo.estado] : null;
+  const esAdmin = esAdministrador();
+  const puedeNotificar = esAdmin && reclamo?.estado === 'PENDIENTE_PRESUPUESTO';
+  // Una vez solicitado el presupuesto, el reclamo deja PENDIENTE_REVISION. A partir
+  // de ahí tiene sentido ver a quién se le pidió y quién ya respondió.
+  const mostrarSolicitudes =
+    esAdmin && reclamo && reclamo.estado !== 'PENDIENTE_REVISION';
 
   return (
     <Drawer
@@ -146,6 +172,18 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
 
       {!cargando && reclamo && (
         <>
+          {reclamo.telefono_creador && (
+            <Group gap={6} mb="md" c="dimmed">
+              <IconBrandWhatsapp size={15} color="var(--mantine-color-teal-6)" />
+              <Text size="sm">
+                Creado desde WhatsApp por{' '}
+                <Text span fw={600} c="dark">
+                  {reclamo.telefono_creador}
+                </Text>
+              </Text>
+            </Group>
+          )}
+
           {proximoPaso && (
             <Paper
               radius="md"
@@ -173,20 +211,76 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
             </Paper>
           )}
 
-          <Text size="sm" mb={4}>
-            <Text span fw={600}>
-              Categoría:{' '}
-            </Text>
-            {reclamo.categoria}
-          </Text>
-          <Text size="sm" mb="xs">
-            {reclamo.descripcion}
-          </Text>
-          {reclamo.observaciones && (
-            <Text size="sm" c="dimmed" mb="md">
-              {reclamo.observaciones}
+          {visita && visita.estado === 'CONFIRMADA' && visita.horario_confirmado && (
+            <Paper
+              radius="md"
+              p="sm"
+              mb="md"
+              style={{
+                backgroundColor: 'var(--mantine-color-green-0)',
+                borderLeft: '4px solid var(--mantine-color-green-6)',
+              }}
+            >
+              <Group gap="xs" mb={4} wrap="nowrap">
+                <ThemeIcon size={24} radius="xl" variant="filled" color="green">
+                  <IconCalendarEvent size={14} />
+                </ThemeIcon>
+                <Text fw={700} size="sm" c="green.9">
+                  Visita de trabajo coordinada
+                </Text>
+              </Group>
+              <Text fw={600} size="sm" ml={32}>
+                {visita.horario_confirmado}
+              </Text>
+            </Paper>
+          )}
+
+          {visita && visita.estado === 'ESPERANDO_DISPONIBILIDAD' && (
+            <Text size="sm" c="dimmed" mb="md" ml={2}>
+              🕓 Esperando que el contratista proponga horarios para la visita.
             </Text>
           )}
+
+          {visita && visita.estado === 'ESPERANDO_ELECCION' && (
+            <Text size="sm" c="dimmed" mb="md" ml={2}>
+              🕓 Esperando que el responsable del reclamo elija un horario para la visita.
+            </Text>
+          )}
+
+          {puedeNotificar && (
+            <Button
+              fullWidth
+              mb="md"
+              color="teal"
+              leftSection={<IconBrandWhatsapp size={18} />}
+              onClick={() => setNotificarAbierto(true)}
+            >
+              Notificar contratistas para presupuestar
+            </Button>
+          )}
+
+          <Paper withBorder radius="md" p="md" mb="md">
+            <Group gap={8} mb={6}>
+              <IconClipboardList size={16} color="var(--mantine-color-dimmed)" />
+              <Text fw={600} size="sm">
+                Descripción del problema
+              </Text>
+            </Group>
+            <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+              {reclamo.descripcion}
+            </Text>
+
+            {reclamo.observaciones && (
+              <>
+                <Text fw={600} size="sm" mt="md" mb={4}>
+                  Información adicional
+                </Text>
+                <Text size="sm" c="dimmed" style={{ whiteSpace: 'pre-wrap' }}>
+                  {reclamo.observaciones}
+                </Text>
+              </>
+            )}
+          </Paper>
 
           <Tabs defaultValue="avance">
             <Tabs.List>
@@ -199,6 +293,11 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
               <Tabs.Tab value="ia" leftSection={<IconSparkles size={16} />}>
                 IA
               </Tabs.Tab>
+              {mostrarSolicitudes && (
+                <Tabs.Tab value="presupuestos" leftSection={<IconReceipt2 size={16} />}>
+                  Presupuestos
+                </Tabs.Tab>
+              )}
             </Tabs.List>
 
             <Tabs.Panel value="avance" pt="md">
@@ -233,7 +332,11 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
             </Tabs.Panel>
 
             <Tabs.Panel value="fotos" pt="md">
-              <ClaimPhotosManager reclamoId={reclamo.id} fotosIniciales={reclamo.fotos} />
+              <ClaimPhotosManager
+                reclamoId={reclamo.id}
+                fotosIniciales={reclamo.fotos}
+                soloLectura
+              />
             </Tabs.Panel>
 
             <Tabs.Panel value="ia" pt="md">
@@ -246,7 +349,21 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
                 }}
               />
             </Tabs.Panel>
+
+            {mostrarSolicitudes && (
+              <Tabs.Panel value="presupuestos" pt="md">
+                <BudgetRequestsList reclamoId={reclamo.id} />
+              </Tabs.Panel>
+            )}
           </Tabs>
+
+          {puedeNotificar && (
+            <NotifyContractorsModal
+              reclamoId={reclamo.id}
+              opened={notificarAbierto}
+              onClose={() => setNotificarAbierto(false)}
+            />
+          )}
         </>
       )}
     </Drawer>

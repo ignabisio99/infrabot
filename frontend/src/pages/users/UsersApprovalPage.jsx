@@ -24,7 +24,7 @@ export function UsersApprovalPage() {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`${API_URL}/auth/pendientes`);
+      const response = await fetch(`${API_URL}/auth/pendientes`, { credentials: 'include' });
       if (!response.ok) throw new Error('Error al obtener usuarios pendientes');
       const data = await response.json();
       setUsuarios(data);
@@ -42,7 +42,10 @@ export function UsersApprovalPage() {
   const handleAprobar = async (id) => {
     setActionLoading(id);
     try {
-      const response = await fetch(`${API_URL}/auth/aprobar/${id}`, { method: 'POST' });
+      const response = await fetch(`${API_URL}/auth/aprobar/${id}`, {
+        method: 'POST',
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Error al aprobar usuario');
       setUsuarios((prev) => prev.filter((u) => u.id !== id));
     } catch (err) {
@@ -55,7 +58,10 @@ export function UsersApprovalPage() {
   const handleRechazar = async (id) => {
     setActionLoading(id);
     try {
-      const response = await fetch(`${API_URL}/auth/rechazar/${id}`, { method: 'POST' });
+      const response = await fetch(`${API_URL}/auth/rechazar/${id}`, {
+        method: 'POST',
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Error al rechazar usuario');
       setUsuarios((prev) => prev.filter((u) => u.id !== id));
     } catch (err) {

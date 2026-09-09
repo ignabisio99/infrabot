@@ -18,6 +18,8 @@ class EstadoReclamo(str, enum.Enum):
     PENDIENTE_PRESUPUESTO = "PENDIENTE_PRESUPUESTO"
     EN_EVALUACION = "EN_EVALUACION"
     APROBADO = "APROBADO"
+    PENDIENTE_COORDINACION = "PENDIENTE_COORDINACION"
+    VISITA_COORDINADA = "VISITA_COORDINADA"
     EN_EJECUCION = "EN_EJECUCION"
     FINALIZADO = "FINALIZADO"
     DESIERTO = "DESIERTO"
@@ -48,6 +50,8 @@ class Reclamo(Base):
     descripcion = Column(Text, nullable=False)
     observaciones = Column(Text, nullable=True)
     requiere_revision = Column(Boolean, nullable=False, default=False)
+    # Número de WhatsApp de quien creó el reclamo por el bot. Null si se creó desde la web.
+    telefono_creador = Column(String(50), nullable=True)
     fecha_creacion = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     fotos = relationship(
@@ -55,6 +59,12 @@ class Reclamo(Base):
         back_populates="reclamo",
         cascade="all, delete-orphan",
         order_by="FotoReclamo.id",
+    )
+    presupuestos = relationship(
+        "Presupuesto",
+        back_populates="reclamo",
+        cascade="all, delete-orphan",
+        order_by="Presupuesto.id",
     )
     historial_estados = relationship(
         "HistorialEstadoReclamo",
@@ -65,7 +75,9 @@ class Reclamo(Base):
 
     @property
     def estados_posibles(self) -> list[EstadoReclamo]:
-        """Transiciones habilitadas desde el estado actual, en el orden del enum.
+        """Transiciones que una persona puede elegir desde el estado actual, en el
+        orden del enum. No incluye las que sólo dispara el sistema, así el menú de
+        cambio de estado no ofrece nada que después vaya a fallar.
 
         El import va acá adentro porque el servicio importa este módulo: a nivel
         de módulo sería un import circular.
@@ -74,3 +86,14 @@ class Reclamo(Base):
 
         permitidos = transiciones_posibles(self.estado)
         return [estado for estado in EstadoReclamo if estado in permitidos]
+
+    @property
+    def admite_presupuesto(self) -> bool:
+        """Si en el estado actual se le pueden cargar presupuestos.
+
+        Lo consume el formulario de presupuestos para no ofrecer reclamos que el
+        backend después va a rechazar. Import local por lo mismo que arriba.
+        """
+        from services.estados_reclamo import admite_presupuesto as estado_admite_presupuesto
+
+        return estado_admite_presupuesto(self.estado)

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ActionIcon,
@@ -12,7 +12,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { IconListDetails, IconShieldCheck } from '@tabler/icons-react';
+import { IconGavel, IconListDetails, IconShieldCheck } from '@tabler/icons-react';
 
 import { RowActionsMenu } from '../../components/RowActionsMenu';
 import { eliminarPresupuesto, listarPresupuestos } from '../../api/presupuestos';
@@ -21,6 +21,9 @@ import { notifyError, notifySuccess } from '../../utils/notifications';
 import { formatoMoneda } from '../../utils/formatters';
 import { BudgetAuditModal } from './BudgetAuditModal';
 import { BudgetItemsModal } from './BudgetItemsModal';
+import { BudgetStatusBadge } from './BudgetStatusBadge';
+import { DecideBudgetModal } from './DecideBudgetModal';
+import { estaVigente } from './estados';
 
 export function BudgetsListPage() {
   const navigate = useNavigate();
@@ -30,13 +33,20 @@ export function BudgetsListPage() {
   const [eliminandoId, setEliminandoId] = useState(null);
   const [presupuestoSeleccionado, setPresupuestoSeleccionado] = useState(null);
   const [presupuestoAAuditar, setPresupuestoAAuditar] = useState(null);
+  const [presupuestoADecidir, setPresupuestoADecidir] = useState(null);
+
+  const cargar = useCallback(
+    () =>
+      listarPresupuestos()
+        .then(setPresupuestos)
+        .catch((err) => setError(err.message))
+        .finally(() => setCargando(false)),
+    [],
+  );
 
   useEffect(() => {
-    listarPresupuestos()
-      .then(setPresupuestos)
-      .catch((err) => setError(err.message))
-      .finally(() => setCargando(false));
-  }, []);
+    cargar();
+  }, [cargar]);
 
   const handleEliminar = async (id) => {
     if (!window.confirm('¿Seguro que querés eliminar este presupuesto?')) return;
@@ -81,6 +91,7 @@ export function BudgetsListPage() {
               <Table.Th>Escuela</Table.Th>
               <Table.Th>Contratista</Table.Th>
               <Table.Th>Monto</Table.Th>
+              <Table.Th>Estado</Table.Th>
               <Table.Th>Fecha</Table.Th>
               <Table.Th>Observaciones</Table.Th>
               <Table.Th />
@@ -102,6 +113,9 @@ export function BudgetsListPage() {
                 <Table.Td>{presupuesto.reclamo.nombre_escuela}</Table.Td>
                 <Table.Td>{presupuesto.contratista.nombre_empresa}</Table.Td>
                 <Table.Td>{formatoMoneda.format(Number(presupuesto.monto))}</Table.Td>
+                <Table.Td>
+                  <BudgetStatusBadge estado={presupuesto.estado} />
+                </Table.Td>
                 <Table.Td>{new Date(presupuesto.fecha).toLocaleString('es-AR')}</Table.Td>
                 <Table.Td>
                   {presupuesto.observaciones ? (
@@ -113,17 +127,30 @@ export function BudgetsListPage() {
                   )}
                 </Table.Td>
                 <Table.Td>
+                  {/* Un presupuesto ya decidido es parte del expediente: el backend
+                      rechaza editarlo y darlo de baja con un 409. */}
                   <RowActionsMenu
                     onEdit={() => navigate(`/presupuestos/${presupuesto.id}/editar`)}
                     onDelete={() => handleEliminar(presupuesto.id)}
                     deleting={eliminandoId === presupuesto.id}
+                    editDisabled={!estaVigente(presupuesto)}
+                    deleteDisabled={!estaVigente(presupuesto)}
                     extraItems={
-                      <Menu.Item
-                        leftSection={<IconShieldCheck size={14} />}
-                        onClick={() => setPresupuestoAAuditar(presupuesto)}
-                      >
-                        Ver auditoría
-                      </Menu.Item>
+                      <>
+                        <Menu.Item
+                          leftSection={<IconShieldCheck size={14} />}
+                          onClick={() => setPresupuestoAAuditar(presupuesto)}
+                        >
+                          Ver auditoría
+                        </Menu.Item>
+                        <Menu.Item
+                          leftSection={<IconGavel size={14} />}
+                          onClick={() => setPresupuestoADecidir(presupuesto)}
+                          disabled={presupuesto.estados_posibles.length === 0}
+                        >
+                          Decidir
+                        </Menu.Item>
+                      </>
                     }
                   />
                 </Table.Td>
@@ -141,6 +168,14 @@ export function BudgetsListPage() {
       <BudgetAuditModal
         presupuesto={presupuestoAAuditar}
         onClose={() => setPresupuestoAAuditar(null)}
+      />
+
+      {/* Recarga la lista entera y no la fila: aprobar uno deja a los otros del mismo
+          reclamo como no seleccionados. */}
+      <DecideBudgetModal
+        presupuesto={presupuestoADecidir}
+        onClose={() => setPresupuestoADecidir(null)}
+        onDecidido={cargar}
       />
     </Container>
   );
