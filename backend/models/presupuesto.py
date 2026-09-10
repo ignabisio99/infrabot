@@ -49,6 +49,7 @@ class Presupuesto(Base):
         server_default=EstadoPresupuesto.RECIBIDO.value,
     )
     fecha = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    detalle_tarea = Column(Text, nullable=True)
     observaciones = Column(Text, nullable=True)
 
     items = relationship(

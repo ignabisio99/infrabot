@@ -30,6 +30,7 @@ export function EditBudgetPage() {
         setInitialValues({
           claimId: String(presupuesto.reclamo_id),
           contractorId: String(presupuesto.contratista_id),
+          taskDetail: presupuesto.detalle_tarea ?? '',
           notes: presupuesto.observaciones ?? '',
           materials,
           labor,

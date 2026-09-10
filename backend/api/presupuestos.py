@@ -92,6 +92,7 @@ def crear_presupuesto(datos: PresupuestoCreate, db: Session = Depends(get_db), u
     nuevo_presupuesto = Presupuesto(
         reclamo_id=datos.reclamo_id,
         contratista_id=contratista_id,
+        detalle_tarea=datos.detalle_tarea,
         observaciones=datos.observaciones,
         items=[ItemPresupuesto(**item.model_dump()) for item in datos.items],
         # El default de la columna recién se aplica en el INSERT, y el asiento inicial
@@ -146,6 +147,7 @@ def actualizar_presupuesto(
     _validar_contratista(datos.contratista_id, db)
 
     presupuesto.contratista_id = datos.contratista_id
+    presupuesto.detalle_tarea = datos.detalle_tarea
     presupuesto.observaciones = datos.observaciones
     presupuesto.items = [ItemPresupuesto(**item.model_dump()) for item in datos.items]
 

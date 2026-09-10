@@ -16,7 +16,13 @@ from decimal import Decimal
 
 import models  # noqa: F401 - registra TODOS los modelos en la metadata antes de create_all
 from core.auth import hash_password
-from core.database import Base, SessionLocal, asegurar_columna_tipo_item, engine
+from core.database import (
+    Base,
+    SessionLocal,
+    asegurar_columna_detalle_tarea,
+    asegurar_columna_tipo_item,
+    engine,
+)
 from models import (
     ConfiguracionAuditoria,
     Contratista,
@@ -104,6 +110,7 @@ RECLAMOS = [
         presupuestos=[
             dict(
                 contratista=0,
+                detalle_tarea="Reemplazo del tablero eléctrico principal y recableado del ala norte.",
                 observaciones="Presupuesto para reparación del tablero.",
                 items=[
                     dict(
@@ -118,6 +125,7 @@ RECLAMOS = [
             ),
             dict(
                 contratista=1,
+                detalle_tarea="Reemplazo del tablero y certificación de la instalación.",
                 observaciones="Incluye certificación del tablero.",
                 items=[
                     dict(
@@ -143,6 +151,7 @@ RECLAMOS = [
         presupuestos=[
             dict(
                 contratista=1,
+                detalle_tarea="Reparación de la pérdida y reemplazo de tramo de cañería PVC.",
                 observaciones=None,
                 items=[
                     dict(descripcion="Cañería PVC 3/4", cantidad=10, costo_unitario=1200),
@@ -422,6 +431,7 @@ def crear_reclamos(db, contratistas):
             presupuesto = Presupuesto(
                 reclamo=reclamo,
                 contratista=contratistas[datos_presupuesto["contratista"]],
+                detalle_tarea=datos_presupuesto.get("detalle_tarea"),
                 observaciones=datos_presupuesto["observaciones"],
                 items=[ItemPresupuesto(**item) for item in datos_presupuesto["items"]],
                 estado=estados_presupuesto.ESTADO_INICIAL,
@@ -483,6 +493,7 @@ def main():
     else:
         Base.metadata.create_all(bind=engine)
         asegurar_columna_tipo_item()
+        asegurar_columna_detalle_tarea()
 
     db = SessionLocal()
     try:

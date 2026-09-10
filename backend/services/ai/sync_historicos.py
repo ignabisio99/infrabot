@@ -50,6 +50,8 @@ def sync_desde_presupuestos(db: Session) -> ResultadoSyncHistoricos:
 
         fuente = f"presupuesto:{p.id}"
         descripcion = reclamo.descripcion
+        if p.detalle_tarea:
+            descripcion = f"{descripcion} | {p.detalle_tarea}"
         if p.observaciones:
             descripcion = f"{descripcion} | {p.observaciones}"
 

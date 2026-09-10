@@ -93,6 +93,7 @@ export function PresupuestarReclamoPage() {
     initialValues: {
       materials: [{ ...MATERIAL_VACIO }],
       labor: [{ ...LABOR_VACIA }],
+      taskDetail: '',
       notes: '',
     },
     validate: (values) => validarLineasPresupuesto(values.materials, values.labor),
@@ -121,6 +122,7 @@ export function PresupuestarReclamoPage() {
       await crearPresupuesto({
         reclamo_id: reclamoId,
         contratista_id: miFicha.id,
+        detalle_tarea: values.taskDetail.trim() === '' ? null : values.taskDetail,
         observaciones: values.notes.trim() === '' ? null : values.notes,
         items: serializarItems(values.materials, values.labor),
       });
@@ -250,6 +252,15 @@ export function PresupuestarReclamoPage() {
               label="Detalle de la tarea a realizar"
               placeholder="Describí el trabajo que cubre este presupuesto..."
               minRows={3}
+              autosize
+              key={form.key('taskDetail')}
+              {...form.getInputProps('taskDetail')}
+            />
+
+            <Textarea
+              label="Observaciones"
+              placeholder="Notas adicionales (opcional)..."
+              minRows={2}
               autosize
               key={form.key('notes')}
               {...form.getInputProps('notes')}
