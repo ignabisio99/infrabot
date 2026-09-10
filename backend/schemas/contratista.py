@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from core.telefonos import normalizar_telefono_ar
 
 
 class ContratistaCreate(BaseModel):
@@ -10,6 +12,11 @@ class ContratistaCreate(BaseModel):
     especialidad: str = Field(min_length=2)
     calificacion: int | None = Field(default=None, ge=1, le=5)
     observaciones_calificacion: str | None = None
+
+    @field_validator("telefono")
+    @classmethod
+    def normalizar_telefono(cls, v):
+        return normalizar_telefono_ar(v)
 
 
 class ContratistaOut(ContratistaCreate):

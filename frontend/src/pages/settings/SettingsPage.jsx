@@ -1,11 +1,27 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Container, NumberInput, Stack, Text, Title } from '@mantine/core';
+import {
+  Alert,
+  Button,
+  Container,
+  Group,
+  NumberInput,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+} from '@mantine/core';
 
 import {
   actualizarUmbralesAuditoria,
   obtenerUmbralesAuditoria,
 } from '../../api/configuracion';
 import { ejecutarSeguimiento } from '../../api/ai';
+import {
+  actualizarRolManoObra,
+  crearRolManoObra,
+  eliminarRolManoObra,
+  listarRolesManoObra,
+} from '../../api/rolesManoObra';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 
 export function SettingsPage() {
@@ -15,10 +31,21 @@ export function SettingsPage() {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(null);
   const [enviandoSeguimiento, setEnviandoSeguimiento] = useState(false);
+  const [roles, setRoles] = useState([]);
+  const [nombresRoles, setNombresRoles] = useState({});
+  const [nuevoRol, setNuevoRol] = useState('');
+  const [guardandoRolId, setGuardandoRolId] = useState(null);
+  const [agregandoRol, setAgregandoRol] = useState(false);
+
+  const cargarRoles = () =>
+    listarRolesManoObra().then((data) => {
+      setRoles(data);
+      setNombresRoles(Object.fromEntries(data.map((rol) => [rol.id, rol.nombre])));
+    });
 
   useEffect(() => {
-    obtenerUmbralesAuditoria()
-      .then((data) => {
+    Promise.all([obtenerUmbralesAuditoria(), cargarRoles()])
+      .then(([data]) => {
         setAprobarPct(Number(data.umbral_aprobar) * 100);
         setRevisarPct(Number(data.umbral_revisar) * 100);
       })
@@ -113,6 +140,98 @@ export function SettingsPage() {
         >
           Enviar recordatorios ahora
         </Button>
+
+        <Title order={4} mt="md">
+          Roles de mano de obra
+        </Title>
+        <Text size="sm" c="dimmed">
+          El contratista elige un rol al cargar la mano de obra del presupuesto. Acá se
+          agregan, renombran o borran. Si un rol ya está usado en un presupuesto, no se
+          puede borrar: el nombre queda en ese ítem.
+        </Text>
+        <Group align="flex-end" wrap="nowrap">
+          <TextInput
+            label="Nuevo rol"
+            placeholder="Ej: Yesero"
+            value={nuevoRol}
+            onChange={(e) => setNuevoRol(e.currentTarget.value)}
+            style={{ flex: 1 }}
+          />
+          <Button
+            loading={agregandoRol}
+            onClick={async () => {
+              const nombre = nuevoRol.trim();
+              if (nombre.length < 2) {
+                notifyError('El nombre del rol debe tener al menos 2 caracteres.');
+                return;
+              }
+              setAgregandoRol(true);
+              try {
+                await crearRolManoObra({ nombre });
+                setNuevoRol('');
+                await cargarRoles();
+                notifySuccess('Rol agregado.');
+              } catch (err) {
+                notifyError(err.message);
+              } finally {
+                setAgregandoRol(false);
+              }
+            }}
+          >
+            Agregar
+          </Button>
+        </Group>
+        <Stack gap="xs">
+          {roles.map((rol) => (
+            <Group key={rol.id} align="flex-end" wrap="nowrap">
+              <TextInput
+                value={nombresRoles[rol.id] ?? rol.nombre}
+                onChange={(e) =>
+                  setNombresRoles((prev) => ({ ...prev, [rol.id]: e.currentTarget.value }))
+                }
+                style={{ flex: 1 }}
+              />
+              <Button
+                variant="light"
+                loading={guardandoRolId === rol.id}
+                onClick={async () => {
+                  const nombre = (nombresRoles[rol.id] ?? rol.nombre).trim();
+                  if (nombre.length < 2) {
+                    notifyError('El nombre del rol debe tener al menos 2 caracteres.');
+                    return;
+                  }
+                  setGuardandoRolId(rol.id);
+                  try {
+                    await actualizarRolManoObra(rol.id, { nombre });
+                    await cargarRoles();
+                    notifySuccess('Rol actualizado.');
+                  } catch (err) {
+                    notifyError(err.message);
+                  } finally {
+                    setGuardandoRolId(null);
+                  }
+                }}
+              >
+                Guardar
+              </Button>
+              <Button
+                color="red"
+                variant="subtle"
+                onClick={async () => {
+                  try {
+                    await eliminarRolManoObra(rol.id);
+                    await cargarRoles();
+                    notifySuccess('Rol eliminado.');
+                  } catch (err) {
+                    notifyError(err.message);
+                  }
+                }}
+              >
+                Borrar
+              </Button>
+            </Group>
+          ))}
+        </Stack>
       </Stack>
     </Container>
   );

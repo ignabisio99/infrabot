@@ -19,6 +19,7 @@ import {
   IconChevronRight,
   IconClipboardList,
   IconLogout,
+  IconUser,
   IconReceipt2,
 } from '@tabler/icons-react';
 
@@ -112,6 +113,9 @@ export function ContractorLayout() {
               </UnstyledButton>
             </Menu.Target>
             <Menu.Dropdown>
+              <Menu.Item leftSection={<IconUser size={16} />} onClick={() => navigate('/perfil')}>
+                Mi perfil
+              </Menu.Item>
               <Menu.Item color="red" leftSection={<IconLogout size={16} />} onClick={handleLogout}>
                 Cerrar sesión
               </Menu.Item>

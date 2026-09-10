@@ -18,9 +18,10 @@ from api.dashboard import router as dashboard_router
 from api.listas_contratistas import router as listas_contratistas_router
 from api.presupuestos import router as presupuestos_router
 from api.reclamos import router as reclamos_router
+from api.roles_mano_obra import router as roles_mano_obra_router
 from api.whatsapp import router as whatsapp_router
 from api.whatsapp_sim import router as whatsapp_sim_router
-from core.database import Base, engine
+from core.database import Base, SessionLocal, asegurar_columna_tipo_item, engine
 from core.storage import UPLOADS_DIR
 from services.workers import loop_cola_whatsapp, loop_seguimiento
 
@@ -61,6 +62,14 @@ async def lifespan(app: FastAPI):
     from services.recordatorios import loop_recordatorios
 
     Base.metadata.create_all(bind=engine)
+    asegurar_columna_tipo_item()
+    db_roles = SessionLocal()
+    try:
+        from models.rol_mano_obra import asegurar_roles_iniciales
+
+        asegurar_roles_iniciales(db_roles)
+    finally:
+        db_roles.close()
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     stop = asyncio.Event()
     tareas = [
@@ -114,6 +123,7 @@ app.include_router(whatsapp_router)
 app.include_router(whatsapp_sim_router)
 app.include_router(ai_router)
 app.include_router(configuracion_router)
+app.include_router(roles_mano_obra_router)
 
 @app.get("/")
 def read_root():

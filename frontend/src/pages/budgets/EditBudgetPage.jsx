@@ -7,6 +7,7 @@ import { actualizarPresupuesto, obtenerPresupuesto } from '../../api/presupuesto
 import { listarReclamos } from '../../api/reclamos';
 import { listarContratistas } from '../../api/contratistas';
 import { notifyError, notifySuccess } from '../../utils/notifications';
+import { partirItems } from '../../utils/presupuestoItems';
 
 export function EditBudgetPage() {
   const { id } = useParams();
@@ -25,16 +26,13 @@ export function EditBudgetPage() {
       .then(([presupuesto, reclamosData, contratistasData]) => {
         setReclamos(reclamosData);
         setContratistas(contratistasData);
+        const { materials, labor } = partirItems(presupuesto.items);
         setInitialValues({
           claimId: String(presupuesto.reclamo_id),
           contractorId: String(presupuesto.contratista_id),
           notes: presupuesto.observaciones ?? '',
-          items: presupuesto.items.map((item) => ({
-            description: item.descripcion,
-            quantity: item.cantidad,
-            unit: item.unidad ?? 'unidad',
-            unitCost: item.costo_unitario,
-          })),
+          materials,
+          labor,
         });
       })
       .catch((err) => setErrorCarga(err.message))

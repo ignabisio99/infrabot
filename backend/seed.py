@@ -15,7 +15,7 @@ from datetime import date
 from decimal import Decimal
 
 from core.auth import hash_password
-from core.database import Base, SessionLocal, engine
+from core.database import Base, SessionLocal, asegurar_columna_tipo_item, engine
 from models import (
     ConfiguracionAuditoria,
     Contratista,
@@ -30,9 +30,11 @@ from models import (
     PrioridadReclamo,
     Reclamo,
     ReferenciaCosto,
+    TipoItemPresupuesto,
     TipoUsuario,
     Usuario,
 )
+from models.rol_mano_obra import asegurar_roles_iniciales
 from services import estados_presupuesto, estados_reclamo
 
 # Usuario administrador para poder entrar a la app en un entorno recién creado.
@@ -103,7 +105,13 @@ RECLAMOS = [
                 contratista=0,
                 observaciones="Presupuesto para reparación del tablero.",
                 items=[
-                    dict(descripcion="Mano de obra", cantidad=8, costo_unitario=5000),
+                    dict(
+                        tipo=TipoItemPresupuesto.MANO_OBRA,
+                        descripcion="Electricista",
+                        cantidad=8,
+                        unidad="horas",
+                        costo_unitario=5000,
+                    ),
                     dict(descripcion="Tablero eléctrico nuevo", cantidad=1, costo_unitario=45000),
                 ],
             ),
@@ -111,7 +119,13 @@ RECLAMOS = [
                 contratista=1,
                 observaciones="Incluye certificación del tablero.",
                 items=[
-                    dict(descripcion="Mano de obra", cantidad=10, costo_unitario=5200),
+                    dict(
+                        tipo=TipoItemPresupuesto.MANO_OBRA,
+                        descripcion="Electricista",
+                        cantidad=10,
+                        unidad="horas",
+                        costo_unitario=5200,
+                    ),
                     dict(descripcion="Tablero eléctrico nuevo", cantidad=1, costo_unitario=51000),
                 ],
             ),
@@ -131,7 +145,13 @@ RECLAMOS = [
                 observaciones=None,
                 items=[
                     dict(descripcion="Cañería PVC 3/4", cantidad=10, costo_unitario=1200),
-                    dict(descripcion="Mano de obra", cantidad=4, costo_unitario=5000),
+                    dict(
+                        tipo=TipoItemPresupuesto.MANO_OBRA,
+                        descripcion="Plomero",
+                        cantidad=4,
+                        unidad="horas",
+                        costo_unitario=5000,
+                    ),
                 ],
                 decision=dict(estado=EstadoPresupuesto.APROBADO),
             ),
@@ -461,6 +481,7 @@ def main():
         reset_schema()
     else:
         Base.metadata.create_all(bind=engine)
+        asegurar_columna_tipo_item()
 
     db = SessionLocal()
     try:
@@ -469,6 +490,8 @@ def main():
         if crear_admin(db):
             db.commit()
             logger.info("Admin creado: %s / %s", ADMIN_EMAIL, ADMIN_PASSWORD)
+
+        asegurar_roles_iniciales(db)
 
         if not reiniciar and db.query(Reclamo).first() is not None:
             logger.info("Ya hay datos cargados. Usá --reset si querés borrar todo y recargar.")

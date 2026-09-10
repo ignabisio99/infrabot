@@ -1,6 +1,8 @@
 import { TextInput, Select, Textarea, Button, Stack } from '@mantine/core';
 import { useForm } from '@mantine/form';
 
+import { PhoneInput } from '../../components/PhoneInput';
+
 const valoresPorDefecto = {
   companyName: '',
   phone: '',
@@ -28,7 +30,8 @@ export function ContractorForm({
     initialValues,
     validate: {
       companyName: (value) => (value.length < 3 ? 'Ingrese el nombre de la empresa' : null),
-      phone: (value) => (value.length < 6 ? 'Ingrese un teléfono válido' : null),
+      phone: (value) =>
+        (value || '').replace(/\D/g, '').length < 8 ? 'Ingrese un teléfono válido' : null,
       address: (value) => (value.length < 3 ? 'Ingrese la dirección' : null),
       specialty: (value) => (value.length < 2 ? 'Ingrese la especialidad' : null),
     },
@@ -57,11 +60,11 @@ export function ContractorForm({
           {...form.getInputProps('companyName')}
         />
 
-        <TextInput
-          label="Teléfono"
-          placeholder="Ejemplo: 011-4555-1234"
-          key={form.key('phone')}
-          {...form.getInputProps('phone')}
+        <PhoneInput
+          value={form.values.phone}
+          error={form.errors.phone}
+          onChange={(telefono) => form.setFieldValue('phone', telefono)}
+          onBlur={() => form.validateField('phone')}
         />
 
         <TextInput

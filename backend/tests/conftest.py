@@ -47,6 +47,7 @@ def engine():
     admin.dispose()
 
     engine_test = create_engine(url_test)
+    Base.metadata.drop_all(bind=engine_test)
     Base.metadata.create_all(bind=engine_test)
     yield engine_test
     engine_test.dispose()

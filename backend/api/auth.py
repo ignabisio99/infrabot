@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from core.auth import create_access_token, decode_access_token, hash_password, invalidar_token, verify_password
 from core.database import get_db
-from core.dependencies import get_current_admin
+from core.dependencies import get_current_admin, get_current_user
 from core.email import enviar_confirmacion, enviar_aprobacion
 from models.contratista import Contratista
 from models.usuario import EstadoUsuario, TipoUsuario, Usuario
@@ -19,6 +19,7 @@ from schemas.usuario import (
     UsuarioLogin,
     UsuarioOut,
     UsuarioRegister,
+    UsuarioUpdate,
 )
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
@@ -258,6 +259,43 @@ def obtener_usuario_actual(
     if not usuario:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
 
+    return usuario
+
+
+@router.put("/me", response_model=UsuarioOut)
+def actualizar_usuario_actual(
+    datos: UsuarioUpdate,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
+):
+    """Actualiza los datos de perfil del usuario logueado. No cambia email, tipo ni estado."""
+    if usuario.tipo == TipoUsuario.CONTRATISTA:
+        if not datos.nombre_empresa or len(datos.nombre_empresa.strip()) < 2:
+            raise HTTPException(
+                status_code=422, detail="Los contratistas deben especificar el nombre de la empresa"
+            )
+        if not datos.especialidad or len(datos.especialidad.strip()) < 2:
+            raise HTTPException(
+                status_code=422, detail="Los contratistas deben especificar su especialidad"
+            )
+
+    usuario.nombre = datos.nombre
+    usuario.telefono = datos.telefono
+    usuario.direccion = datos.direccion
+    if usuario.tipo == TipoUsuario.CONTRATISTA:
+        usuario.nombre_empresa = datos.nombre_empresa
+        usuario.especialidad = datos.especialidad
+
+    ficha = db.query(Contratista).filter(Contratista.usuario_id == usuario.id).first()
+    if ficha is not None:
+        ficha.telefono = datos.telefono
+        ficha.direccion = datos.direccion
+        if usuario.tipo == TipoUsuario.CONTRATISTA:
+            ficha.nombre_empresa = datos.nombre_empresa or ficha.nombre_empresa
+            ficha.especialidad = datos.especialidad or ficha.especialidad
+
+    db.commit()
+    db.refresh(usuario)
     return usuario
 
 
