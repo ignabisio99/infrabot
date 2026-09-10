@@ -14,11 +14,11 @@ import {
   IconBuilding,
   IconCheck,
   IconMapPin,
-  IconPhone,
   IconTool,
 } from '@tabler/icons-react';
 import logo from '../../assets/logo-infrabot-front.png';
 import { API_URL, extraerMensajeError } from '../../api/apiClient';
+import { PhoneInput } from '../../components/PhoneInput';
 
 export function CompletarPerfilPage({ usuario, onComplete }) {
   const [loading, setLoading] = useState(false);
@@ -119,13 +119,11 @@ export function CompletarPerfilPage({ usuario, onComplete }) {
           {!success && (
             <form onSubmit={handleSubmit}>
               <Stack>
-                <TextInput
+                <PhoneInput
                   label="Teléfono de contacto"
-                  placeholder="+54 11 1234-5678"
-                  leftSection={<IconPhone size={16} />}
                   required
                   value={form.telefono}
-                  onChange={(e) => setForm({ ...form, telefono: e.target.value })}
+                  onChange={(telefono) => setForm({ ...form, telefono })}
                 />
 
                 <TextInput

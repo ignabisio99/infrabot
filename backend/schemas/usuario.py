@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from models.usuario import EstadoUsuario, TipoUsuario
+from core.telefonos import normalizar_telefono_ar
 
 
 class UsuarioRegister(BaseModel):
@@ -39,6 +40,11 @@ class UsuarioRegister(BaseModel):
             raise ValueError("Los contratistas deben especificar su especialidad")
         return v
 
+    @field_validator("telefono")
+    @classmethod
+    def normalizar_telefono(cls, v):
+        return normalizar_telefono_ar(v)
+
 
 class UsuarioLogin(BaseModel):
     email: EmailStr
@@ -65,6 +71,24 @@ class CompletarPerfil(BaseModel):
         if info.data.get("tipo") == TipoUsuario.CONTRATISTA and (not v or len(v.strip()) < 2):
             raise ValueError("Los contratistas deben especificar su especialidad")
         return v
+
+    @field_validator("telefono")
+    @classmethod
+    def normalizar_telefono(cls, v):
+        return normalizar_telefono_ar(v)
+
+
+class UsuarioUpdate(BaseModel):
+    nombre: str = Field(min_length=2)
+    telefono: str = Field(min_length=6)
+    direccion: str = Field(min_length=5)
+    nombre_empresa: str | None = None
+    especialidad: str | None = None
+
+    @field_validator("telefono")
+    @classmethod
+    def normalizar_telefono(cls, v):
+        return normalizar_telefono_ar(v)
 
 
 class UsuarioOut(BaseModel):

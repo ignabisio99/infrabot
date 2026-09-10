@@ -21,11 +21,12 @@ from models.historial_estado_reclamo import HistorialEstadoReclamo, OrigenCambio
 from models.indice_inflacion import IndiceInflacion
 from models.institucion import Institucion
 from models.lista_contratistas import ListaContratistas, lista_contratista_asociacion
-from models.presupuesto import EstadoPresupuesto, ItemPresupuesto, Presupuesto
+from models.presupuesto import EstadoPresupuesto, ItemPresupuesto, Presupuesto, TipoItemPresupuesto
 from models.reclamo import EstadoReclamo, PrioridadReclamo, Reclamo
 from models.recomendacion_ia import RecomendacionIA, TipoRecomendacionIA
 from models.recordatorio_contratista import RecordatorioContratista
 from models.referencia_costo import ReferenciaCosto
+from models.rol_mano_obra import RolManoObra
 from models.solicitud_presupuesto import SolicitudPresupuesto
 from models.token_blacklist import TokenBlacklist
 from models.usuario import EstadoUsuario, TipoUsuario, Usuario
@@ -53,8 +54,10 @@ __all__ = [
     "RecomendacionIA",
     "RecordatorioContratista",
     "ReferenciaCosto",
+    "RolManoObra",
     "SolicitudPresupuesto",
     "TipoAdjuntoPresupuesto",
+    "TipoItemPresupuesto",
     "TipoRecomendacionIA",
     "TipoUsuario",
     "TokenBlacklist",

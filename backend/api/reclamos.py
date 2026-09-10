@@ -470,15 +470,38 @@ def obtener_visita_reclamo(
     from models.visita import Visita
     from schemas.visita import VisitaOut
 
-    if db.get(Reclamo, reclamo_id) is None:
+    reclamo = db.get(Reclamo, reclamo_id)
+    if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
 
-    visita = (
-        db.query(Visita)
-        .filter(Visita.reclamo_id == reclamo_id)
-        .order_by(Visita.id.desc())
-        .first()
-    )
+    from models.visita import EstadoVisita
+
+    estados_coordinados = {
+        EstadoReclamo.VISITA_COORDINADA,
+        EstadoReclamo.EN_EJECUCION,
+        EstadoReclamo.FINALIZADO,
+    }
+    if reclamo.estado in estados_coordinados:
+        visita = (
+            db.query(Visita)
+            .filter(Visita.reclamo_id == reclamo_id, Visita.estado == EstadoVisita.CONFIRMADA)
+            .order_by(Visita.id.desc())
+            .first()
+        )
+        if visita is None:
+            visita = (
+                db.query(Visita)
+                .filter(Visita.reclamo_id == reclamo_id)
+                .order_by(Visita.id.desc())
+                .first()
+            )
+    else:
+        visita = (
+            db.query(Visita)
+            .filter(Visita.reclamo_id == reclamo_id)
+            .order_by(Visita.id.desc())
+            .first()
+        )
     if visita is None:
         return None
     return VisitaOut.model_validate(visita)

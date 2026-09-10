@@ -26,6 +26,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconLogout,
+  IconUser,
   IconUserCheck,
   IconUsersGroup,
   IconBrandWhatsapp,
@@ -150,6 +151,9 @@ export function AppLayout() {
               </UnstyledButton>
             </Menu.Target>
             <Menu.Dropdown>
+              <Menu.Item leftSection={<IconUser size={16} />} onClick={() => navigate('/perfil')}>
+                Mi perfil
+              </Menu.Item>
               <Menu.Item
                 color="red"
                 leftSection={<IconLogout size={16} />}

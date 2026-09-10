@@ -126,6 +126,9 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
   // de ahí tiene sentido ver a quién se le pidió y quién ya respondió.
   const mostrarSolicitudes =
     esAdmin && reclamo && reclamo.estado !== 'PENDIENTE_REVISION';
+  const visitaYaCoordinada =
+    visita?.estado === 'CONFIRMADA' ||
+    ['VISITA_COORDINADA', 'EN_EJECUCION', 'FINALIZADO'].includes(reclamo?.estado);
 
   return (
     <Drawer
@@ -235,13 +238,15 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
             </Paper>
           )}
 
-          {visita && visita.estado === 'ESPERANDO_DISPONIBILIDAD' && (
+          {visita &&
+            visita.estado === 'ESPERANDO_DISPONIBILIDAD' &&
+            !visitaYaCoordinada && (
             <Text size="sm" c="dimmed" mb="md" ml={2}>
               🕓 Esperando que el contratista proponga horarios para la visita.
             </Text>
           )}
 
-          {visita && visita.estado === 'ESPERANDO_ELECCION' && (
+          {visita && visita.estado === 'ESPERANDO_ELECCION' && !visitaYaCoordinada && (
             <Text size="sm" c="dimmed" mb="md" ml={2}>
               🕓 Esperando que el responsable del reclamo elija un horario para la visita.
             </Text>

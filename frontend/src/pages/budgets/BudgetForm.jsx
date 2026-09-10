@@ -1,16 +1,13 @@
 import { useEffect, useState } from 'react';
 import {
-  Autocomplete,
   Badge,
   Button,
   Group,
-  NumberInput,
   Paper,
   Select,
   Stack,
   Text,
   Textarea,
-  TextInput,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 
@@ -18,14 +15,21 @@ import { sugerirContratistas } from '../../api/ai';
 import { formatearIdReclamo } from '../../utils/ids';
 import { formatoMoneda } from '../../utils/formatters';
 import { notifyError } from '../../utils/notifications';
-
-const UNIDADES = ['kg', 'gramos', 'metros', 'metros²', 'metros³', 'litros', 'horas', 'cajas', 'rollos', 'bolsas'];
+import {
+  LABOR_VACIA,
+  MATERIAL_VACIO,
+  serializarItems,
+  totalLineas,
+  validarLineasPresupuesto,
+} from '../../utils/presupuestoItems';
+import { BudgetLineItems } from './BudgetLineItems';
 
 const valoresPorDefecto = {
   claimId: '',
   contractorId: '',
   notes: '',
-  items: [{ description: '', quantity: '', unit: 'unidad', unitCost: '' }],
+  materials: [{ ...MATERIAL_VACIO }],
+  labor: [{ ...LABOR_VACIA }],
 };
 
 export function BudgetForm({
@@ -38,16 +42,19 @@ export function BudgetForm({
   reclamoEditable = true,
 }) {
   const form = useForm({
-    initialValues,
-    validate: {
-      claimId: (value) => (value === '' ? 'Seleccione un reclamo' : null),
-      contractorId: (value) => (value === '' ? 'Seleccione un contratista' : null),
-      items: {
-        description: (value) => (value.trim() === '' ? 'Ingrese una descripción' : null),
-        quantity: (value) => (value === '' || Number(value) <= 0 ? 'Debe ser mayor a 0' : null),
-        unit: (value) => (!value || value.trim() === '' ? 'Ingrese la unidad' : null),
-        unitCost: (value) => (value === '' || Number(value) < 0 ? 'No puede ser negativo' : null),
-      },
+    initialValues: {
+      ...valoresPorDefecto,
+      ...initialValues,
+      materials: initialValues.materials ?? valoresPorDefecto.materials,
+      labor: initialValues.labor ?? valoresPorDefecto.labor,
+    },
+    validate: (values) => {
+      const errors = {
+        ...validarLineasPresupuesto(values.materials, values.labor),
+      };
+      if (values.claimId === '') errors.claimId = 'Seleccione un reclamo';
+      if (values.contractorId === '') errors.contractorId = 'Seleccione un contratista';
+      return errors;
     },
   });
 
@@ -93,21 +100,14 @@ export function BudgetForm({
     label: contratista.nombre_empresa,
   }));
 
-  const total = form.values.items.reduce(
-    (acumulado, item) => acumulado + (Number(item.quantity) || 0) * (Number(item.unitCost) || 0),
-    0,
-  );
+  const total = totalLineas(form.values.materials, form.values.labor);
 
   const handleSubmit = (values) => {
+    const items = serializarItems(values.materials, values.labor);
     const datos = {
       contratista_id: Number(values.contractorId),
       observaciones: values.notes.trim() === '' ? null : values.notes,
-      items: values.items.map((item) => ({
-        descripcion: item.description,
-        cantidad: item.quantity,
-        unidad: item.unit || 'unidad',
-        costo_unitario: item.unitCost,
-      })),
+      items,
     };
 
     // Al editar, el reclamo no viaja: el PUT lo rechaza con un 422.
@@ -187,81 +187,16 @@ export function BudgetForm({
           </Paper>
         )}
 
-        <Stack gap="xs">
-          <Text fw={500} size="sm">
-            Ítems del presupuesto
-          </Text>
-
-          {form.values.items.map((_, index) => (
-            <Group key={form.key(`items.${index}`)} align="flex-start" wrap="nowrap">
-              <TextInput
-                placeholder="Descripción"
-                style={{ flex: 2 }}
-                key={form.key(`items.${index}.description`)}
-                {...form.getInputProps(`items.${index}.description`)}
-              />
-              <NumberInput
-                placeholder="Cantidad"
-                min={0}
-                decimalScale={2}
-                style={{ flex: 1 }}
-                key={form.key(`items.${index}.quantity`)}
-                {...form.getInputProps(`items.${index}.quantity`)}
-              />
-              <Autocomplete
-                placeholder="Unidad"
-                data={UNIDADES}
-                maxDropdownHeight={260}
-                comboboxProps={{ withinPortal: true }}
-                style={{ flex: 1 }}
-                key={form.key(`items.${index}.unit`)}
-                {...form.getInputProps(`items.${index}.unit`)}
-              />
-              <NumberInput
-                placeholder="Costo unitario"
-                min={0}
-                decimalScale={2}
-                prefix="$"
-                style={{ flex: 1 }}
-                key={form.key(`items.${index}.unitCost`)}
-                {...form.getInputProps(`items.${index}.unitCost`)}
-              />
-              <Button
-                type="button"
-                color="red"
-                variant="subtle"
-                disabled={form.values.items.length === 1}
-                onClick={() => form.removeListItem('items', index)}
-              >
-                Quitar
-              </Button>
-            </Group>
-          ))}
-
-          <Button
-            type="button"
-            variant="light"
-            onClick={() =>
-              form.insertListItem('items', {
-                description: '',
-                quantity: '',
-                unit: 'unidad',
-                unitCost: '',
-              })
-            }
-          >
-            + Agregar ítem
-          </Button>
-        </Stack>
-
         <Textarea
-          label="Observaciones"
-          placeholder="Notas adicionales (opcional)..."
-          minRows={2}
+          label="Detalle de la tarea a realizar"
+          placeholder="Describí el trabajo que cubre este presupuesto..."
+          minRows={3}
           autosize
           key={form.key('notes')}
           {...form.getInputProps('notes')}
         />
+
+        <BudgetLineItems form={form} />
 
         <Group justify="flex-end">
           <Text fw={700} size="lg">

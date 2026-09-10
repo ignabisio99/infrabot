@@ -22,12 +22,12 @@ import {
   IconLock,
   IconMail,
   IconMapPin,
-  IconPhone,
   IconTool,
   IconUser,
 } from '@tabler/icons-react';
 import logo from '../../assets/logo-infrabot-front.png';
 import { login, register, loginWithGoogle } from '../../api/auth';
+import { PhoneInput } from '../../components/PhoneInput';
 import { GoogleLogin } from '@react-oauth/google';
 
 export function LoginPage({ onLogin }) {
@@ -253,13 +253,11 @@ export function LoginPage({ onLogin }) {
 
                   <Divider label="Datos de perfil" labelPosition="center" />
 
-                  <TextInput
+                  <PhoneInput
                     label="Teléfono de contacto"
-                    placeholder="+54 11 1234-5678"
-                    leftSection={<IconPhone size={16} />}
                     required
                     value={registerForm.telefono}
-                    onChange={(e) => setRegisterForm({ ...registerForm, telefono: e.target.value })}
+                    onChange={(telefono) => setRegisterForm({ ...registerForm, telefono })}
                   />
                   <TextInput
                     label="Dirección"

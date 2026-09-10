@@ -4,10 +4,11 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from models.historial_estado_reclamo import OrigenCambioEstado
-from models.presupuesto import EstadoPresupuesto
+from models.presupuesto import EstadoPresupuesto, TipoItemPresupuesto
 
 
 class ItemPresupuestoCreate(BaseModel):
+    tipo: TipoItemPresupuesto = TipoItemPresupuesto.MATERIAL
     descripcion: str = Field(min_length=1)
     cantidad: Decimal = Field(gt=0)
     unidad: str = Field(default="unidad", min_length=1, max_length=20)

@@ -64,3 +64,19 @@ export async function getMe(signal) {
   if (!response.ok) return null;
   return response.json();
 }
+
+export async function actualizarPerfil(datos) {
+  const response = await fetch(`${API_URL}/auth/me`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(datos),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(extraerMensajeError(error?.detail, 'No se pudo guardar el perfil'));
+  }
+
+  return response.json();
+}

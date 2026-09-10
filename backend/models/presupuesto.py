@@ -24,6 +24,16 @@ estado_presupuesto_enum = Enum(
 )
 
 
+class TipoItemPresupuesto(str, enum.Enum):
+    MATERIAL = "MATERIAL"
+    MANO_OBRA = "MANO_OBRA"
+
+
+tipo_item_presupuesto_enum = Enum(
+    TipoItemPresupuesto, name="tipo_item_presupuesto", metadata=Base.metadata
+)
+
+
 class Presupuesto(Base):
     __tablename__ = "presupuesto"
 
@@ -80,6 +90,12 @@ class ItemPresupuesto(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     presupuesto_id = Column(
         Integer, ForeignKey("presupuesto.id", ondelete="CASCADE"), nullable=False
+    )
+    tipo = Column(
+        tipo_item_presupuesto_enum,
+        nullable=False,
+        default=TipoItemPresupuesto.MATERIAL,
+        server_default=TipoItemPresupuesto.MATERIAL.value,
     )
     descripcion = Column(Text, nullable=False)
     cantidad = Column(Numeric(10, 2), nullable=False)

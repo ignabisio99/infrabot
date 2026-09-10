@@ -26,6 +26,7 @@ import { MyPresupuestosPage } from './pages/portal/MyPresupuestosPage';
 import { MySolicitudesPage } from './pages/portal/MySolicitudesPage';
 import { ReportsPage } from './pages/reports/ReportsPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
+import { ProfilePage } from './pages/profile/ProfilePage';
 import { UsersApprovalPage } from './pages/users/UsersApprovalPage';
 import { WhatsAppSimPage } from './pages/whatsapp/WhatsAppSimPage';
 
@@ -149,6 +150,7 @@ function App() {
           <Route index element={<Navigate to="/portal/solicitudes" replace />} />
           <Route path="/portal/solicitudes" element={<MySolicitudesPage />} />
           <Route path="/portal/presupuestos" element={<MyPresupuestosPage />} />
+          <Route path="/perfil" element={<ProfilePage />} />
           <Route
             path="/portal/reclamos/:id/presupuestar"
             element={<PresupuestarReclamoPage />}
@@ -181,6 +183,7 @@ function App() {
         <Route path="/reportes" element={<ReportsPage />} />
         <Route path="/solicitudes" element={<UsersApprovalPage />} />
         <Route path="/configuracion" element={<SettingsPage />} />
+        <Route path="/perfil" element={<ProfilePage />} />
         <Route path="/whatsapp" element={<WhatsAppSimPage />} />
         <Route path="*" element={<Navigate to="/reclamos" replace />} />
       </Route>

@@ -12,6 +12,48 @@ const colorPorRecomendacion = {
   RECHAZAR: 'red',
 };
 
+function GrupoItems({ titulo, items }) {
+  if (items.length === 0) {
+    return (
+      <Text size="sm" c="dimmed" mb="sm">
+        Sin {titulo.toLowerCase()}.
+      </Text>
+    );
+  }
+
+  return (
+    <>
+      <Text size="sm" fw={600} mb={4}>
+        {titulo}
+      </Text>
+      <ScrollArea.Autosize mah={280} mb="md">
+        <Table withColumnBorders striped>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th w="45%">Descripción</Table.Th>
+              <Table.Th>Cantidad</Table.Th>
+              <Table.Th>Costo unitario</Table.Th>
+              <Table.Th>Subtotal</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {items.map((item) => (
+              <Table.Tr key={item.id}>
+                <Table.Td>{item.descripcion}</Table.Td>
+                <Table.Td>
+                  {formatoNumero.format(Number(item.cantidad))} {item.unidad ?? ''}
+                </Table.Td>
+                <Table.Td>{formatoMoneda.format(Number(item.costo_unitario))}</Table.Td>
+                <Table.Td>{formatoMoneda.format(Number(item.subtotal))}</Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      </ScrollArea.Autosize>
+    </>
+  );
+}
+
 export function BudgetItemsModal({ presupuesto, onClose }) {
   const [informe, setInforme] = useState(null);
   const [cargando, setCargando] = useState(false);
@@ -66,41 +108,19 @@ export function BudgetItemsModal({ presupuesto, onClose }) {
     >
       {presupuesto && (
         <>
-          <ScrollArea.Autosize mah={400} mb="md">
-            <Table withColumnBorders striped>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th w="45%">Descripción</Table.Th>
-                  <Table.Th>Cantidad</Table.Th>
-                  <Table.Th>Costo unitario</Table.Th>
-                  <Table.Th>Subtotal</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {presupuesto.items.map((item) => (
-                  <Table.Tr key={item.id}>
-                    <Table.Td>{item.descripcion}</Table.Td>
-                    <Table.Td>
-                      {formatoNumero.format(Number(item.cantidad))} {item.unidad ?? ''}
-                    </Table.Td>
-                    <Table.Td>{formatoMoneda.format(Number(item.costo_unitario))}</Table.Td>
-                    <Table.Td>{formatoMoneda.format(Number(item.subtotal))}</Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </ScrollArea.Autosize>
-
           {presupuesto.observaciones && (
             <>
               <Text size="sm" fw={600} mb={4}>
-                Observaciones
+                Detalle de la tarea
               </Text>
               <Text size="sm" c="dimmed" mb="md" style={{ whiteSpace: 'pre-wrap' }}>
                 {presupuesto.observaciones}
               </Text>
             </>
           )}
+
+          <GrupoItems titulo="Materiales" items={presupuesto.items.filter((i) => i.tipo !== 'MANO_OBRA')} />
+          <GrupoItems titulo="Mano de obra" items={presupuesto.items.filter((i) => i.tipo === 'MANO_OBRA')} />
 
           <Divider mb="sm" />
 
