@@ -108,10 +108,21 @@ export function BudgetItemsModal({ presupuesto, onClose }) {
     >
       {presupuesto && (
         <>
-          {presupuesto.observaciones && (
+          {presupuesto.detalle_tarea && (
             <>
               <Text size="sm" fw={600} mb={4}>
                 Detalle de la tarea
+              </Text>
+              <Text size="sm" c="dimmed" mb="md" style={{ whiteSpace: 'pre-wrap' }}>
+                {presupuesto.detalle_tarea}
+              </Text>
+            </>
+          )}
+
+          {presupuesto.observaciones && (
+            <>
+              <Text size="sm" fw={600} mb={4}>
+                Observaciones
               </Text>
               <Text size="sm" c="dimmed" mb="md" style={{ whiteSpace: 'pre-wrap' }}>
                 {presupuesto.observaciones}

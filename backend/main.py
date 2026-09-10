@@ -21,7 +21,13 @@ from api.reclamos import router as reclamos_router
 from api.roles_mano_obra import router as roles_mano_obra_router
 from api.whatsapp import router as whatsapp_router
 from api.whatsapp_sim import router as whatsapp_sim_router
-from core.database import Base, SessionLocal, asegurar_columna_tipo_item, engine
+from core.database import (
+    Base,
+    SessionLocal,
+    asegurar_columna_detalle_tarea,
+    asegurar_columna_tipo_item,
+    engine,
+)
 from core.storage import UPLOADS_DIR
 from services.workers import loop_cola_whatsapp, loop_seguimiento
 
@@ -64,6 +70,7 @@ async def lifespan(app: FastAPI):
 
     Base.metadata.create_all(bind=engine)
     asegurar_columna_tipo_item()
+    asegurar_columna_detalle_tarea()
     db_roles = SessionLocal()
     try:
         from models.rol_mano_obra import asegurar_roles_iniciales

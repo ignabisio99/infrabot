@@ -55,3 +55,15 @@ def asegurar_columna_tipo_item(bind=engine):
                 """
             )
         )
+
+
+def asegurar_columna_detalle_tarea(bind=engine):
+    """Agrega `presupuesto.detalle_tarea` si la tabla ya existía sin esa columna."""
+    inspector = inspect(bind)
+    if "presupuesto" not in inspector.get_table_names():
+        return
+    columnas = {columna["name"] for columna in inspector.get_columns("presupuesto")}
+    if "detalle_tarea" in columnas:
+        return
+    with bind.begin() as conn:
+        conn.execute(text("ALTER TABLE presupuesto ADD COLUMN detalle_tarea TEXT"))

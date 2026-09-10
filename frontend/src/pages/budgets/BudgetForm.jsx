@@ -27,6 +27,7 @@ import { BudgetLineItems } from './BudgetLineItems';
 const valoresPorDefecto = {
   claimId: '',
   contractorId: '',
+  taskDetail: '',
   notes: '',
   materials: [{ ...MATERIAL_VACIO }],
   labor: [{ ...LABOR_VACIA }],
@@ -106,6 +107,7 @@ export function BudgetForm({
     const items = serializarItems(values.materials, values.labor);
     const datos = {
       contratista_id: Number(values.contractorId),
+      detalle_tarea: values.taskDetail.trim() === '' ? null : values.taskDetail,
       observaciones: values.notes.trim() === '' ? null : values.notes,
       items,
     };
@@ -191,6 +193,15 @@ export function BudgetForm({
           label="Detalle de la tarea a realizar"
           placeholder="Describí el trabajo que cubre este presupuesto..."
           minRows={3}
+          autosize
+          key={form.key('taskDetail')}
+          {...form.getInputProps('taskDetail')}
+        />
+
+        <Textarea
+          label="Observaciones"
+          placeholder="Notas adicionales (opcional)..."
+          minRows={2}
           autosize
           key={form.key('notes')}
           {...form.getInputProps('notes')}

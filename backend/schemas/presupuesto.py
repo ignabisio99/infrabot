@@ -28,6 +28,7 @@ class ItemPresupuestoOut(ItemPresupuestoCreate):
 
 class PresupuestoBase(BaseModel):
     contratista_id: int
+    detalle_tarea: str | None = None
     observaciones: str | None = None
     items: list[ItemPresupuestoCreate] = Field(min_length=1)
 
@@ -68,6 +69,7 @@ class PresupuestoOut(BaseModel):
     reclamo_id: int
     contratista_id: int
     fecha: datetime
+    detalle_tarea: str | None
     observaciones: str | None
     items: list[ItemPresupuestoOut]
     reclamo: ReclamoResumen
