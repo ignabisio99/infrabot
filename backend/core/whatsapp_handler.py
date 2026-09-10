@@ -97,6 +97,26 @@ CATEGORIAS = [
     "Otro",
 ]
 
+# Etiquetas legibles del estado del reclamo para mostrar por WhatsApp.
+ETIQUETA_ESTADO = {
+    "PENDIENTE_REVISION": "En revisión",
+    "PENDIENTE_PRESUPUESTO": "Pendiente de presupuesto",
+    "EN_EVALUACION": "En evaluación de presupuestos",
+    "APROBADO": "Presupuesto aprobado",
+    "PENDIENTE_COORDINACION": "Coordinando la visita",
+    "VISITA_COORDINADA": "Visita agendada",
+    "EN_EJECUCION": "En ejecución",
+    "FINALIZADO": "Finalizado",
+    "DESIERTO": "Sin ofertas",
+    "RECHAZADO": "Rechazado",
+    "CANCELADO": "Cancelado",
+}
+
+
+def _etiqueta_estado(reclamo: Reclamo) -> str:
+    valor = reclamo.estado.value if reclamo.estado else ""
+    return ETIQUETA_ESTADO.get(valor, valor)
+
 
 def _mensaje_paso_media(conv: dict) -> str:
     media_count = len(conv.get("media", []))
@@ -151,6 +171,7 @@ def _formatear_reclamo(r: Reclamo) -> str:
         f"📋 *Reclamo #{r.id}*\n"
         f"🏫 Escuela: {r.nombre_escuela}\n"
         f"📍 Ubicación: {r.ubicacion}\n"
+        f"📊 Estado: {_etiqueta_estado(r)}\n"
         f"🚦 Prioridad: {r.prioridad.value}\n"
         f"🏷️ Categoría: {r.categoria}\n"
         f"📝 Descripción: {r.descripcion}\n"
@@ -221,7 +242,8 @@ def _listar_recientes(db: Session, usuario: str = "") -> str:
     resultado = "📋 *Tus últimos reclamos:*\n\n"
     for r in reclamos:
         resultado += (
-            f"• #{r.id} | {r.nombre_escuela} | {r.prioridad.value} | "
+            f"• #{r.id} | {r.nombre_escuela}\n"
+            f"   📊 {_etiqueta_estado(r)} | 🚦 {r.prioridad.value} | "
             f"{r.categoria} | {r.fecha_creacion.strftime('%d/%m/%Y')}\n"
         )
     resultado += "\nPara ver el detalle, escribí: *ver #<id>*"
@@ -294,11 +316,56 @@ def _iniciar_libre(usuario: str) -> str:
     )
 
 
-def _siguiente_tras_libre(conv: dict, datos: dict) -> str:
+def _confirmar_escuela_padron(db: Session, conv: dict, texto_escuela: str):
+    """Busca la escuela en el padrón y arma el diálogo de confirmación con botones.
+
+    Devuelve el mensaje interactivo si hay coincidencias, o None si no hay ninguna
+    (en ese caso el llamador sigue con el texto tal cual).
+    """
+    from services.instituciones import buscar_instituciones
+
+    coincidencias = buscar_instituciones(db, texto_escuela, limite=3)
+    if not coincidencias:
+        return None
+
+    conv["candidatas_escuela"] = [
+        {"nombre": i.nombre, "domicilio": i.domicilio, "localidad": i.localidad}
+        for i in coincidencias
+    ]
+    conv["nombre_escuela_ingresado"] = texto_escuela
+    conv["paso"] = "confirmar_escuela"
+    mejor = coincidencias[0]
+    dom = f"\n📍 {mejor.domicilio}" if mejor.domicilio else ""
+    loc = f" ({mejor.localidad})" if mejor.localidad else ""
+    return {
+        "tipo": "botones",
+        "body": (
+            f"🔎 Encontré este colegio:\n\n"
+            f"🏫 *{mejor.nombre}*{dom}{loc}\n\n"
+            "¿Es este el colegio del reclamo?"
+        ),
+        "botones": [
+            {"id": "escuela_si", "title": "✅ Sí, es ese"},
+            {"id": "escuela_otras", "title": "🔁 Ver otras"},
+            {"id": "escuela_no", "title": "✍️ Usar lo que puse"},
+        ],
+    }
+
+
+def _siguiente_tras_libre(db: Session, conv: dict, datos: dict) -> str:
     """Tras la extracción libre: pide solo lo que falte y sigue el flujo común."""
     if not datos.get("nombre_escuela"):
         conv["paso"] = "escuela"
         return "🏫 ¿De qué escuela es el reclamo?"
+
+    # Si aún no se confirmó la escuela contra el padrón, hacerlo ahora.
+    if not conv.get("escuela_confirmada"):
+        dialogo = _confirmar_escuela_padron(db, conv, datos["nombre_escuela"])
+        if dialogo is not None:
+            return dialogo
+        # Sin coincidencias: se toma la escuela extraída tal cual.
+        conv["escuela_confirmada"] = True
+
     if not datos.get("ubicacion"):
         conv["paso"] = "ubicacion"
         return "📍 ¿En qué parte de la escuela es el problema? (aula, piso, sector)"
@@ -357,7 +424,109 @@ def _procesar_libre(db: Session, conv: dict, datos: dict, texto: str) -> str:
     )
     db.commit()
 
-    return _siguiente_tras_libre(conv, datos)
+    return _siguiente_tras_libre(db, conv, datos)
+
+
+def _procesar_confirmar_escuela(conv: dict, datos: dict, texto: str):
+    """Maneja la confirmación de la escuela sugerida desde el padrón."""
+    opcion = texto.strip().lower()
+    candidatas = conv.get("candidatas_escuela", [])
+
+    # Confirmó la primera sugerencia.
+    if opcion == "escuela_si":
+        elegida = candidatas[0] if candidatas else None
+        if elegida:
+            datos["nombre_escuela"] = elegida["nombre"]
+            if elegida.get("domicilio"):
+                conv["sugerencia_ubicacion"] = elegida["domicilio"]
+        return _tras_fijar_escuela(conv, datos)
+
+    # Quiere ver las otras coincidencias.
+    if opcion == "escuela_otras":
+        if len(candidatas) <= 1:
+            return {
+                "tipo": "botones",
+                "body": "No tengo otras coincidencias. ¿Qué querés hacer?",
+                "botones": [
+                    {"id": "escuela_si", "title": "✅ Usar la sugerida"},
+                    {"id": "escuela_no", "title": "✍️ Usar lo que puse"},
+                ],
+            }
+        lineas = "\n".join(
+            f"{i + 1}. {c['nombre']}" + (f" — {c['domicilio']}" if c.get("domicilio") else "")
+            for i, c in enumerate(candidatas)
+        )
+        conv["paso"] = "elegir_escuela"
+        return (
+            f"🔎 Estas son las coincidencias:\n\n{lineas}\n\n"
+            "Respondé con el *número* de la correcta, o escribí *ninguna* para usar lo que ingresaste."
+        )
+
+    # Prefiere usar exactamente lo que escribió.
+    if opcion == "escuela_no":
+        datos["nombre_escuela"] = conv.get("nombre_escuela_ingresado", "")
+        return _tras_fijar_escuela(conv, datos)
+
+    return (
+        "Elegí una opción: *Sí, es ese*, *Ver otras* o *Usar lo que puse* "
+        "(tocá uno de los botones)."
+    )
+
+
+def _tras_fijar_escuela(conv: dict, datos: dict):
+    """Una vez fijada la escuela (confirmada o no), continúa según el modo.
+
+    - Modo IA (libre): marca la escuela como confirmada y sigue el flujo libre.
+    - Modo paso a paso: avanza a la ubicación, sugiriendo el domicilio del padrón.
+    """
+    conv["escuela_confirmada"] = True
+
+    if conv.get("modo") == "ia":
+        # No arrastramos la sugerencia de ubicación del padrón en modo libre: en ese
+        # flujo se le pregunta la ubicación específica igual.
+        conv.pop("sugerencia_ubicacion", None)
+        return _continuar_ia(conv, datos)
+
+    conv["paso"] = "ubicacion"
+    sug = conv.get("sugerencia_ubicacion")
+    if sug:
+        return (
+            f"📍 *Paso 2/4:* La dirección registrada es:\n_{sug}_\n\n"
+            "Escribí una referencia más precisa (aula, sector) o mandá *ok* para usar esa."
+        )
+    return "📍 *Paso 2/4:* ¿Cuál es la ubicación? (dirección o referencia)"
+
+
+def _continuar_ia(conv: dict, datos: dict) -> str:
+    """Sigue el flujo IA tras fijar la escuela: pide ubicación o pasa a completitud."""
+    if not datos.get("ubicacion"):
+        conv["paso"] = "ubicacion"
+        return "📍 ¿En qué parte de la escuela es el problema? (aula, piso, sector)"
+    return _tras_descripcion_o_completitud(conv, datos)
+
+
+def _procesar_elegir_escuela(conv: dict, datos: dict, texto: str) -> str:
+    """El usuario elige una escuela de la lista numerada."""
+    candidatas = conv.get("candidatas_escuela", [])
+    limpio = texto.strip().lower()
+
+    if limpio in ("ninguna", "no", "0"):
+        datos["nombre_escuela"] = conv.get("nombre_escuela_ingresado", "")
+        return _tras_fijar_escuela(conv, datos)
+
+    try:
+        indice = int(limpio.replace("#", ""))
+    except ValueError:
+        return "⚠️ Respondé con el número de la opción, o *ninguna*."
+
+    if indice < 1 or indice > len(candidatas):
+        return "⚠️ Ese número no está en la lista. Probá de nuevo."
+
+    elegida = candidatas[indice - 1]
+    datos["nombre_escuela"] = elegida["nombre"]
+    if elegida.get("domicilio"):
+        conv["sugerencia_ubicacion"] = elegida["domicilio"]
+    return _tras_fijar_escuela(conv, datos)
 
 
 def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
@@ -372,18 +541,36 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
     if paso == "escuela":
         if len(texto) < 3:
             return "⚠️ El nombre debe tener al menos 3 caracteres. Intentá de nuevo:"
+
+        # Buscar la escuela en el padrón para confirmarla con el usuario.
+        dialogo = _confirmar_escuela_padron(db, conv, texto)
+        if dialogo is not None:
+            return dialogo
+
+        # Sin coincidencias en el padrón: se usa el texto tal cual.
         datos["nombre_escuela"] = texto
-        if conv.get("modo") == "ia":
-            return _siguiente_tras_libre(conv, datos)
-        conv["paso"] = "ubicacion"
-        return "📍 *Paso 2/4:* ¿Cuál es la ubicación? (dirección o referencia)"
+        return _tras_fijar_escuela(conv, datos)
+
+    if paso == "confirmar_escuela":
+        return _procesar_confirmar_escuela(conv, datos, texto)
+
+    if paso == "elegir_escuela":
+        return _procesar_elegir_escuela(conv, datos, texto)
 
     if paso == "ubicacion":
         if len(texto) < 2:
             return "⚠️ La ubicación debe tener al menos 2 caracteres. Intentá de nuevo:"
         datos["ubicacion"] = texto
         if conv.get("modo") == "ia":
-            return _siguiente_tras_libre(conv, datos)
+            return _siguiente_tras_libre(db, conv, datos)
+        # Si hay una dirección sugerida del padrón, "ok" la acepta tal cual.
+        sug = conv.get("sugerencia_ubicacion")
+        if sug and texto.lower() in ("ok", "si", "sí", "dale", "listo"):
+            datos["ubicacion"] = sug
+        else:
+            if len(texto) < 2:
+                return "⚠️ La ubicación debe tener al menos 2 caracteres. Intentá de nuevo:"
+            datos["ubicacion"] = texto
         conv["paso"] = "descripcion"
         return "📝 *Paso 3/4:* Describí el problema (mínimo 10 caracteres):"
 
@@ -426,12 +613,12 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
         if texto.lower() in ("listo", "continuar", "siguiente", "ok"):
             conv["paso"] = "confirmacion"
             media_count = len(conv.get("media", []))
+            # No se muestran categoría ni prioridad: son preliminares y las asigna el
+            # sistema al registrar el reclamo. Mostrarlas confundía (podían cambiar).
             resumen = (
                 "✅ *Resumen del reclamo:*\n\n"
                 f"🏫 Escuela: {datos['nombre_escuela']}\n"
                 f"📍 Ubicación: {datos['ubicacion']}\n"
-                f"🏷️ Categoría: {datos.get('categoria', 'Sin clasificar')}\n"
-                f"🚦 Prioridad: {datos.get('prioridad', 'MEDIA')}\n"
                 f"📝 Descripción: {datos['descripcion']}\n"
                 f"📎 Archivos: {media_count}\n\n"
                 "¿Confirmás la carga?"

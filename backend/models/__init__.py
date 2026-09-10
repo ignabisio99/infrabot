@@ -19,6 +19,7 @@ from models.foto_reclamo import FotoReclamo
 from models.historial_estado_presupuesto import HistorialEstadoPresupuesto
 from models.historial_estado_reclamo import HistorialEstadoReclamo, OrigenCambioEstado
 from models.indice_inflacion import IndiceInflacion
+from models.institucion import Institucion
 from models.lista_contratistas import ListaContratistas, lista_contratista_asociacion
 from models.presupuesto import EstadoPresupuesto, ItemPresupuesto, Presupuesto
 from models.reclamo import EstadoReclamo, PrioridadReclamo, Reclamo
@@ -42,6 +43,7 @@ __all__ = [
     "HistorialEstadoPresupuesto",
     "HistorialEstadoReclamo",
     "IndiceInflacion",
+    "Institucion",
     "ItemPresupuesto",
     "ListaContratistas",
     "OrigenCambioEstado",

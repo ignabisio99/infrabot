@@ -20,7 +20,7 @@ from api.presupuestos import router as presupuestos_router
 from api.reclamos import router as reclamos_router
 from api.whatsapp import router as whatsapp_router
 from api.whatsapp_sim import router as whatsapp_sim_router
-from core.database import Base, engine
+from core.database import Base, SessionLocal, engine
 from core.storage import UPLOADS_DIR
 from services.workers import loop_cola_whatsapp, loop_seguimiento
 
@@ -58,10 +58,18 @@ for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
 async def lifespan(app: FastAPI):
     import asyncio
 
+    from services.instituciones import cargar_padron_si_vacio
     from services.recordatorios import loop_recordatorios
 
     Base.metadata.create_all(bind=engine)
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Carga el padrón de escuelas desde el CSV interno si la tabla está vacía.
+    _db_init = SessionLocal()
+    try:
+        cargar_padron_si_vacio(_db_init)
+    finally:
+        _db_init.close()
     stop = asyncio.Event()
     tareas = [
         asyncio.create_task(loop_cola_whatsapp(stop), name="cola-whatsapp"),

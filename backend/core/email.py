@@ -83,3 +83,36 @@ def enviar_aprobacion(destinatario: str) -> bool:
     </div>
     """
     return enviar_email(destinatario, "Tu cuenta fue aprobada - InfraBot", html)
+
+
+def enviar_solicitud_presupuesto(
+    destinatario: str,
+    reclamo_id: int,
+    nombre_escuela: str,
+    ubicacion: str,
+    link: str,
+) -> bool:
+    """Notifica a un contratista que fue seleccionado para cargar un presupuesto."""
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #132a4d;">Solicitud de presupuesto</h2>
+        <p>Fue seleccionado para cargar el presupuesto del <strong>reclamo #{reclamo_id}</strong>.</p>
+        <div style="background:#f4f6fb; border-radius:8px; padding:16px; margin:16px 0;">
+            <p style="margin:4px 0;"><strong>🏫 Escuela:</strong> {nombre_escuela}</p>
+            <p style="margin:4px 0;"><strong>📍 Ubicación:</strong> {ubicacion}</p>
+        </div>
+        <p>Ingresá para ver el detalle y cargar tu presupuesto:</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{link}"
+               style="background-color: #1fa7b3; color: white; padding: 12px 30px;
+                      text-decoration: none; border-radius: 6px; font-weight: bold;">
+                Cargar presupuesto
+            </a>
+        </div>
+        <p style="color: #666; font-size: 13px;">
+            Si el botón no funciona, copiá y pegá este enlace en tu navegador:<br>
+            <a href="{link}">{link}</a>
+        </p>
+    </div>
+    """
+    return enviar_email(destinatario, f"Solicitud de presupuesto - Reclamo #{reclamo_id}", html)
