@@ -14,6 +14,7 @@ import sys
 from datetime import date
 from decimal import Decimal
 
+import models  # noqa: F401 - registra TODOS los modelos en la metadata antes de create_all
 from core.auth import hash_password
 from core.database import Base, SessionLocal, asegurar_columna_tipo_item, engine
 from models import (

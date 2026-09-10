@@ -59,6 +59,7 @@ for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
 async def lifespan(app: FastAPI):
     import asyncio
 
+    from services.instituciones import cargar_padron_si_vacio
     from services.recordatorios import loop_recordatorios
 
     Base.metadata.create_all(bind=engine)
@@ -71,6 +72,13 @@ async def lifespan(app: FastAPI):
     finally:
         db_roles.close()
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Carga el padrón de escuelas desde el CSV interno si la tabla está vacía.
+    _db_init = SessionLocal()
+    try:
+        cargar_padron_si_vacio(_db_init)
+    finally:
+        _db_init.close()
     stop = asyncio.Event()
     tareas = [
         asyncio.create_task(loop_cola_whatsapp(stop), name="cola-whatsapp"),

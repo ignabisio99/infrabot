@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from core.database import get_db
 from core.dependencies import get_current_admin, get_current_user
 from core.storage import storage
+from core.email import enviar_solicitud_presupuesto
 from core.whatsapp_client import enviar_mensaje
 from core.whatsapp_handler import iniciar_espera_info
 from models.contratista import Contratista
@@ -15,7 +16,7 @@ from models.lista_contratistas import ListaContratistas
 from models.presupuesto import Presupuesto
 from models.reclamo import EstadoReclamo, Reclamo
 from models.solicitud_presupuesto import SolicitudPresupuesto
-from models.usuario import Usuario
+from models.usuario import TipoUsuario, Usuario
 from models.historial_estado_reclamo import HistorialEstadoReclamo
 from schemas.lista_contratistas import (
     NotificacionResultado,
@@ -46,6 +47,32 @@ TIPOS_MEDIA_PERMITIDOS = TIPOS_IMAGEN_PERMITIDOS | TIPOS_VIDEO_PERMITIDOS
 
 def _con_fotos(query):
     return query.options(joinedload(Reclamo.fotos))
+
+
+def _email_del_contratista(db: Session, contratista: Contratista) -> str | None:
+    """Devuelve el email de la cuenta de usuario del contratista.
+
+    Funciona igual para cuentas creadas por registro normal o por Google SSO (en ambos
+    casos el email queda en el Usuario). Primero busca por el vínculo `usuario_id`; si
+    la ficha todavía no está vinculada, cae a buscar por teléfono (últimos 8 dígitos).
+    """
+    import re
+
+    if contratista.usuario_id:
+        usuario = db.get(Usuario, contratista.usuario_id)
+        if usuario and usuario.email:
+            return usuario.email
+
+    # Fallback: match por teléfono si la ficha no está vinculada aún.
+    tel_ficha = re.sub(r"\D", "", contratista.telefono or "")
+    if not tel_ficha:
+        return None
+    candidatos = db.query(Usuario).filter(Usuario.tipo == TipoUsuario.CONTRATISTA).all()
+    for u in candidatos:
+        tel_u = re.sub(r"\D", "", u.telefono or "")
+        if tel_u and tel_u[-8:] == tel_ficha[-8:] and u.email:
+            return u.email
+    return None
 
 
 @router.post("", response_model=ReclamoOut, status_code=201)
@@ -266,6 +293,21 @@ def notificar_contratistas(
                 error = str(respuesta.get("error", respuesta))
         except Exception as e:  # noqa: BLE001 - queremos reportar por contratista sin cortar
             error = str(e)
+
+        # Notificación adicional por email. Sirve tanto para registro normal como
+        # Google SSO: en ambos el email queda guardado en el Usuario.
+        email_contratista = _email_del_contratista(db, c)
+        if email_contratista:
+            try:
+                enviar_solicitud_presupuesto(
+                    email_contratista,
+                    reclamo_id,
+                    reclamo.nombre_escuela,
+                    reclamo.ubicacion,
+                    link,
+                )
+            except Exception as e:  # noqa: BLE001 - el email es complementario
+                print(f"[EMAIL] No se pudo enviar solicitud de presupuesto: {e}")
 
         if ok:
             enviados += 1

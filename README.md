@@ -6,9 +6,21 @@ Sistema de gestión de reclamos de infraestructura escolar con bot de WhatsApp i
 
 - **Backend:** FastAPI + SQLAlchemy + PostgreSQL
 - **Frontend:** React 19 + Vite + Mantine UI + React Router
-- **Autenticación:** JWT + Google OAuth 2.0 + confirmación por email (Gmail SMTP)
+- **Autenticación:** cookies HttpOnly con JWT + Google OAuth 2.0 + confirmación por email (Gmail SMTP)
 - **WhatsApp:** Meta Cloud API (webhooks + mensajes interactivos con botones)
-- **Infraestructura:** Docker Compose
+- **IA:** LangGraph + proveedor configurable (mock / OpenAI / Gemini)
+- **Colas y workers:** Redis (cola de mensajes de WhatsApp) + tareas en background
+- **Infraestructura:** Docker Compose (Postgres, Redis, backend, frontend, Adminer, ngrok)
+
+## Funcionalidades principales
+
+- **Reclamos por WhatsApp:** carga guiada paso a paso, con fotos, videos y notas de voz. El bot valida la escuela contra el padrón oficial.
+- **Motor de IA:** clasifica el reclamo (categoría y prioridad), detecta duplicados, estima el costo con referencias históricas ajustadas por inflación y audita presupuestos. Asiste, no decide.
+- **Gestión de presupuestos:** los administradores convocan contratistas (individualmente o por listas) que reciben la solicitud por WhatsApp y email, y cargan su presupuesto desde un portal propio.
+- **Coordinación de visitas:** al aprobar un presupuesto, el bot coordina la fecha de la visita entre contratista y escuela, y envía recordatorios el día antes y el mismo día.
+- **Ciclo de estados con trazabilidad:** cada reclamo tiene un historial completo de estados (creado → presupuestado → en evaluación → aprobado → coordinación → visita → ejecución → finalizado).
+- **Dashboard:** KPIs, gráficos y reclamos estancados.
+- **Roles diferenciados:** administradores (gestión completa) y contratistas (portal acotado a sus solicitudes y presupuestos).
 
 ## Cómo levantar el proyecto
 
@@ -44,8 +56,14 @@ Editá el `.env` con tus valores:
 | `WHATSAPP_VERIFY_TOKEN` | String que elijas para verificar el webhook |
 | `NGROK_AUTHTOKEN` | Auth token de ngrok |
 | `NGROK_DOMAIN` | Dominio estático de ngrok |
+| `AI_PROVIDER` | Motor de IA: `mock` (por defecto, sin costo), `openai` o Gemini |
+| `OPENAI_API_KEY` | API key de OpenAI o de Gemini (según el proveedor) |
+| `OPENAI_MODEL` | Modelo a usar (ej: `gpt-4o-mini`, `gemini-3.5-flash-lite`) |
+| `AI_BASE_URL` | URL base del proveedor (OpenAI o el endpoint compatible de Gemini) |
 
-Las demás variables vienen con valores por defecto para desarrollo local.
+Las demás variables vienen con valores por defecto para desarrollo local. La IA arranca
+en modo `mock` (heurísticas deterministas, sin llamadas ni costo), así que el sistema
+funciona sin configurar ninguna API key.
 
 ### 3. Levantar los servicios
 
@@ -64,6 +82,7 @@ docker compose up
 - **Frontend:** http://localhost:3000
 - **Backend (API):** http://localhost:8000
 - **Swagger UI:** http://localhost:8000/docs
+- **Adminer (visor de la base):** http://localhost:8082 (servidor `db`, usuario y contraseña del `.env`)
 
 ## Configurar el bot de WhatsApp
 
@@ -99,6 +118,67 @@ Mandá un mensaje de WhatsApp al número de prueba. El bot responde con un menú
 | `recientes` | Ver los últimos 5 reclamos |
 | `cancelar` | Cancelar operación en curso |
 | `ayuda` | Mostrar menú de botones |
+
+## Motor de IA
+
+El sistema usa un motor de IA con proveedor intercambiable. Arranca en modo **`mock`**:
+devuelve resultados heurísticos deterministas, sin llamar a ninguna API ni generar costo.
+El sistema es 100% funcional en este modo, ideal para desarrollo y demos sin credenciales.
+
+### Qué hace la IA
+
+Al crear un reclamo, un pipeline (LangGraph) lo procesa en tres pasos: **clasificación**
+(categoría + prioridad), **detección de duplicados** y **estimación de costo** (con
+referencias históricas ajustadas por inflación del IPC de INDEC). Además audita los
+presupuestos que cargan los contratistas, transcribe notas de voz, analiza fotos y
+sugiere contratistas. Todas las decisiones quedan registradas en la tabla `recomendacion_ia`.
+
+> La IA **asiste**: nunca inventa un precio ni toma la decisión final. Genera información
+> de referencia para que el responsable compare y decida.
+
+### Activar IA real (opcional)
+
+Para usar un modelo real en vez del mock, configurá en el `.env`:
+
+**Opción A — Google Gemini (tiene tier gratuito):**
+
+```
+AI_PROVIDER=openai
+OPENAI_API_KEY=tu_api_key_de_gemini
+OPENAI_MODEL=gemini-3.5-flash-lite
+AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+```
+
+La API key se obtiene en [aistudio.google.com](https://aistudio.google.com) → "Get API key".
+Gemini expone un endpoint compatible con OpenAI, por eso `AI_PROVIDER=openai`. El tier
+gratuito tiene límites por cantidad de requests (no cobra dinero); ver
+[rate limits](https://ai.google.dev/gemini-api/docs/rate-limits).
+
+**Opción B — OpenAI (de pago por uso):**
+
+```
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-tu_clave
+OPENAI_MODEL=gpt-4o-mini
+AI_BASE_URL=https://api.openai.com/v1
+```
+
+La API key se obtiene en [platform.openai.com](https://platform.openai.com) → API Keys.
+
+Después de cambiar el `.env`, reiniciá el backend: `docker compose up -d backend`.
+
+## Padrón de escuelas
+
+El sistema valida las escuelas contra un padrón oficial (CSV en `backend/data/instituciones.csv`).
+**Se carga automáticamente al arrancar el backend** si la tabla está vacía — no hay que
+correr nada a mano. Tras un `seed.py --reset`, se vuelve a cargar sola en el próximo arranque.
+
+Para forzar una recarga o cargar un CSV actualizado (con más escuelas), existe un script.
+Matchea por identificador, así actualiza sin duplicar:
+
+```bash
+docker compose exec backend python scripts/importar_instituciones.py
+```
 
 ## Datos de ejemplo
 
@@ -174,6 +254,9 @@ docker compose exec db psql -U user -d infrabot -c "DELETE FROM usuario;"
 
 - La URL de ngrok es fija (dominio estático). Solo necesitás tener ngrok corriendo para recibir mensajes.
 - Para números argentinos, la API de Meta requiere el formato sin el 9 (ej: `541125654565`). El bot hace esta conversión automáticamente.
+- **Redis** procesa los mensajes de WhatsApp de forma asíncrona (el webhook responde rápido y un worker procesa en background). Si Redis no está disponible, el sistema degrada de forma elegante y procesa los mensajes de forma inline, sin perderlos.
+- El backend levanta **tareas en background** al arrancar: cola de WhatsApp, recordatorios de visitas y seguimiento a contratistas. No dependen de cron externo, funcionan igual en local y deployado.
+- La IA está en modo `mock` por defecto. Con ese modo no se llama a ninguna API ni se genera costo, y todas las features funcionan con resultados heurísticos.
 
 ## Enlaces útiles
 
@@ -185,3 +268,6 @@ docker compose exec db psql -U user -d infrabot -c "DELETE FROM usuario;"
 - [Meta WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api)
 - [Google OAuth](https://developers.google.com/identity/gsi/web/guides/overview)
 - [ngrok](https://ngrok.com/docs)
+- [LangGraph](https://langchain-ai.github.io/langgraph/)
+- [Gemini API](https://ai.google.dev/gemini-api/docs)
+- [OpenAI API](https://platform.openai.com/docs)
