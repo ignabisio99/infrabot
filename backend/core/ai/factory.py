@@ -7,6 +7,7 @@ import logging
 from core.ai import config
 from core.ai.base import LLMProvider
 from core.ai.providers.mock import MockProvider
+from core.ai.providers.ollama import OllamaProvider
 from core.ai.providers.openai_compatible import OpenAICompatibleProvider
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ def get_llm_provider(*, force_reload: bool = False) -> LLMProvider:
 
     - `AI_PROVIDER=mock` → MockProvider
     - `AI_PROVIDER=openai` + `OPENAI_API_KEY` → OpenAICompatibleProvider
+    - `AI_PROVIDER=ollama` → OllamaProvider (local, sin API key)
     - Si piden openai sin key → fallback a mock (con warning)
     """
     global _cached
@@ -39,6 +41,17 @@ def get_llm_provider(*, force_reload: bool = False) -> LLMProvider:
             "Motor IA: proveedor openai (model=%s, base=%s)",
             config.openai_model(),
             config.ai_base_url(),
+        )
+    elif name == "ollama":
+        provider = OllamaProvider(
+            base_url=config.ollama_base_url(),
+            model=config.ollama_model(),
+            reasoning_effort=config.ollama_reasoning_effort(),
+        )
+        logger.info(
+            "Motor IA: proveedor ollama (model=%s, base=%s)",
+            config.ollama_model(),
+            config.ollama_base_url(),
         )
     else:
         if name not in ("mock", "") and not api_key:

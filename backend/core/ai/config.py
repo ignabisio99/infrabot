@@ -68,3 +68,20 @@ def ai_gemini_native_url() -> str:
     return (
         os.getenv("AI_GEMINI_NATIVE_URL") or "https://generativelanguage.googleapis.com/v1beta"
     ).rstrip("/")
+
+
+def ollama_base_url() -> str:
+    """Endpoint OpenAI-compatible de Ollama. En Docker el host es host.docker.internal."""
+    return (
+        os.getenv("OLLAMA_BASE_URL") or "http://host.docker.internal:11434/v1"
+    ).rstrip("/")
+
+
+def ollama_model() -> str:
+    return (os.getenv("OLLAMA_MODEL") or "gemma4:12b").strip()
+
+
+def ollama_reasoning_effort() -> str | None:
+    """Gemma 4 y Qwen3 razonan por defecto: ~7x más lento y peores hallazgos en
+    visión. "none" lo desactiva. Vacío = no se manda el parámetro."""
+    return (os.getenv("OLLAMA_REASONING_EFFORT") or "").strip().lower() or None

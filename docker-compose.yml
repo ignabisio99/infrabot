@@ -42,6 +42,9 @@ services:
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
       AI_SSL_VERIFY: ${AI_SSL_VERIFY:-true}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma4:12b}
+      OLLAMA_REASONING_EFFORT: ${OLLAMA_REASONING_EFFORT:-}
       INFLACION_API_URL: ${INFLACION_API_URL:-https://apis.datos.gob.ar/series/api/series/}
       INFLACION_SERIE_ID: ${INFLACION_SERIE_ID:-101.1_I2NG_2016_M_22}
       AI_DUPLICADOS_SEMANTICOS: ${AI_DUPLICADOS_SEMANTICOS:-false}
