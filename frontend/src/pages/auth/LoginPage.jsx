@@ -88,7 +88,17 @@ export function LoginPage({ onLogin }) {
         especialidad: registerForm.tipo === 'CONTRATISTA' ? registerForm.especialidad : null,
       });
       setSuccess(data.mensaje);
-      setRegisterForm({ nombre: '', email: '', password: '', confirmPassword: '', telefono: '', direccion: '', tipo: '', nombre_empresa: '', especialidad: '' });
+      setRegisterForm({
+        nombre: '',
+        email: '',
+        password: '',
+        confirmPassword: '',
+        telefono: '',
+        direccion: '',
+        tipo: '',
+        nombre_empresa: '',
+        especialidad: '',
+      });
       // Cambiar a la pestaña de login después de registrarse
       setTimeout(() => setActiveTab('login'), 3000);
     } catch (err) {
@@ -265,7 +275,9 @@ export function LoginPage({ onLogin }) {
                     leftSection={<IconMapPin size={16} />}
                     required
                     value={registerForm.direccion}
-                    onChange={(e) => setRegisterForm({ ...registerForm, direccion: e.target.value })}
+                    onChange={(e) =>
+                      setRegisterForm({ ...registerForm, direccion: e.target.value })
+                    }
                   />
                   <Select
                     label="Tipo de usuario"
@@ -274,6 +286,7 @@ export function LoginPage({ onLogin }) {
                     data={[
                       { value: 'ADMINISTRADOR', label: 'Administrador' },
                       { value: 'CONTRATISTA', label: 'Contratista' },
+                      { value: 'INSPECTOR', label: 'Inspector' },
                     ]}
                     value={registerForm.tipo}
                     onChange={(value) => setRegisterForm({ ...registerForm, tipo: value })}

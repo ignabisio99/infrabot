@@ -20,24 +20,32 @@ import {
   IconChecks,
   IconClipboardList,
   IconHistory,
+  IconInfoCircle,
   IconMapPin,
+  IconEyeCheck,
   IconPhoto,
   IconReceipt2,
   IconSparkles,
   IconTruck,
 } from '@tabler/icons-react';
 
-import { obtenerHistorialReclamo, obtenerReclamo, obtenerVisitaReclamo } from '../../api/reclamos';
+import {
+  listarComentariosReclamo,
+  obtenerHistorialReclamo,
+  obtenerReclamo,
+  obtenerVisitaReclamo,
+} from '../../api/reclamos';
 import { formatearIdReclamo } from '../../utils/ids';
-import { esAdministrador } from '../../utils/auth';
+import { esAdministrador, esInspector } from '../../utils/auth';
 import { notifyError } from '../../utils/notifications';
 import { BudgetRequestsList } from './BudgetRequestsList';
+import { ClaimCommentsThread } from './ClaimComments';
 import { ClaimIAPanel } from './ClaimIAPanel';
 import { ClaimPhotosManager } from './ClaimPhotosManager';
 import { NotifyContractorsModal } from './NotifyContractorsModal';
 import { PriorityBadge } from './PriorityBadge';
 import { StatusBadge } from './StatusBadge';
-import { colorPorEstado, etiquetaPorEstado, proximoPasoPorEstado } from './estados';
+import { colorPorEstado, estadosFinales, etiquetaPorEstado, proximoPasoPorEstado } from './estados';
 
 const iconoPorEstado = {
   PENDIENTE_REVISION: IconClipboardList,
@@ -52,6 +60,11 @@ const iconoPorEstado = {
   RECHAZADO: IconBan,
   CANCELADO: IconBan,
 };
+
+const AYUDA_INSPECTOR =
+  'Lo que escribas acá lo ven el administrador y los contratistas al presupuestar. No se puede editar ni borrar.';
+const AYUDA_COMENTARIOS =
+  'Observaciones de los inspectores. Los contratistas también las ven al cargar su presupuesto.';
 
 function tituloEvento(evento) {
   if (evento.estado_anterior === null) return 'Reclamo creado';
@@ -89,6 +102,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
     reclamo: null,
     historial: [],
     visita: null,
+    comentarios: [],
   });
   const [recarga, setRecarga] = useState(0);
 
@@ -99,9 +113,10 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
       obtenerReclamo(reclamoId),
       obtenerHistorialReclamo(reclamoId),
       obtenerVisitaReclamo(reclamoId),
+      listarComentariosReclamo(reclamoId),
     ])
-      .then(([reclamo, historial, visita]) => {
-        if (vigente) setUltimoCargado({ id: reclamoId, reclamo, historial, visita });
+      .then(([reclamo, historial, visita, comentarios]) => {
+        if (vigente) setUltimoCargado({ id: reclamoId, reclamo, historial, visita, comentarios });
       })
       .catch((err) => {
         if (vigente) notifyError(err.message);
@@ -117,15 +132,16 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
   const reclamo = cargadoCoincide ? ultimoCargado.reclamo : null;
   const historial = cargadoCoincide ? ultimoCargado.historial : [];
   const visita = cargadoCoincide ? ultimoCargado.visita : null;
+  const comentarios = cargadoCoincide ? ultimoCargado.comentarios : [];
   const cargando = reclamoId !== null && reclamo === null;
 
   const proximoPaso = reclamo ? proximoPasoPorEstado[reclamo.estado] : null;
   const esAdmin = esAdministrador();
+  const inspector = esInspector();
   const puedeNotificar = esAdmin && reclamo?.estado === 'PENDIENTE_PRESUPUESTO';
   // Una vez solicitado el presupuesto, el reclamo deja PENDIENTE_REVISION. A partir
   // de ahí tiene sentido ver a quién se le pidió y quién ya respondió.
-  const mostrarSolicitudes =
-    esAdmin && reclamo && reclamo.estado !== 'PENDIENTE_REVISION';
+  const mostrarSolicitudes = esAdmin && reclamo && reclamo.estado !== 'PENDIENTE_REVISION';
   const visitaYaCoordinada =
     visita?.estado === 'CONFIRMADA' ||
     ['VISITA_COORDINADA', 'EN_EJECUCION', 'FINALIZADO'].includes(reclamo?.estado);
@@ -238,9 +254,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
             </Paper>
           )}
 
-          {visita &&
-            visita.estado === 'ESPERANDO_DISPONIBILIDAD' &&
-            !visitaYaCoordinada && (
+          {visita && visita.estado === 'ESPERANDO_DISPONIBILIDAD' && !visitaYaCoordinada && (
             <Text size="sm" c="dimmed" mb="md" ml={2}>
               🕓 Esperando que el contratista proponga horarios para la visita.
             </Text>
@@ -295,9 +309,22 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
               <Tabs.Tab value="fotos" leftSection={<IconPhoto size={16} />}>
                 Fotos
               </Tabs.Tab>
-              <Tabs.Tab value="ia" leftSection={<IconSparkles size={16} />}>
-                IA
+              <Tabs.Tab
+                value="comentarios"
+                leftSection={<IconEyeCheck size={16} />}
+                rightSection={
+                  <Badge size="xs" variant="light" color={comentarios.length > 0 ? 'teal' : 'gray'}>
+                    {comentarios.length}
+                  </Badge>
+                }
+              >
+                Inspección
               </Tabs.Tab>
+              {!inspector && (
+                <Tabs.Tab value="ia" leftSection={<IconSparkles size={16} />}>
+                  IA
+                </Tabs.Tab>
+              )}
               {mostrarSolicitudes && (
                 <Tabs.Tab value="presupuestos" leftSection={<IconReceipt2 size={16} />}>
                   Presupuestos
@@ -344,16 +371,37 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
               />
             </Tabs.Panel>
 
-            <Tabs.Panel value="ia" pt="md">
-              <ClaimIAPanel
-                reclamo={reclamo}
-                onAbrirReclamo={onAbrirReclamo}
-                onReclamoActualizado={() => {
-                  setRecarga((n) => n + 1);
-                  onReclamoActualizado?.();
-                }}
+            <Tabs.Panel value="comentarios" pt="md">
+              <Group gap={6} mb="sm" wrap="nowrap" align="flex-start" c="dimmed">
+                <IconInfoCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+                <Text size="sm">{inspector ? AYUDA_INSPECTOR : AYUDA_COMENTARIOS}</Text>
+              </Group>
+              <ClaimCommentsThread
+                reclamoId={reclamo.id}
+                comentarios={comentarios}
+                puedeComentar={inspector && !estadosFinales.includes(reclamo.estado)}
+                onComentarioAgregado={(nuevo) =>
+                  setUltimoCargado((actual) =>
+                    actual.id === nuevo.reclamo_id
+                      ? { ...actual, comentarios: [...actual.comentarios, nuevo] }
+                      : actual,
+                  )
+                }
               />
             </Tabs.Panel>
+
+            {!inspector && (
+              <Tabs.Panel value="ia" pt="md">
+                <ClaimIAPanel
+                  reclamo={reclamo}
+                  onAbrirReclamo={onAbrirReclamo}
+                  onReclamoActualizado={() => {
+                    setRecarga((n) => n + 1);
+                    onReclamoActualizado?.();
+                  }}
+                />
+              </Tabs.Panel>
+            )}
 
             {mostrarSolicitudes && (
               <Tabs.Panel value="presupuestos" pt="md">

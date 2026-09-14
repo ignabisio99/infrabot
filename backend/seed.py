@@ -21,6 +21,7 @@ from core.database import (
     SessionLocal,
     asegurar_columna_detalle_tarea,
     asegurar_columna_tipo_item,
+    asegurar_tipo_usuario_inspector,
     engine,
 )
 from models import (
@@ -56,6 +57,9 @@ ADMIN_PASSWORD = "Admin123!"
 # el portal (/portal/*) no se puede probar: las vistas y los permisos del contratista
 # dependen de Contratista.usuario_id.
 CONTRATISTA_PASSWORD = "Contra123!"
+
+INSPECTOR_EMAIL = "inspector@infrabot.dev"
+INSPECTOR_PASSWORD = "Inspector123!"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -368,22 +372,34 @@ def crear_cuentas_de_contratistas(db, contratistas, emails):
         ficha.usuario_id = usuario.id
 
 
-def crear_admin(db):
-    """Crea el admin de desarrollo si no está. Devuelve True si lo creó."""
-    if db.query(Usuario).filter(Usuario.email == ADMIN_EMAIL).first() is not None:
+def _crear_usuario_aprobado(db, nombre, email, password, tipo):
+    """Crea la cuenta si no está. Devuelve True si la creó."""
+    if db.query(Usuario).filter(Usuario.email == email).first() is not None:
         return False
 
     db.add(
         Usuario(
-            nombre="Admin",
-            email=ADMIN_EMAIL,
-            password_hash=hash_password(ADMIN_PASSWORD),
+            nombre=nombre,
+            email=email,
+            password_hash=hash_password(password),
             email_confirmado=True,
-            tipo=TipoUsuario.ADMINISTRADOR,
+            tipo=tipo,
             estado=EstadoUsuario.APROBADO,
         )
     )
     return True
+
+
+def crear_admin(db):
+    return _crear_usuario_aprobado(
+        db, "Admin", ADMIN_EMAIL, ADMIN_PASSWORD, TipoUsuario.ADMINISTRADOR
+    )
+
+
+def crear_inspector(db):
+    return _crear_usuario_aprobado(
+        db, "Inspector", INSPECTOR_EMAIL, INSPECTOR_PASSWORD, TipoUsuario.INSPECTOR
+    )
 
 
 CAMPOS_DEL_RECLAMO = (
@@ -494,6 +510,7 @@ def main():
         Base.metadata.create_all(bind=engine)
         asegurar_columna_tipo_item()
         asegurar_columna_detalle_tarea()
+        asegurar_tipo_usuario_inspector()
 
     db = SessionLocal()
     try:
@@ -502,6 +519,9 @@ def main():
         if crear_admin(db):
             db.commit()
             logger.info("Admin creado: %s / %s", ADMIN_EMAIL, ADMIN_PASSWORD)
+        if crear_inspector(db):
+            db.commit()
+            logger.info("Inspector creado: %s / %s", INSPECTOR_EMAIL, INSPECTOR_PASSWORD)
 
         asegurar_roles_iniciales(db)
 

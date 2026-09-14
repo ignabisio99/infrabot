@@ -21,6 +21,7 @@ import { IconAlertTriangle, IconExchange, IconEye } from '@tabler/icons-react';
 
 import { RowActionsMenu } from '../../components/RowActionsMenu';
 import { eliminarReclamo, listarReclamos } from '../../api/reclamos';
+import { esInspector } from '../../utils/auth';
 import { formatearIdReclamo } from '../../utils/ids';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 import { ChangeStatusModal } from './ChangeStatusModal';
@@ -196,11 +197,15 @@ export function ClaimsListPage() {
     );
   };
 
+  const soloLectura = esInspector();
+
   return (
     <Container fluid px={0}>
       <Group justify="space-between" mb="md">
         <Title order={2}>Reclamos</Title>
-        <Button onClick={() => navigate('/reclamos/nuevo')}>+ Nuevo Reclamo</Button>
+        {!soloLectura && (
+          <Button onClick={() => navigate('/reclamos/nuevo')}>+ Nuevo Reclamo</Button>
+        )}
       </Group>
 
       {!cargando && reclamos.length > 0 && (
@@ -322,20 +327,22 @@ export function ClaimsListPage() {
                 </Table.Td>
                 <Table.Td>{new Date(reclamo.fecha_creacion).toLocaleString('es-AR')}</Table.Td>
                 <Table.Td>
-                  <RowActionsMenu
-                    onEdit={() => navigate(`/reclamos/${reclamo.id}/editar`)}
-                    onDelete={() => handleEliminar(reclamo.id)}
-                    deleting={eliminandoId === reclamo.id}
-                    extraItems={
-                      <Menu.Item
-                        leftSection={<IconExchange size={14} />}
-                        onClick={() => setReclamoParaCambiarEstado(reclamo)}
-                        disabled={reclamo.estados_posibles.length === 0}
-                      >
-                        Cambiar estado
-                      </Menu.Item>
-                    }
-                  />
+                  {!soloLectura && (
+                    <RowActionsMenu
+                      onEdit={() => navigate(`/reclamos/${reclamo.id}/editar`)}
+                      onDelete={() => handleEliminar(reclamo.id)}
+                      deleting={eliminandoId === reclamo.id}
+                      extraItems={
+                        <Menu.Item
+                          leftSection={<IconExchange size={14} />}
+                          onClick={() => setReclamoParaCambiarEstado(reclamo)}
+                          disabled={reclamo.estados_posibles.length === 0}
+                        >
+                          Cambiar estado
+                        </Menu.Item>
+                      }
+                    />
+                  )}
                 </Table.Td>
               </Table.Tr>
             ))}
@@ -354,7 +361,9 @@ export function ClaimsListPage() {
         onClose={() => setReclamoIdSeleccionado(null)}
         onAbrirReclamo={setReclamoIdSeleccionado}
         onReclamoActualizado={() => {
-          listarReclamos().then(setReclamos).catch((err) => notifyError(err.message));
+          listarReclamos()
+            .then(setReclamos)
+            .catch((err) => notifyError(err.message));
         }}
       />
 

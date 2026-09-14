@@ -1,14 +1,5 @@
 import { useState } from 'react';
-import {
-  Alert,
-  Button,
-  Container,
-  Paper,
-  Select,
-  Stack,
-  Text,
-  TextInput,
-} from '@mantine/core';
+import { Alert, Button, Container, Paper, Select, Stack, Text, TextInput } from '@mantine/core';
 import {
   IconAlertCircle,
   IconBuilding,
@@ -142,6 +133,7 @@ export function CompletarPerfilPage({ usuario, onComplete }) {
                   data={[
                     { value: 'ADMINISTRADOR', label: 'Administrador' },
                     { value: 'CONTRATISTA', label: 'Contratista' },
+                    { value: 'INSPECTOR', label: 'Inspector' },
                   ]}
                   value={form.tipo}
                   onChange={(value) => setForm({ ...form, tipo: value })}

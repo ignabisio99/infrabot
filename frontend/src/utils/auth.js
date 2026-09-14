@@ -16,3 +16,8 @@ export function esAdministrador() {
   const usuario = getUsuarioActual();
   return usuario?.tipo === 'ADMINISTRADOR';
 }
+
+export function esInspector() {
+  const usuario = getUsuarioActual();
+  return usuario?.tipo === 'INSPECTOR';
+}

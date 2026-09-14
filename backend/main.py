@@ -26,6 +26,7 @@ from core.database import (
     SessionLocal,
     asegurar_columna_detalle_tarea,
     asegurar_columna_tipo_item,
+    asegurar_tipo_usuario_inspector,
     engine,
 )
 from core.storage import UPLOADS_DIR
@@ -71,6 +72,7 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     asegurar_columna_tipo_item()
     asegurar_columna_detalle_tarea()
+    asegurar_tipo_usuario_inspector()
     db_roles = SessionLocal()
     try:
         from models.rol_mano_obra import asegurar_roles_iniciales

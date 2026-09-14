@@ -47,6 +47,23 @@ class CambioEstadoReclamo(BaseModel):
     motivo: str | None = None
 
 
+class ComentarioReclamoIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    texto: str = Field(min_length=1)
+
+
+class ComentarioReclamoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    reclamo_id: int
+    usuario_id: int | None
+    autor: str | None
+    texto: str
+    fecha: datetime
+
+
 class HistorialEstadoReclamoOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

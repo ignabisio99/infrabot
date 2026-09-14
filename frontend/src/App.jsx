@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Center, Loader, Stack, Text } from '@mantine/core';
+import { IconClipboardList, IconReceipt2 } from '@tabler/icons-react';
 
 import { getMe, logout } from './api/auth';
 import { AppLayout } from './layout/AppLayout';
-import { ContractorLayout } from './layout/ContractorLayout';
+import { PortalLayout } from './layout/PortalLayout';
 import { CompletarPerfilPage } from './pages/auth/CompletarPerfilPage';
 import { ConfirmarEmailPage } from './pages/auth/ConfirmarEmailPage';
 import { LoginPage } from './pages/auth/LoginPage';
@@ -29,6 +30,13 @@ import { SettingsPage } from './pages/settings/SettingsPage';
 import { ProfilePage } from './pages/profile/ProfilePage';
 import { UsersApprovalPage } from './pages/users/UsersApprovalPage';
 import { WhatsAppSimPage } from './pages/whatsapp/WhatsAppSimPage';
+
+const LINKS_CONTRATISTA = [
+  { label: 'Mis solicitudes', path: '/portal/solicitudes', icon: IconClipboardList },
+  { label: 'Mis presupuestos', path: '/portal/presupuestos', icon: IconReceipt2 },
+];
+
+const LINKS_INSPECTOR = [{ label: 'Reclamos', path: '/reclamos', icon: IconClipboardList }];
 
 function getUsuarioGuardado() {
   try {
@@ -129,12 +137,7 @@ function App() {
 
   // Autenticado pero necesita completar perfil
   if (usuario.estado === 'PENDIENTE_PERFIL') {
-    return (
-      <CompletarPerfilPage
-        usuario={usuario}
-        onComplete={() => verificarSesion()}
-      />
-    );
+    return <CompletarPerfilPage usuario={usuario} onComplete={() => verificarSesion()} />;
   }
 
   // Autenticado pero pendiente de aprobación o rechazado
@@ -146,17 +149,27 @@ function App() {
   if (usuario.tipo === 'CONTRATISTA') {
     return (
       <Routes>
-        <Route element={<ContractorLayout />}>
+        <Route element={<PortalLayout links={LINKS_CONTRATISTA} etiquetaRol="Contratista" />}>
           <Route index element={<Navigate to="/portal/solicitudes" replace />} />
           <Route path="/portal/solicitudes" element={<MySolicitudesPage />} />
           <Route path="/portal/presupuestos" element={<MyPresupuestosPage />} />
           <Route path="/perfil" element={<ProfilePage />} />
-          <Route
-            path="/portal/reclamos/:id/presupuestar"
-            element={<PresupuestarReclamoPage />}
-          />
+          <Route path="/portal/reclamos/:id/presupuestar" element={<PresupuestarReclamoPage />} />
           {/* Cualquier otra ruta redirige al portal, así un contratista no accede a vistas de admin */}
           <Route path="*" element={<Navigate to="/portal/solicitudes" replace />} />
+        </Route>
+      </Routes>
+    );
+  }
+
+  // Inspector aprobado → sólo ve reclamos y los comenta
+  if (usuario.tipo === 'INSPECTOR') {
+    return (
+      <Routes>
+        <Route element={<PortalLayout links={LINKS_INSPECTOR} etiquetaRol="Inspector" />}>
+          <Route path="/reclamos" element={<ClaimsListPage />} />
+          <Route path="/perfil" element={<ProfilePage />} />
+          <Route path="*" element={<Navigate to="/reclamos" replace />} />
         </Route>
       </Routes>
     );

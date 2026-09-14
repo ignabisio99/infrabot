@@ -34,6 +34,7 @@ import {
   validarLineasPresupuesto,
 } from '../../utils/presupuestoItems';
 import { BudgetLineItems } from '../budgets/BudgetLineItems';
+import { ClaimComments } from './ClaimComments';
 import { PriorityBadge } from './PriorityBadge';
 
 function esVideo(foto) {
@@ -180,8 +181,8 @@ export function PresupuestarReclamoPage() {
             ¡Gracias por cargar tu presupuesto!
           </Title>
           <Text ta="center" c="dimmed" size="lg">
-            Tu presupuesto para el reclamo {formatearIdReclamo(reclamo.id)} quedó registrado y
-            está pendiente de evaluación y aprobación. Muy pronto nos vamos a contactar con vos.
+            Tu presupuesto para el reclamo {formatearIdReclamo(reclamo.id)} quedó registrado y está
+            pendiente de evaluación y aprobación. Muy pronto nos vamos a contactar con vos.
           </Text>
         </Stack>
       </Container>
@@ -219,6 +220,8 @@ export function PresupuestarReclamoPage() {
           </Text>
           <MediaGaleria fotos={reclamo.fotos} />
         </div>
+
+        <ClaimComments reclamoId={reclamo.id} />
 
         {reclamo.telefono_creador && (
           <Card withBorder radius="md" bg="var(--mantine-color-orange-0)">
@@ -289,8 +292,8 @@ export function PresupuestarReclamoPage() {
       >
         <Stack>
           <Text size="sm" c="dimmed">
-            Contanos qué información necesitás para poder cargar el presupuesto. El mensaje se
-            le va a enviar por WhatsApp a la persona que creó el reclamo.
+            Contanos qué información necesitás para poder cargar el presupuesto. El mensaje se le va
+            a enviar por WhatsApp a la persona que creó el reclamo.
           </Text>
           <Textarea
             placeholder="Ej: ¿Podrían enviar fotos del tablero desde otro ángulo? ¿Cuáles son las medidas del espacio?"

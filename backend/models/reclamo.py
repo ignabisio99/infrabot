@@ -72,6 +72,12 @@ class Reclamo(Base):
         cascade="all, delete-orphan",
         order_by="HistorialEstadoReclamo.fecha",
     )
+    comentarios = relationship(
+        "ComentarioReclamo",
+        back_populates="reclamo",
+        cascade="all, delete-orphan",
+        order_by="ComentarioReclamo.fecha",
+    )
 
     @property
     def estados_posibles(self) -> list[EstadoReclamo]:

@@ -9,6 +9,7 @@ from core.database import Base
 class TipoUsuario(str, enum.Enum):
     ADMINISTRADOR = "ADMINISTRADOR"
     CONTRATISTA = "CONTRATISTA"
+    INSPECTOR = "INSPECTOR"
 
 
 class EstadoUsuario(str, enum.Enum):
@@ -47,3 +48,7 @@ class Usuario(Base):
     def es_admin(self) -> bool:
         # `tipo` es nullable: un perfil a medio completar no es admin.
         return self.tipo is TipoUsuario.ADMINISTRADOR
+
+    @property
+    def es_inspector(self) -> bool:
+        return self.tipo is TipoUsuario.INSPECTOR

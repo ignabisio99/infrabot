@@ -1,14 +1,5 @@
 import { useEffect, useState } from 'react';
-import {
-  Badge,
-  Button,
-  Group,
-  Paper,
-  Select,
-  Stack,
-  Text,
-  Textarea,
-} from '@mantine/core';
+import { Badge, Button, Group, Paper, Select, Stack, Text, Textarea } from '@mantine/core';
 import { useForm } from '@mantine/form';
 
 import { sugerirContratistas } from '../../api/ai';
@@ -22,6 +13,7 @@ import {
   totalLineas,
   validarLineasPresupuesto,
 } from '../../utils/presupuestoItems';
+import { ClaimComments } from '../claims/ClaimComments';
 import { BudgetLineItems } from './BudgetLineItems';
 
 const valoresPorDefecto = {
@@ -59,31 +51,30 @@ export function BudgetForm({
     },
   });
 
-  const [sugeridos, setSugeridos] = useState([]);
-  const [cargandoSugeridos, setCargandoSugeridos] = useState(false);
+  const claimId = form.values.claimId;
+  // Se guarda para qué reclamo son las sugerencias: si no coincide con el elegido,
+  // todavía se están buscando.
+  const [sugerencias, setSugerencias] = useState({ reclamoId: null, lista: [] });
 
   useEffect(() => {
-    const reclamoId = form.values.claimId;
-    if (!reclamoId) {
-      setSugeridos([]);
-      return;
-    }
+    if (!claimId) return;
     let vigente = true;
-    setCargandoSugeridos(true);
-    sugerirContratistas(Number(reclamoId))
+    sugerirContratistas(Number(claimId))
       .then((data) => {
-        if (vigente) setSugeridos(data.slice(0, 3));
+        if (vigente) setSugerencias({ reclamoId: claimId, lista: data.slice(0, 3) });
       })
       .catch((err) => {
-        if (vigente) notifyError(err.message);
-      })
-      .finally(() => {
-        if (vigente) setCargandoSugeridos(false);
+        if (!vigente) return;
+        notifyError(err.message);
+        setSugerencias({ reclamoId: claimId, lista: [] });
       });
     return () => {
       vigente = false;
     };
-  }, [form.values.claimId]);
+  }, [claimId]);
+
+  const cargandoSugeridos = sugerencias.reclamoId !== claimId;
+  const sugeridos = cargandoSugeridos ? [] : sugerencias.lista;
 
   // El backend sólo acepta presupuestos sobre reclamos que estén pendientes de
   // presupuesto o en evaluación, y lo informa en `admite_presupuesto`. El reclamo ya
@@ -134,6 +125,8 @@ export function BudgetForm({
           key={form.key('claimId')}
           {...form.getInputProps('claimId')}
         />
+
+        {form.values.claimId && <ClaimComments reclamoId={Number(form.values.claimId)} />}
 
         <Select
           label="Contratista"

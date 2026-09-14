@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import {
   AppShell,
   Avatar,
@@ -17,24 +16,17 @@ import {
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
-  IconClipboardList,
   IconLogout,
   IconUser,
-  IconReceipt2,
 } from '@tabler/icons-react';
 
 import logo from '../assets/logo-infrabot.jpeg';
 import classes from './AppLayout.module.css';
 
-const links = [
-  { label: 'Mis solicitudes', path: '/portal/solicitudes', icon: IconClipboardList },
-  { label: 'Mis presupuestos', path: '/portal/presupuestos', icon: IconReceipt2 },
-];
-
-function getUsuario() {
+function getUsuario(etiquetaRol) {
   try {
     const data = JSON.parse(localStorage.getItem('infrabot_user') || '{}');
-    const nombre = data.nombre || 'Contratista';
+    const nombre = data.nombre || etiquetaRol;
     const iniciales = nombre
       .split(' ')
       .map((p) => p[0])
@@ -43,23 +35,22 @@ function getUsuario() {
       .slice(0, 2);
     return { nombre, iniciales };
   } catch {
-    return { nombre: 'Contratista', iniciales: 'C' };
+    return { nombre: etiquetaRol, iniciales: etiquetaRol[0] };
   }
 }
 
 const NAVBAR_WIDTH_EXPANDIDO = 260;
 const NAVBAR_WIDTH_COLAPSADO = 80;
 
-export function ContractorLayout() {
+/** Layout acotado para los usuarios que no son admin: un menú corto y el perfil. */
+export function PortalLayout({ links, etiquetaRol }) {
   const [mobileOpened, { toggle: toggleMobile }] = useDisclosure();
   const [colapsado, { toggle: toggleColapsado }] = useDisclosure(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const [usuario, setUsuario] = useState(getUsuario);
-
-  useEffect(() => {
-    setUsuario(getUsuario());
-  }, [location]);
+  // useLocation re-renderiza en cada navegación, así que se relee localStorage
+  // (por ejemplo, después de editar el perfil).
+  const usuario = getUsuario(etiquetaRol);
 
   const handleLogout = async () => {
     try {
@@ -105,7 +96,7 @@ export function ContractorLayout() {
                       {usuario.nombre}
                     </Text>
                     <Text size="xs" c="dimmed">
-                      Contratista
+                      {etiquetaRol}
                     </Text>
                   </div>
                   <IconChevronDown size={16} stroke={1.5} />

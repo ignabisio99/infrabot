@@ -10,6 +10,7 @@ from core.storage import storage
 from core.email import enviar_solicitud_presupuesto
 from core.whatsapp_client import enviar_mensaje
 from core.whatsapp_handler import iniciar_espera_info
+from models.comentario_reclamo import ComentarioReclamo
 from models.contratista import Contratista
 from models.foto_reclamo import FotoReclamo, TipoMedia
 from models.lista_contratistas import ListaContratistas
@@ -27,6 +28,8 @@ from schemas.lista_contratistas import (
 )
 from schemas.reclamo import (
     CambioEstadoReclamo,
+    ComentarioReclamoIn,
+    ComentarioReclamoOut,
     FotoReclamoOut,
     HistorialEstadoReclamoOut,
     ReclamoCreate,
@@ -157,6 +160,48 @@ def listar_historial_reclamo(
         .order_by(HistorialEstadoReclamo.fecha, HistorialEstadoReclamo.id)
         .all()
     )
+
+
+@router.get("/{reclamo_id}/comentarios", response_model=list[ComentarioReclamoOut])
+def listar_comentarios_reclamo(
+    reclamo_id: int, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)
+):
+    if db.get(Reclamo, reclamo_id) is None:
+        raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    return (
+        db.query(ComentarioReclamo)
+        .options(joinedload(ComentarioReclamo.usuario))
+        .filter(ComentarioReclamo.reclamo_id == reclamo_id)
+        .order_by(ComentarioReclamo.fecha, ComentarioReclamo.id)
+        .all()
+    )
+
+
+@router.post("/{reclamo_id}/comentarios", response_model=ComentarioReclamoOut, status_code=201)
+def crear_comentario_reclamo(
+    reclamo_id: int,
+    datos: ComentarioReclamoIn,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
+):
+    if not usuario.es_inspector:
+        raise HTTPException(status_code=403, detail="Solo los inspectores pueden comentar reclamos")
+    reclamo = db.get(Reclamo, reclamo_id)
+    if reclamo is None:
+        raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    if reclamo.estado in estados_reclamo.ESTADOS_FINALES:
+        raise HTTPException(
+            status_code=409,
+            detail=f"No se puede comentar un reclamo en {reclamo.estado.value}",
+        )
+
+    comentario = ComentarioReclamo(
+        reclamo_id=reclamo_id, usuario_id=usuario.id, texto=datos.texto
+    )
+    db.add(comentario)
+    db.commit()
+    db.refresh(comentario)
+    return comentario
 
 
 @router.delete("/{reclamo_id}", status_code=204)

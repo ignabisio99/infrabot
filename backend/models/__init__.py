@@ -12,6 +12,7 @@ ejemplo, no se registra solo porque core/auth.py lo importa dentro de las funcio
 """
 
 from models.adjunto_presupuesto import AdjuntoPresupuesto, TipoAdjuntoPresupuesto
+from models.comentario_reclamo import ComentarioReclamo
 from models.configuracion_auditoria import ConfiguracionAuditoria
 from models.contratista import Contratista
 from models.estimacion_preliminar import EstimacionPreliminar
@@ -34,6 +35,7 @@ from models.visita import EstadoVisita, Visita
 
 __all__ = [
     "AdjuntoPresupuesto",
+    "ComentarioReclamo",
     "ConfiguracionAuditoria",
     "Contratista",
     "EstadoPresupuesto",

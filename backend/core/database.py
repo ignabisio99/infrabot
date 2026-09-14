@@ -67,3 +67,13 @@ def asegurar_columna_detalle_tarea(bind=engine):
         return
     with bind.begin() as conn:
         conn.execute(text("ALTER TABLE presupuesto ADD COLUMN detalle_tarea TEXT"))
+
+
+def asegurar_tipo_usuario_inspector(bind=engine):
+    """Agrega INSPECTOR al enum `tipo_usuario` si la base se creó antes de ese valor.
+
+    `create_all` no toca un tipo enum que ya existe. Tiene que correr después de
+    `create_all`, que es quien crea el tipo en una base nueva.
+    """
+    with bind.begin() as conn:
+        conn.execute(text("ALTER TYPE tipo_usuario ADD VALUE IF NOT EXISTS 'INSPECTOR'"))

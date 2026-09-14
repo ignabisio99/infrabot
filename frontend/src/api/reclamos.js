@@ -35,6 +35,31 @@ export async function obtenerHistorialReclamo(reclamoId) {
   return response.json();
 }
 
+export async function listarComentariosReclamo(reclamoId) {
+  const response = await fetchConAuth(`${API_URL}/reclamos/${reclamoId}/comentarios`);
+
+  if (!response.ok) {
+    throw new Error('No se pudieron obtener los comentarios del reclamo.');
+  }
+
+  return response.json();
+}
+
+export async function crearComentarioReclamo(reclamoId, texto) {
+  const response = await fetchConAuth(`${API_URL}/reclamos/${reclamoId}/comentarios`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ texto }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(extraerMensajeError(error?.detail, 'No se pudo guardar el comentario.'));
+  }
+
+  return response.json();
+}
+
 /** Devuelve la coordinación de visita del reclamo, o null si no hay. */
 export async function obtenerVisitaReclamo(reclamoId) {
   const response = await fetchConAuth(`${API_URL}/reclamos/${reclamoId}/visita`);
