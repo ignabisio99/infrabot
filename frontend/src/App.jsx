@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
-import { Center, Loader, Stack, Text } from '@mantine/core';
+import { Box, Center, Loader, Stack, Text } from '@mantine/core';
 import { IconClipboardList, IconReceipt2 } from '@tabler/icons-react';
 
 import { getMe, logout } from './api/auth';
@@ -30,6 +30,7 @@ import { SettingsPage } from './pages/settings/SettingsPage';
 import { ProfilePage } from './pages/profile/ProfilePage';
 import { UsersApprovalPage } from './pages/users/UsersApprovalPage';
 import { WhatsAppSimPage } from './pages/whatsapp/WhatsAppSimPage';
+import { Footer } from './components/Footer';
 
 const LINKS_CONTRATISTA = [
   { label: 'Mis solicitudes', path: '/portal/solicitudes', icon: IconClipboardList },
@@ -37,6 +38,15 @@ const LINKS_CONTRATISTA = [
 ];
 
 const LINKS_INSPECTOR = [{ label: 'Reclamos', path: '/reclamos', icon: IconClipboardList }];
+
+function ConFooter({ children }) {
+  return (
+    <Box style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      <Box style={{ flex: 1 }}>{children}</Box>
+      <Footer />
+    </Box>
+  );
+}
 
 function getUsuarioGuardado() {
   try {
@@ -114,35 +124,47 @@ function App() {
 
   if (verificando) {
     return (
-      <Center h="100vh">
-        <Stack align="center" gap="xs">
-          <Loader color="teal" />
-          <Text size="sm" c="dimmed">
-            Verificando sesión…
-          </Text>
-        </Stack>
-      </Center>
+      <ConFooter>
+        <Center h="100vh">
+          <Stack align="center" gap="xs">
+            <Loader color="teal" />
+            <Text size="sm" c="dimmed">
+              Verificando sesión…
+            </Text>
+          </Stack>
+        </Center>
+      </ConFooter>
     );
   }
 
   // No autenticado → login
   if (!usuario) {
     return (
-      <Routes>
-        <Route path="/confirmar" element={<ConfirmarEmailPage />} />
-        <Route path="*" element={<LoginPage onLogin={handleLogin} />} />
-      </Routes>
+      <ConFooter>
+        <Routes>
+          <Route path="/confirmar" element={<ConfirmarEmailPage />} />
+          <Route path="*" element={<LoginPage onLogin={handleLogin} />} />
+        </Routes>
+      </ConFooter>
     );
   }
 
   // Autenticado pero necesita completar perfil
   if (usuario.estado === 'PENDIENTE_PERFIL') {
-    return <CompletarPerfilPage usuario={usuario} onComplete={() => verificarSesion()} />;
+    return (
+      <ConFooter>
+        <CompletarPerfilPage usuario={usuario} onComplete={() => verificarSesion()} />
+      </ConFooter>
+    );
   }
 
   // Autenticado pero pendiente de aprobación o rechazado
   if (usuario.estado === 'PENDIENTE_APROBACION' || usuario.estado === 'RECHAZADO') {
-    return <PendienteAprobacionPage onLogout={handleLogout} />;
+    return (
+      <ConFooter>
+        <PendienteAprobacionPage onLogout={handleLogout} />
+      </ConFooter>
+    );
   }
 
   // Contratista aprobado → portal del contratista (experiencia acotada)

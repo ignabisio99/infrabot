@@ -8,6 +8,7 @@ import {
   Menu,
   NavLink,
   ActionIcon,
+  Box,
   Text,
   Tooltip,
   UnstyledButton,
@@ -32,6 +33,7 @@ import {
   IconBrandWhatsapp,
 } from '@tabler/icons-react';
 import logo from '../assets/logo-infrabot.jpeg';
+import { Footer } from '../components/Footer';
 import { listarUsuariosPendientes } from '../api/usuarios';
 import { esAdministrador } from '../utils/auth';
 import classes from './AppLayout.module.css';
@@ -243,7 +245,12 @@ export function AppLayout() {
       </AppShell.Navbar>
 
       <AppShell.Main>
-        <Outlet />
+        <Box style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 60px)' }}>
+          <Box style={{ flex: 1 }}>
+            <Outlet />
+          </Box>
+          <Footer />
+        </Box>
       </AppShell.Main>
     </AppShell>
   );
