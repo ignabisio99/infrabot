@@ -15,7 +15,14 @@ from models.foto_reclamo import FotoReclamo, TipoMedia
 from models.reclamo import PrioridadReclamo, Reclamo
 from models.recomendacion_ia import TipoRecomendacionIA
 from services import estados_reclamo
-from services.ai import clasificacion, completitud, extraccion_reclamo, registro, stt
+from services.ai import (
+    clasificacion,
+    completitud,
+    duplicados,
+    extraccion_reclamo,
+    registro,
+    stt,
+)
 from services.ai.automatico import post_alta_reclamo, post_fotos_reclamo
 
 # Zona horaria UTC-3 (Argentina), para los timestamps de la info adicional.
@@ -118,6 +125,15 @@ def _etiqueta_estado(reclamo: Reclamo) -> str:
     return ETIQUETA_ESTADO.get(valor, valor)
 
 
+def _limpiar_espacios(texto: str) -> str:
+    """Colapsa espacios múltiples y recorta extremos.
+
+    El padrón de escuelas trae domicilios con dobles espacios (ej: 'MENDOZA 1069  BARRIO')
+    que rompen el formato de WhatsApp (deja los _ o * crudos) y quedan feos en el reclamo.
+    """
+    return " ".join(str(texto or "").split())
+
+
 def _mensaje_paso_media(conv: dict) -> str:
     media_count = len(conv.get("media", []))
     if media_count > 0:
@@ -131,7 +147,7 @@ def _mensaje_paso_media(conv: dict) -> str:
     )
 
 
-def _tras_descripcion_o_completitud(conv: dict, datos: dict) -> str:
+def _tras_descripcion_o_completitud(db: Session, conv: dict, datos: dict):
     """Tras descripción (o respuesta a faltante): valida completitud o avanza a media."""
     rondas = int(conv.get("faltantes_rondas") or 0)
     if rondas >= completitud.MAX_RONDAS_FALTANTES:
@@ -139,8 +155,7 @@ def _tras_descripcion_o_completitud(conv: dict, datos: dict) -> str:
             (datos.get("observaciones") or "")
             + " [IA] Completitud parcial: se alcanzó el máximo de preguntas."
         ).strip()
-        conv["paso"] = "media"
-        return _mensaje_paso_media(conv)
+        return _avanzar_a_media_o_duplicados(db, conv, datos)
 
     try:
         resultado = completitud.evaluar_completitud(
@@ -149,20 +164,115 @@ def _tras_descripcion_o_completitud(conv: dict, datos: dict) -> str:
             descripcion=datos.get("descripcion") or "",
         )
     except Exception:
-        conv["paso"] = "media"
-        return _mensaje_paso_media(conv)
+        return _avanzar_a_media_o_duplicados(db, conv, datos)
 
     if resultado.completo or not resultado.faltantes:
-        conv["paso"] = "media"
         conv.pop("faltantes_cola", None)
         conv.pop("faltante_campo", None)
-        return _mensaje_paso_media(conv)
+        return _avanzar_a_media_o_duplicados(db, conv, datos)
 
     primera, *resto = resultado.faltantes
     conv["paso"] = "faltantes"
     conv["faltante_campo"] = primera.campo
     conv["faltantes_cola"] = [{"campo": f.campo, "pregunta": f.pregunta} for f in resto]
     return f"❓ {primera.pregunta}"
+
+
+def _chequear_duplicados(db: Session, datos: dict) -> list:
+    """Busca reclamos similares ya cargados a partir de los datos parciales del bot.
+
+    Construye un Reclamo en memoria (sin persistirlo) con lo que el usuario viene
+    ingresando y reutiliza services.ai.duplicados.buscar_duplicados. Devuelve la lista
+    de candidatos (posiblemente vacía). Nunca lanza: ante cualquier error devuelve [].
+    """
+    try:
+        tentativo = Reclamo(
+            nombre_escuela=datos.get("nombre_escuela") or "",
+            ubicacion=datos.get("ubicacion") or "",
+            prioridad=PrioridadReclamo(datos.get("prioridad") or "MEDIA"),
+            categoria=datos.get("categoria") or "Sin clasificar",
+            descripcion=datos.get("descripcion") or "",
+        )
+        # id=None hace que buscar_duplicados no se excluya a sí mismo; como no está
+        # persistido, ningún candidato real tendrá id None, así que el filtro id != es seguro.
+        return duplicados.buscar_duplicados(db, tentativo, limite=3)
+    except Exception:
+        return []
+
+
+def _avanzar_a_media_o_duplicados(db: Session, conv: dict, datos: dict):
+    """Antes de pedir fotos, corta la carga si el reclamo ya fue reportado.
+
+    Si encuentra un reclamo similar en la misma escuela, NO deja crear el duplicado:
+    informa cuál es el reclamo existente y ofrece verlo o cerrar. Si no hay similares,
+    sigue el flujo normal hacia el paso de fotos.
+    """
+    candidatos = _chequear_duplicados(db, datos)
+    if candidatos:
+        conv["paso"] = "confirmar_duplicado"
+        top = candidatos[0]
+        estado_txt = top.estado.value.replace("_", " ").lower()
+        otros = ""
+        if len(candidatos) > 1:
+            otros = f"\n(hay {len(candidatos) - 1} reclamo/s más parecido/s)"
+        return {
+            "tipo": "botones",
+            "body": (
+                "⚠️ *Este problema ya fue reportado.*\n\n"
+                f"Ya existe el *Reclamo #{top.reclamo_id}* en la misma escuela:\n"
+                f"🏷️ {top.categoria}\n"
+                f"📊 Estado: {estado_txt}\n"
+                f"📝 {top.descripcion[:180]}{otros}\n\n"
+                "Para evitar reclamos repetidos, no se puede cargar de nuevo. "
+                "Podés seguir el estado del que ya existe."
+            ),
+            "botones": [
+                {"id": "dup_ver", "title": f"👀 Ver #{top.reclamo_id}"},
+                {"id": "dup_cerrar", "title": "✅ Entendido"},
+            ],
+        }
+
+    conv["paso"] = "media"
+    return _mensaje_paso_media(conv)
+
+
+def _procesar_confirmar_duplicado(db: Session, usuario: str, conv: dict, datos: dict, texto: str):
+    """Maneja la respuesta del usuario tras avisarle de que el reclamo ya existe.
+
+    No hay opción de "cargar igual": el objetivo es justamente no duplicar. El usuario
+    puede ver el reclamo existente o cerrar la conversación.
+    """
+    opcion = texto.strip().lower()
+
+    if opcion.startswith("dup_ver") or opcion.startswith("ver"):
+        candidatos = _chequear_duplicados(db, datos)
+        if candidatos:
+            top = candidatos[0]
+            estado_txt = top.estado.value.replace("_", " ").lower()
+            # No se usa _buscar_por_id porque el duplicado puede ser de otra persona
+            # (ese helper oculta reclamos ajenos). Mostramos lo que ya conocemos.
+            detalle = (
+                f"📋 *Reclamo #{top.reclamo_id}*\n"
+                f"🏫 Escuela: {top.nombre_escuela}\n"
+                f"🏷️ Categoría: {top.categoria}\n"
+                f"📊 Estado: {estado_txt}\n"
+                f"📝 {top.descripcion}"
+            )
+            del _conversaciones[usuario]
+            return (
+                f"{detalle}\n\n"
+                f"Podés seguir su estado con: *ver #{top.reclamo_id}*"
+            )
+        # Ya no hay candidatos (raro): cerrar la conversación sin crear nada.
+        del _conversaciones[usuario]
+        return "No encontré el reclamo relacionado. Escribí *nuevo* si querés empezar de nuevo."
+
+    # Cualquier otra respuesta (dup_cerrar, "entendido", "ok", "cancelar", etc.) cierra.
+    del _conversaciones[usuario]
+    return (
+        "👌 Listo, no cargué un reclamo repetido. "
+        "Escribí *nuevo* si querés reportar otra cosa distinta."
+    )
 
 
 def _formatear_reclamo(r: Reclamo) -> str:
@@ -369,7 +479,7 @@ def _siguiente_tras_libre(db: Session, conv: dict, datos: dict) -> str:
     if not datos.get("ubicacion"):
         conv["paso"] = "ubicacion"
         return "📍 ¿En qué parte de la escuela es el problema? (aula, piso, sector)"
-    return _tras_descripcion_o_completitud(conv, datos)
+    return _tras_descripcion_o_completitud(db, conv, datos)
 
 
 def _procesar_libre(db: Session, conv: dict, datos: dict, texto: str) -> str:
@@ -427,7 +537,7 @@ def _procesar_libre(db: Session, conv: dict, datos: dict, texto: str) -> str:
     return _siguiente_tras_libre(db, conv, datos)
 
 
-def _procesar_confirmar_escuela(conv: dict, datos: dict, texto: str):
+def _procesar_confirmar_escuela(db: Session, conv: dict, datos: dict, texto: str):
     """Maneja la confirmación de la escuela sugerida desde el padrón."""
     opcion = texto.strip().lower()
     candidatas = conv.get("candidatas_escuela", [])
@@ -438,8 +548,8 @@ def _procesar_confirmar_escuela(conv: dict, datos: dict, texto: str):
         if elegida:
             datos["nombre_escuela"] = elegida["nombre"]
             if elegida.get("domicilio"):
-                conv["sugerencia_ubicacion"] = elegida["domicilio"]
-        return _tras_fijar_escuela(conv, datos)
+                conv["sugerencia_ubicacion"] = _limpiar_espacios(elegida["domicilio"])
+        return _tras_fijar_escuela(db, conv, datos)
 
     # Quiere ver las otras coincidencias.
     if opcion == "escuela_otras":
@@ -465,7 +575,7 @@ def _procesar_confirmar_escuela(conv: dict, datos: dict, texto: str):
     # Prefiere usar exactamente lo que escribió.
     if opcion == "escuela_no":
         datos["nombre_escuela"] = conv.get("nombre_escuela_ingresado", "")
-        return _tras_fijar_escuela(conv, datos)
+        return _tras_fijar_escuela(db, conv, datos)
 
     return (
         "Elegí una opción: *Sí, es ese*, *Ver otras* o *Usar lo que puse* "
@@ -473,7 +583,7 @@ def _procesar_confirmar_escuela(conv: dict, datos: dict, texto: str):
     )
 
 
-def _tras_fijar_escuela(conv: dict, datos: dict):
+def _tras_fijar_escuela(db: Session, conv: dict, datos: dict):
     """Una vez fijada la escuela (confirmada o no), continúa según el modo.
 
     - Modo IA (libre): marca la escuela como confirmada y sigue el flujo libre.
@@ -485,34 +595,36 @@ def _tras_fijar_escuela(conv: dict, datos: dict):
         # No arrastramos la sugerencia de ubicación del padrón en modo libre: en ese
         # flujo se le pregunta la ubicación específica igual.
         conv.pop("sugerencia_ubicacion", None)
-        return _continuar_ia(conv, datos)
+        return _continuar_ia(db, conv, datos)
 
     conv["paso"] = "ubicacion"
     sug = conv.get("sugerencia_ubicacion")
     if sug:
+        # Negrita en vez de cursiva: es más tolerante en WhatsApp y no muestra el
+        # símbolo crudo. La dirección ya viene con espacios normalizados.
         return (
-            f"📍 *Paso 2/4:* La dirección registrada es:\n_{sug}_\n\n"
+            f"📍 *Paso 2/4:* La dirección registrada es:\n*{sug}*\n\n"
             "Escribí una referencia más precisa (aula, sector) o mandá *ok* para usar esa."
         )
     return "📍 *Paso 2/4:* ¿Cuál es la ubicación? (dirección o referencia)"
 
 
-def _continuar_ia(conv: dict, datos: dict) -> str:
+def _continuar_ia(db: Session, conv: dict, datos: dict):
     """Sigue el flujo IA tras fijar la escuela: pide ubicación o pasa a completitud."""
     if not datos.get("ubicacion"):
         conv["paso"] = "ubicacion"
         return "📍 ¿En qué parte de la escuela es el problema? (aula, piso, sector)"
-    return _tras_descripcion_o_completitud(conv, datos)
+    return _tras_descripcion_o_completitud(db, conv, datos)
 
 
-def _procesar_elegir_escuela(conv: dict, datos: dict, texto: str) -> str:
+def _procesar_elegir_escuela(db: Session, conv: dict, datos: dict, texto: str):
     """El usuario elige una escuela de la lista numerada."""
     candidatas = conv.get("candidatas_escuela", [])
     limpio = texto.strip().lower()
 
     if limpio in ("ninguna", "no", "0"):
         datos["nombre_escuela"] = conv.get("nombre_escuela_ingresado", "")
-        return _tras_fijar_escuela(conv, datos)
+        return _tras_fijar_escuela(db, conv, datos)
 
     try:
         indice = int(limpio.replace("#", ""))
@@ -525,8 +637,8 @@ def _procesar_elegir_escuela(conv: dict, datos: dict, texto: str) -> str:
     elegida = candidatas[indice - 1]
     datos["nombre_escuela"] = elegida["nombre"]
     if elegida.get("domicilio"):
-        conv["sugerencia_ubicacion"] = elegida["domicilio"]
-    return _tras_fijar_escuela(conv, datos)
+        conv["sugerencia_ubicacion"] = _limpiar_espacios(elegida["domicilio"])
+    return _tras_fijar_escuela(db, conv, datos)
 
 
 def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
@@ -552,10 +664,13 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
         return _tras_fijar_escuela(conv, datos)
 
     if paso == "confirmar_escuela":
-        return _procesar_confirmar_escuela(conv, datos, texto)
+        return _procesar_confirmar_escuela(db, conv, datos, texto)
 
     if paso == "elegir_escuela":
-        return _procesar_elegir_escuela(conv, datos, texto)
+        return _procesar_elegir_escuela(db, conv, datos, texto)
+
+    if paso == "confirmar_duplicado":
+        return _procesar_confirmar_duplicado(db, usuario, conv, datos, texto)
 
     if paso == "ubicacion":
         if len(texto) < 2:
@@ -592,7 +707,7 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
             datos["prioridad"] = "MEDIA"
             datos["confianza_clasificacion"] = 0.0
 
-        return _tras_descripcion_o_completitud(conv, datos)
+        return _tras_descripcion_o_completitud(db, conv, datos)
 
     if paso == "faltantes":
         cola = conv.get("faltantes_cola") or []
@@ -607,7 +722,7 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
             conv["faltante_campo"] = siguiente.get("campo") or "descripcion"
             return f"❓ {siguiente.get('pregunta')}"
 
-        return _tras_descripcion_o_completitud(conv, datos)
+        return _tras_descripcion_o_completitud(db, conv, datos)
 
     if paso == "media":
         if texto.lower() in ("listo", "continuar", "siguiente", "ok"):
