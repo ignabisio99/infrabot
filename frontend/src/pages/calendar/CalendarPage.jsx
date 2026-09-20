@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Calendar, dayjsLocalizer } from 'react-big-calendar';
 import dayjs from 'dayjs';
 import {
@@ -49,7 +49,7 @@ const etiquetasEstado = {
   ESPERANDO_ELECCION: 'Esperando elección',
 };
 
-function BarraCalendario({ date, label, onNavigate, onChangeVista, view }) {
+function BarraCalendario({ date, label, onNavigate, onView, view }) {
   const unidadPorVista = {
     month: 'month',
     week: 'week',
@@ -59,12 +59,12 @@ function BarraCalendario({ date, label, onNavigate, onChangeVista, view }) {
 
   const navegar = (direccion) => {
     if (direccion === 'TODAY') {
-      onNavigate(new Date());
+      onNavigate('TODAY');
       return;
     }
 
     const cantidad = direccion === 'NEXT' ? 1 : -1;
-    onNavigate(dayjs(date).add(cantidad, unidadPorVista[view]).toDate());
+    onNavigate('DATE', dayjs(date).add(cantidad, unidadPorVista[view]).toDate());
   };
 
   return (
@@ -83,15 +83,12 @@ function BarraCalendario({ date, label, onNavigate, onChangeVista, view }) {
           {label}
         </Title>
       </Group>
-      <SegmentedControl
-        color="#1fa7b3"
-        data={vistas}
-        onChange={onChangeVista}
-        value={view}
-      />
+      <SegmentedControl color="#1fa7b3" data={vistas} onChange={onView} value={view} />
     </Group>
   );
 }
+
+const componentes = { toolbar: BarraCalendario };
 
 export function CalendarPage() {
   const [fecha, setFecha] = useState(new Date());
@@ -108,9 +105,22 @@ export function CalendarPage() {
       .finally(() => setCargando(false));
   }, []);
 
-  const cambiarVista = (nuevaVista) => {
-    setVista(nuevaVista);
-  };
+  const eventos = useMemo(
+    () =>
+      visitas
+        .filter((visita) => visita.fecha_visita)
+        .map((visita) => {
+          const inicio = new Date(visita.fecha_visita);
+          return {
+            allDay: false,
+            end: new Date(inicio.getTime() + 60 * 60 * 1000),
+            resource: visita,
+            start: inicio,
+            title: `Visita - ${visita.nombre_escuela}`,
+          };
+        }),
+    [visitas],
+  );
 
   return (
     <Container fluid px={0}>
@@ -119,29 +129,16 @@ export function CalendarPage() {
         {cargando && <Loader color="#1fa7b3" size="sm" />}
         {error && <Text c="red">{error}</Text>}
         <Calendar
-          key={vista}
           culture="es"
           date={fecha}
-          events={visitas
-            .filter((visita) => visita.fecha_visita)
-            .map((visita) => {
-              const inicio = new Date(visita.fecha_visita);
-              return {
-                allDay: false,
-                end: new Date(inicio.getTime() + 60 * 60 * 1000),
-                resource: visita,
-                start: inicio,
-                title: `Visita - ${visita.nombre_escuela}`,
-              };
-            })}
+          events={eventos}
           localizer={localizer}
           messages={mensajes}
           onNavigate={setFecha}
           onSelectEvent={(evento) => setVisitaSeleccionada(evento.resource)}
+          onView={setVista}
           popup
-          components={{
-            toolbar: (props) => <BarraCalendario {...props} onChangeVista={cambiarVista} />,
-          }}
+          components={componentes}
           style={{ height: 'calc(100vh - 240px)', minHeight: 560 }}
           view={vista}
           views={{ month: true, week: true, day: true, agenda: true }}

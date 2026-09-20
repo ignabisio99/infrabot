@@ -6,7 +6,7 @@ from core.dependencies import get_current_user
 from models.contratista import Contratista
 from models.reclamo import Reclamo
 from models.usuario import TipoUsuario, Usuario
-from models.visita import Visita
+from models.visita import EstadoVisita, Visita
 from schemas.visita import VisitaCalendarioOut
 
 router = APIRouter(prefix="/visitas", tags=["visitas"])
@@ -17,12 +17,7 @@ def listar_visitas(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_user),
 ):
-    consulta = (
-        db.query(Visita, Reclamo, Contratista)
-        .join(Reclamo, Reclamo.id == Visita.reclamo_id)
-        .join(Contratista, Contratista.id == Visita.contratista_id)
-    )
-
+    # `Usuario.tipo` es nullable: quien no completó el perfil todavía no tiene rol.
     if usuario.tipo not in {
         TipoUsuario.ADMINISTRADOR,
         TipoUsuario.INSPECTOR,
@@ -32,6 +27,13 @@ def listar_visitas(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tenés permisos para consultar las visitas",
         )
+
+    consulta = (
+        db.query(Visita, Reclamo, Contratista)
+        .join(Reclamo, Reclamo.id == Visita.reclamo_id)
+        .join(Contratista, Contratista.id == Visita.contratista_id)
+        .filter(Visita.estado != EstadoVisita.CANCELADA)
+    )
 
     if usuario.tipo == TipoUsuario.CONTRATISTA:
         consulta = consulta.filter(Contratista.usuario_id == usuario.id)

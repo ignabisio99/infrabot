@@ -10,10 +10,15 @@ import { Notifications } from '@mantine/notifications';
 import '@mantine/notifications/styles.css';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { GoogleOAuthProvider } from '@react-oauth/google';
+import dayjs from 'dayjs';
 import 'dayjs/locale/es';
 import { BrowserRouter } from 'react-router-dom';
 
 import App from './App.jsx';
+
+// react-big-calendar lee el locale global de dayjs (localeData ignora el argumento),
+// así que sin esto la semana arranca en domingo.
+dayjs.locale('es');
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
