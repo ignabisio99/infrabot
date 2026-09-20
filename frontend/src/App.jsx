@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Box, Center, Loader, Stack, Text } from '@mantine/core';
-import { IconClipboardList, IconReceipt2 } from '@tabler/icons-react';
+import { IconCalendar, IconClipboardList, IconReceipt2 } from '@tabler/icons-react';
 
 import { getMe, logout } from './api/auth';
 import { AppLayout } from './layout/AppLayout';
@@ -35,9 +35,13 @@ import { Footer } from './components/Footer';
 const LINKS_CONTRATISTA = [
   { label: 'Mis solicitudes', path: '/portal/solicitudes', icon: IconClipboardList },
   { label: 'Mis presupuestos', path: '/portal/presupuestos', icon: IconReceipt2 },
+  { label: 'Calendario', path: '/calendario', icon: IconCalendar },
 ];
 
-const LINKS_INSPECTOR = [{ label: 'Reclamos', path: '/reclamos', icon: IconClipboardList }];
+const LINKS_INSPECTOR = [
+  { label: 'Reclamos', path: '/reclamos', icon: IconClipboardList },
+  { label: 'Calendario', path: '/calendario', icon: IconCalendar },
+];
 
 function ConFooter({ children }) {
   return (
@@ -175,6 +179,7 @@ function App() {
           <Route index element={<Navigate to="/portal/solicitudes" replace />} />
           <Route path="/portal/solicitudes" element={<MySolicitudesPage />} />
           <Route path="/portal/presupuestos" element={<MyPresupuestosPage />} />
+          <Route path="/calendario" element={<CalendarPage />} />
           <Route path="/perfil" element={<ProfilePage />} />
           <Route path="/portal/reclamos/:id/presupuestar" element={<PresupuestarReclamoPage />} />
           {/* Cualquier otra ruta redirige al portal, así un contratista no accede a vistas de admin */}
@@ -190,6 +195,7 @@ function App() {
       <Routes>
         <Route element={<PortalLayout links={LINKS_INSPECTOR} etiquetaRol="Inspector" />}>
           <Route path="/reclamos" element={<ClaimsListPage />} />
+          <Route path="/calendario" element={<CalendarPage />} />
           <Route path="/perfil" element={<ProfilePage />} />
           <Route path="*" element={<Navigate to="/reclamos" replace />} />
         </Route>

@@ -21,6 +21,7 @@ from api.reclamos import router as reclamos_router
 from api.roles_mano_obra import router as roles_mano_obra_router
 from api.whatsapp import router as whatsapp_router
 from api.whatsapp_sim import router as whatsapp_sim_router
+from api.visitas import router as visitas_router
 from core.database import (
     Base,
     SessionLocal,
@@ -138,6 +139,7 @@ app.include_router(listas_contratistas_router)
 app.include_router(presupuestos_router)
 app.include_router(whatsapp_router)
 app.include_router(whatsapp_sim_router)
+app.include_router(visitas_router)
 app.include_router(ai_router)
 app.include_router(configuracion_router)
 app.include_router(roles_mano_obra_router)

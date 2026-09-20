@@ -15,3 +15,9 @@ class VisitaOut(BaseModel):
     disponibilidades: str | None = None
     horario_confirmado: str | None = None
     fecha_visita: datetime | None = None
+
+
+class VisitaCalendarioOut(VisitaOut):
+    nombre_escuela: str
+    ubicacion: str
+    nombre_empresa: str

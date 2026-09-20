@@ -8,6 +8,7 @@ import '@mantine/dates/styles.css';
 import '@mantine/dropzone/styles.css';
 import { Notifications } from '@mantine/notifications';
 import '@mantine/notifications/styles.css';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import 'dayjs/locale/es';
 import { BrowserRouter } from 'react-router-dom';
