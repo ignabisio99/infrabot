@@ -66,7 +66,7 @@ function App() {
 
   // Al montar la app, verificar la sesión real contra el backend
   useEffect(() => {
-    verificarSesion();
+    verificarSesion({ bloqueante: true });
   }, []);
 
   // Verificar sesión cuando el usuario navega con "atrás/adelante" o vuelve a la pestaña
@@ -89,8 +89,10 @@ function App() {
     };
   }, []);
 
-  async function verificarSesion() {
-    setVerificando(true);
+  // Sólo la verificación inicial muestra el loader: las posteriores corren en segundo
+  // plano porque reemplazar el árbol por el loader desmonta la página actual.
+  async function verificarSesion({ bloqueante = false } = {}) {
+    if (bloqueante) setVerificando(true);
     const controlador = new AbortController();
     const timer = setTimeout(() => controlador.abort(), 8000);
     try {
@@ -103,11 +105,10 @@ function App() {
         setUsuario(null);
       }
     } catch {
-      localStorage.removeItem('infrabot_user');
-      setUsuario(null);
+      // Error de red o del servidor: no dice nada sobre la sesión, se mantiene la actual
     } finally {
       clearTimeout(timer);
-      setVerificando(false);
+      if (bloqueante) setVerificando(false);
     }
   }
 

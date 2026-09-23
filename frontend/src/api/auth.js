@@ -16,12 +16,30 @@ export async function login(email, password) {
   return response.json();
 }
 
-export async function register({ nombre, email, password, telefono, direccion, tipo, nombre_empresa, especialidad }) {
+export async function register({
+  nombre,
+  email,
+  password,
+  telefono,
+  direccion,
+  tipo,
+  nombre_empresa,
+  especialidad,
+}) {
   const response = await fetch(`${API_URL}/auth/register`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nombre, email, password, telefono, direccion, tipo, nombre_empresa, especialidad }),
+    body: JSON.stringify({
+      nombre,
+      email,
+      password,
+      telefono,
+      direccion,
+      tipo,
+      nombre_empresa,
+      especialidad,
+    }),
   });
 
   if (!response.ok) {
@@ -61,7 +79,8 @@ export async function getMe(signal) {
     signal,
   });
 
-  if (!response.ok) return null;
+  if (response.status === 401) return null;
+  if (!response.ok) throw new Error('No se pudo verificar la sesión');
   return response.json();
 }
 
