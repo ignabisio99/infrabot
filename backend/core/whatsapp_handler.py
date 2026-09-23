@@ -661,7 +661,7 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
 
         # Sin coincidencias en el padrón: se usa el texto tal cual.
         datos["nombre_escuela"] = texto
-        return _tras_fijar_escuela(conv, datos)
+        return _tras_fijar_escuela(db, conv, datos)
 
     if paso == "confirmar_escuela":
         return _procesar_confirmar_escuela(db, conv, datos, texto)
