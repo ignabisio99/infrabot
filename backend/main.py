@@ -104,12 +104,25 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# Orígenes permitidos para CORS (necesario para cookies)
+# Orígenes permitidos para CORS (necesario para cookies).
+# APP_URL es el frontend en producción (ej. https://infrabot.site). Se suma también
+# la variante con www. Extra orígenes se pueden agregar por env CORS_EXTRA_ORIGINS
+# (separados por coma) sin tocar el código.
+_app_url = os.getenv("APP_URL", "http://localhost:3000").rstrip("/")
 FRONTEND_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:5173",
-    os.getenv("APP_URL", "http://localhost:3000"),
+    _app_url,
 ]
+if _app_url.startswith("https://") and "://www." not in _app_url:
+    FRONTEND_ORIGINS.append(_app_url.replace("https://", "https://www.", 1))
+FRONTEND_ORIGINS += [
+    o.strip().rstrip("/")
+    for o in (os.getenv("CORS_EXTRA_ORIGINS") or "").split(",")
+    if o.strip()
+]
+# Deduplicar preservando orden.
+FRONTEND_ORIGINS = list(dict.fromkeys(FRONTEND_ORIGINS))
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,0 +1,33 @@
+# Bloque HTTPS (puerto 443) del reverse proxy de borde.
+#
+# IMPORTANTE: este archivo termina en ".disabled" a propósito, para que nginx NO
+# lo cargue en el primer arranque (cuando todavía no hay certificado). Activarlo
+# recién DESPUÉS de emitir el certificado con certbot:
+#
+#   mv deploy/nginx/infrabot-ssl.conf.disabled deploy/nginx/infrabot-ssl.conf
+#   docker compose -f docker-compose.prod.yml restart nginx
+#
+# (El map $upstream_infrabot está definido en infrabot.conf, que nginx carga primero.)
+
+server {
+    listen 443 ssl;
+    server_name infrabot.site www.infrabot.site;
+
+    ssl_certificate     /etc/letsencrypt/live/infrabot.site/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/infrabot.site/privkey.pem;
+
+    client_max_body_size 25m; # fotos/videos de reclamos
+
+    # resolver de Docker: permite usar variables en proxy_pass.
+    resolver 127.0.0.11 valid=30s;
+
+    location / {
+        proxy_pass $upstream_infrabot;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+        proxy_connect_timeout 10s;
+    }
+}

@@ -1,0 +1,35 @@
+# Imagen de producción del backend (FastAPI + Uvicorn).
+# A diferencia del Dockerfile de dev, acá NO se usa --reload ni bind mounts:
+# el código se copia dentro de la imagen y es inmutable.
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONHASHSEED=random
+
+WORKDIR /app
+
+# Dependencias del sistema para librerías de Python (psycopg, etc.).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Instalar dependencias primero para aprovechar la cache de capas.
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copiar el código de la aplicación.
+COPY . .
+
+EXPOSE 8000
+
+# Healthcheck contra el endpoint /health del propio backend.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+    CMD curl -fsS http://localhost:8000/health || exit 1
+
+# Producción: sin --reload. Un solo worker porque la app corre tareas de fondo
+# (loops de cola de WhatsApp, seguimiento, recordatorios) que no deben duplicarse
+# entre workers. Si en el futuro se externalizan esas tareas, se puede subir workers.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

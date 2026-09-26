@@ -1,0 +1,89 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: db_container
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis_infrabot
+    restart: always
+
+  backend:
+    image: ${IMAGE_BASE}-backend:latest
+    container_name: backend_app
+    restart: always
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      SMTP_EMAIL: ${SMTP_EMAIL}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      APP_URL: ${APP_URL}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN}
+      WHATSAPP_PHONE_ID: ${WHATSAPP_PHONE_ID}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
+      AI_SSL_VERIFY: ${AI_SSL_VERIFY:-true}
+      INFLACION_API_URL: ${INFLACION_API_URL:-https://apis.datos.gob.ar/series/api/series/}
+      INFLACION_SERIE_ID: ${INFLACION_SERIE_ID:-101.1_I2NG_2016_M_22}
+      AI_DUPLICADOS_SEMANTICOS: ${AI_DUPLICADOS_SEMANTICOS:-false}
+      AI_WHATSAPP: ${AI_WHATSAPP:-false}
+      AI_STT_MODEL: ${AI_STT_MODEL:-whisper-1}
+      AI_GEMINI_NATIVE_URL: ${AI_GEMINI_NATIVE_URL:-https://generativelanguage.googleapis.com/v1beta}
+      AI_STT_MOCK_TEXTO: ${AI_STT_MOCK_TEXTO:-}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      SEGUIMIENTO_HORAS: ${SEGUIMIENTO_HORAS:-48}
+      SEGUIMIENTO_INTERVALO_SEGUNDOS: ${SEGUIMIENTO_INTERVALO_SEGUNDOS:-900}
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      - db
+      - redis
+
+  frontend:
+    image: ${IMAGE_BASE}-frontend:latest
+    container_name: frontend_app
+    restart: always
+    depends_on:
+      - backend
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: nginx_edge
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx:/etc/nginx/conf.d:ro
+      - certbot_conf:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    depends_on:
+      - frontend
+      - backend
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: certbot
+    restart: unless-stopped
+    volumes:
+      - certbot_conf:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: >
+      sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done"
+
+volumes:
+  postgres_data:
+  uploads_data:
+  certbot_conf:
+  certbot_www:
