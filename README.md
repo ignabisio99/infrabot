@@ -10,7 +10,7 @@ Sistema de gestión de reclamos de infraestructura escolar con bot de WhatsApp i
 - **WhatsApp:** Meta Cloud API (webhooks + mensajes interactivos con botones)
 - **IA:** LangGraph + proveedor configurable (mock / OpenAI / Gemini)
 - **Colas y workers:** Redis (cola de mensajes de WhatsApp) + tareas en background
-- **Infraestructura:** Docker Compose (Postgres, Redis, backend, frontend, Adminer, ngrok)
+- **Infraestructura:** Docker Compose (Postgres, Redis, backend, frontend, Adminer)
 
 ## Funcionalidades principales
 
@@ -54,8 +54,6 @@ Editá el `.env` con tus valores:
 | `WHATSAPP_TOKEN` | Access token de Meta (WhatsApp → API Setup) |
 | `WHATSAPP_PHONE_ID` | Phone Number ID de Meta (WhatsApp → API Setup) |
 | `WHATSAPP_VERIFY_TOKEN` | String que elijas para verificar el webhook |
-| `NGROK_AUTHTOKEN` | Auth token de ngrok |
-| `NGROK_DOMAIN` | Dominio estático de ngrok |
 | `AI_PROVIDER` | Motor de IA: `mock` (por defecto, sin costo), `openai` o Gemini |
 | `OPENAI_API_KEY` | API key de OpenAI o de Gemini (según el proveedor) |
 | `OPENAI_MODEL` | Modelo a usar (ej: `gpt-4o-mini`, `gemini-3.5-flash-lite`) |
@@ -86,9 +84,8 @@ docker compose up
 
 ## Configurar el bot de WhatsApp
 
-El bot necesita que Meta pueda enviar mensajes a tu backend. El túnel ngrok ya está incluido en el `docker-compose.yml` — se levanta automáticamente con `docker compose up`.
-
-La URL del webhook es fija (dominio estático de ngrok) y se configura en Meta una sola vez.
+El bot necesita que Meta pueda enviar mensajes a tu backend. El webhook se configura en
+Meta apuntando al entorno **de producción** (dominio con HTTPS), una sola vez.
 
 ### 1. Configurar el webhook en Meta
 
@@ -97,16 +94,19 @@ La URL del webhook es fija (dominio estático de ngrok) y se configura en Meta u
 3. En el menú lateral, hacé clic en **WhatsApp**
 4. Andá al **Paso 2: Configurar webhooks**
 5. Completá:
-   - **URL de devolución de llamada:** `https://<NGROK_DOMAIN>/webhook/whatsapp` (el valor de `NGROK_DOMAIN` en tu `.env`)
+   - **URL de devolución de llamada:** `https://infrabot.site/webhook/whatsapp`
    - **Token de verificación:** el mismo que pusiste en `WHATSAPP_VERIFY_TOKEN` en el `.env`
 6. Hacé clic en **Verificar y guardar**
 7. Suscribí el campo **messages** en Webhook fields
 
-Esto se hace una sola vez. Mientras los servicios estén corriendo con `docker compose up`, el webhook funciona.
-
-### 2. Probar
+### 2. Probar en producción
 
 Mandá un mensaje de WhatsApp al número de prueba. El bot responde con un menú de botones interactivos.
+
+### Probar el bot en local (sin Meta)
+
+En local no hace falta túnel ni webhook: usá el **Simulador de WhatsApp** de la app
+(`/whatsapp/simular`), que conversa con el mismo bot en tu máquina sin pasar por Meta ni Redis.
 
 **Comandos disponibles:**
 
@@ -252,7 +252,7 @@ docker compose exec db psql -U user -d infrabot -c "DELETE FROM usuario;"
 
 ## Notas
 
-- La URL de ngrok es fija (dominio estático). Solo necesitás tener ngrok corriendo para recibir mensajes.
+- El webhook de WhatsApp apunta a producción (`https://infrabot.site`). En local se usa el simulador.
 - Para números argentinos, la API de Meta requiere el formato sin el 9 (ej: `541125654565`). El bot hace esta conversión automáticamente.
 - **Redis** procesa los mensajes de WhatsApp de forma asíncrona (el webhook responde rápido y un worker procesa en background). Si Redis no está disponible, el sistema degrada de forma elegante y procesa los mensajes de forma inline, sin perderlos.
 - El backend levanta **tareas en background** al arrancar: cola de WhatsApp, recordatorios de visitas y seguimiento a contratistas. No dependen de cron externo, funcionan igual en local y deployado.
@@ -267,7 +267,6 @@ docker compose exec db psql -U user -d infrabot -c "DELETE FROM usuario;"
 - [Tabler Icons](https://tabler.io/icons)
 - [Meta WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api)
 - [Google OAuth](https://developers.google.com/identity/gsi/web/guides/overview)
-- [ngrok](https://ngrok.com/docs)
 - [LangGraph](https://langchain-ai.github.io/langgraph/)
 - [Gemini API](https://ai.google.dev/gemini-api/docs)
 - [OpenAI API](https://platform.openai.com/docs)
