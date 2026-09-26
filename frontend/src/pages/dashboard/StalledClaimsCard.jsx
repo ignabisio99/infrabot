@@ -38,40 +38,42 @@ export function StalledClaimsCard({ reclamos, total, umbral }) {
           </Text>
         </Group>
       ) : (
-        <Table highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>ID</Table.Th>
-              <Table.Th>Escuela</Table.Th>
-              <Table.Th>Estado</Table.Th>
-              <Table.Th ta="right">Sin movimiento</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {reclamos.map((reclamo) => (
-              <Table.Tr
-                key={reclamo.id}
-                className={classes.filaClickeable}
-                onClick={() => navigate(`/reclamos?busqueda=${formatearIdReclamo(reclamo.id)}`)}
-              >
-                <Table.Td>
-                  <Text ff="monospace" size="sm">
-                    {formatearIdReclamo(reclamo.id)}
-                  </Text>
-                </Table.Td>
-                <Table.Td>{reclamo.nombre_escuela}</Table.Td>
-                <Table.Td>
-                  <StatusBadge estado={reclamo.estado} variant="light" />
-                </Table.Td>
-                <Table.Td ta="right">
-                  <Badge color={colorAntiguedad(reclamo.dias_sin_movimiento)} variant="light">
-                    {reclamo.dias_sin_movimiento} días
-                  </Badge>
-                </Table.Td>
+        <Table.ScrollContainer minWidth={450}>
+          <Table highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>ID</Table.Th>
+                <Table.Th>Escuela</Table.Th>
+                <Table.Th>Estado</Table.Th>
+                <Table.Th ta="right">Sin movimiento</Table.Th>
               </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {reclamos.map((reclamo) => (
+                <Table.Tr
+                  key={reclamo.id}
+                  className={classes.filaClickeable}
+                  onClick={() => navigate(`/reclamos?busqueda=${formatearIdReclamo(reclamo.id)}`)}
+                >
+                  <Table.Td>
+                    <Text ff="monospace" size="sm">
+                      {formatearIdReclamo(reclamo.id)}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>{reclamo.nombre_escuela}</Table.Td>
+                  <Table.Td>
+                    <StatusBadge estado={reclamo.estado} variant="light" />
+                  </Table.Td>
+                  <Table.Td ta="right">
+                    <Badge color={colorAntiguedad(reclamo.dias_sin_movimiento)} variant="light">
+                      {reclamo.dias_sin_movimiento} días
+                    </Badge>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
     </Card>
   );

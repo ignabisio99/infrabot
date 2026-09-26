@@ -268,86 +268,88 @@ export function ClaimsListPage() {
       )}
 
       {!cargando && reclamosFiltrados.length > 0 && (
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th />
-              <Table.Th>ID</Table.Th>
-              <Table.Th>Escuela</Table.Th>
-              <Table.Th>Ubicación</Table.Th>
-              <Table.Th>Prioridad</Table.Th>
-              <Table.Th>Estado</Table.Th>
-              <Table.Th>Categoría</Table.Th>
-              <Table.Th>Descripción</Table.Th>
-              <Table.Th>Fecha</Table.Th>
-              <Table.Th />
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {reclamosPagina.map((reclamo) => (
-              <Table.Tr
-                key={reclamo.id}
-                onClick={() => setReclamoIdSeleccionado(reclamo.id)}
-                style={{ cursor: 'pointer' }}
-              >
-                <Table.Td w={40}>
-                  <ActionIcon variant="subtle" size="sm" aria-label="Ver detalle">
-                    <IconEye size={16} />
-                  </ActionIcon>
-                </Table.Td>
-                <Table.Td>
-                  <Text ff="monospace">{formatearIdReclamo(reclamo.id)}</Text>
-                </Table.Td>
-                <Table.Td>{reclamo.nombre_escuela}</Table.Td>
-                <Table.Td>{reclamo.ubicacion}</Table.Td>
-                <Table.Td>
-                  <PriorityBadge prioridad={reclamo.prioridad} />
-                </Table.Td>
-                <Table.Td>
-                  <Group gap={6} wrap="nowrap">
-                    <StatusBadge estado={reclamo.estado} variant="light" />
-                    {reclamo.requiere_revision && (
-                      <Badge
-                        size="xs"
-                        color="orange"
-                        variant="light"
-                        tt="none"
-                        leftSection={<IconAlertTriangle size={10} />}
-                      >
-                        Revisión
-                      </Badge>
-                    )}
-                  </Group>
-                </Table.Td>
-                <Table.Td>{reclamo.categoria}</Table.Td>
-                <Table.Td>
-                  <Text truncate="end" maw={280} title={reclamo.descripcion}>
-                    {reclamo.descripcion}
-                  </Text>
-                </Table.Td>
-                <Table.Td>{new Date(reclamo.fecha_creacion).toLocaleString('es-AR')}</Table.Td>
-                <Table.Td>
-                  {!soloLectura && (
-                    <RowActionsMenu
-                      onEdit={() => navigate(`/reclamos/${reclamo.id}/editar`)}
-                      onDelete={() => handleEliminar(reclamo.id)}
-                      deleting={eliminandoId === reclamo.id}
-                      extraItems={
-                        <Menu.Item
-                          leftSection={<IconExchange size={14} />}
-                          onClick={() => setReclamoParaCambiarEstado(reclamo)}
-                          disabled={reclamo.estados_posibles.length === 0}
-                        >
-                          Cambiar estado
-                        </Menu.Item>
-                      }
-                    />
-                  )}
-                </Table.Td>
+        <Table.ScrollContainer minWidth={1000}>
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th />
+                <Table.Th>ID</Table.Th>
+                <Table.Th>Escuela</Table.Th>
+                <Table.Th>Ubicación</Table.Th>
+                <Table.Th>Prioridad</Table.Th>
+                <Table.Th>Estado</Table.Th>
+                <Table.Th>Categoría</Table.Th>
+                <Table.Th>Descripción</Table.Th>
+                <Table.Th>Fecha</Table.Th>
+                <Table.Th />
               </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {reclamosPagina.map((reclamo) => (
+                <Table.Tr
+                  key={reclamo.id}
+                  onClick={() => setReclamoIdSeleccionado(reclamo.id)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <Table.Td w={40}>
+                    <ActionIcon variant="subtle" size="sm" aria-label="Ver detalle">
+                      <IconEye size={16} />
+                    </ActionIcon>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text ff="monospace">{formatearIdReclamo(reclamo.id)}</Text>
+                  </Table.Td>
+                  <Table.Td>{reclamo.nombre_escuela}</Table.Td>
+                  <Table.Td>{reclamo.ubicacion}</Table.Td>
+                  <Table.Td>
+                    <PriorityBadge prioridad={reclamo.prioridad} />
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap={6} wrap="nowrap">
+                      <StatusBadge estado={reclamo.estado} variant="light" />
+                      {reclamo.requiere_revision && (
+                        <Badge
+                          size="xs"
+                          color="orange"
+                          variant="light"
+                          tt="none"
+                          leftSection={<IconAlertTriangle size={10} />}
+                        >
+                          Revisión
+                        </Badge>
+                      )}
+                    </Group>
+                  </Table.Td>
+                  <Table.Td>{reclamo.categoria}</Table.Td>
+                  <Table.Td>
+                    <Text truncate="end" maw={280} title={reclamo.descripcion}>
+                      {reclamo.descripcion}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>{new Date(reclamo.fecha_creacion).toLocaleString('es-AR')}</Table.Td>
+                  <Table.Td>
+                    {!soloLectura && (
+                      <RowActionsMenu
+                        onEdit={() => navigate(`/reclamos/${reclamo.id}/editar`)}
+                        onDelete={() => handleEliminar(reclamo.id)}
+                        deleting={eliminandoId === reclamo.id}
+                        extraItems={
+                          <Menu.Item
+                            leftSection={<IconExchange size={14} />}
+                            onClick={() => setReclamoParaCambiarEstado(reclamo)}
+                            disabled={reclamo.estados_posibles.length === 0}
+                          >
+                            Cambiar estado
+                          </Menu.Item>
+                        }
+                      />
+                    )}
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
 
       {!cargando && totalPaginas > 1 && (

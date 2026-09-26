@@ -9,8 +9,9 @@ import {
   Text,
   Tooltip,
   UnstyledButton,
+  em,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
+import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   IconChevronDown,
@@ -44,10 +45,18 @@ const NAVBAR_WIDTH_COLAPSADO = 80;
 
 /** Layout acotado para los usuarios que no son admin: un menú corto y el perfil. */
 export function PortalLayout({ links, etiquetaRol }) {
-  const [mobileOpened, { toggle: toggleMobile }] = useDisclosure();
-  const [colapsado, { toggle: toggleColapsado }] = useDisclosure(false);
+  const [mobileOpened, { toggle: toggleMobile, close: closeMobile }] = useDisclosure();
+  const [colapsadoDesktop, { toggle: toggleColapsado }] = useDisclosure(false);
+  const esMobile = useMediaQuery(`(max-width: ${em(767)})`);
+  // En mobile el navbar ocupa todo el ancho: mostrarlo siempre con labels.
+  const colapsado = colapsadoDesktop && !esMobile;
   const location = useLocation();
   const navigate = useNavigate();
+
+  const irA = (path) => {
+    navigate(path);
+    closeMobile();
+  };
   // useLocation re-renderiza en cada navegación, así que se relee localStorage
   // (por ejemplo, después de editar el perfil).
   const usuario = getUsuario(etiquetaRol);
@@ -104,7 +113,7 @@ export function PortalLayout({ links, etiquetaRol }) {
               </UnstyledButton>
             </Menu.Target>
             <Menu.Dropdown>
-              <Menu.Item leftSection={<IconUser size={16} />} onClick={() => navigate('/perfil')}>
+              <Menu.Item leftSection={<IconUser size={16} />} onClick={() => irA('/perfil')}>
                 Mi perfil
               </Menu.Item>
               <Menu.Item color="red" leftSection={<IconLogout size={16} />} onClick={handleLogout}>
@@ -125,7 +134,7 @@ export function PortalLayout({ links, etiquetaRol }) {
               label={colapsado ? undefined : link.label}
               leftSection={<Icon size={18} stroke={1.5} />}
               active={activo}
-              onClick={() => navigate(link.path)}
+              onClick={() => irA(link.path)}
               variant="filled"
               color="#1fa7b3"
               styles={{

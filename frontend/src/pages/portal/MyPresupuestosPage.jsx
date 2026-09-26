@@ -39,32 +39,38 @@ export function MyPresupuestosPage() {
       )}
 
       {!cargando && !error && presupuestos.length > 0 && (
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Reclamo</Table.Th>
-              <Table.Th>Escuela</Table.Th>
-              <Table.Th>Fecha</Table.Th>
-              <Table.Th>Monto</Table.Th>
-              <Table.Th>Estado</Table.Th>
-              <Table.Th>Ítems</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {presupuestos.map((p) => (
-              <Table.Tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => setSeleccionado(p)}>
-                <Table.Td>{formatearIdReclamo(p.reclamo.id)}</Table.Td>
-                <Table.Td>{p.reclamo.nombre_escuela}</Table.Td>
-                <Table.Td>{new Date(p.fecha).toLocaleDateString('es-AR')}</Table.Td>
-                <Table.Td>{formatoMoneda.format(Number(p.monto))}</Table.Td>
-                <Table.Td>
-                  <BudgetStatusBadge estado={p.estado} />
-                </Table.Td>
-                <Table.Td>{p.items.length}</Table.Td>
+        <Table.ScrollContainer minWidth={600}>
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Reclamo</Table.Th>
+                <Table.Th>Escuela</Table.Th>
+                <Table.Th>Fecha</Table.Th>
+                <Table.Th>Monto</Table.Th>
+                <Table.Th>Estado</Table.Th>
+                <Table.Th>Ítems</Table.Th>
               </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {presupuestos.map((p) => (
+                <Table.Tr
+                  key={p.id}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setSeleccionado(p)}
+                >
+                  <Table.Td>{formatearIdReclamo(p.reclamo.id)}</Table.Td>
+                  <Table.Td>{p.reclamo.nombre_escuela}</Table.Td>
+                  <Table.Td>{new Date(p.fecha).toLocaleDateString('es-AR')}</Table.Td>
+                  <Table.Td>{formatoMoneda.format(Number(p.monto))}</Table.Td>
+                  <Table.Td>
+                    <BudgetStatusBadge estado={p.estado} />
+                  </Table.Td>
+                  <Table.Td>{p.items.length}</Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
 
       <BudgetItemsModal presupuesto={seleccionado} onClose={() => setSeleccionado(null)} />

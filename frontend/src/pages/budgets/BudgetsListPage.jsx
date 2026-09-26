@@ -83,81 +83,83 @@ export function BudgetsListPage() {
       )}
 
       {!cargando && presupuestos.length > 0 && (
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th />
-              <Table.Th>ID Reclamo</Table.Th>
-              <Table.Th>Escuela</Table.Th>
-              <Table.Th>Contratista</Table.Th>
-              <Table.Th>Monto</Table.Th>
-              <Table.Th>Estado</Table.Th>
-              <Table.Th>Fecha</Table.Th>
-              <Table.Th>Observaciones</Table.Th>
-              <Table.Th />
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {presupuestos.map((presupuesto) => (
-              <Table.Tr
-                key={presupuesto.id}
-                onClick={() => setPresupuestoSeleccionado(presupuesto)}
-                style={{ cursor: 'pointer' }}
-              >
-                <Table.Td w={40}>
-                  <ActionIcon variant="subtle" size="sm" aria-label="Ver ítems">
-                    <IconListDetails size={16} />
-                  </ActionIcon>
-                </Table.Td>
-                <Table.Td>{formatearIdReclamo(presupuesto.reclamo.id)}</Table.Td>
-                <Table.Td>{presupuesto.reclamo.nombre_escuela}</Table.Td>
-                <Table.Td>{presupuesto.contratista.nombre_empresa}</Table.Td>
-                <Table.Td>{formatoMoneda.format(Number(presupuesto.monto))}</Table.Td>
-                <Table.Td>
-                  <BudgetStatusBadge estado={presupuesto.estado} />
-                </Table.Td>
-                <Table.Td>{new Date(presupuesto.fecha).toLocaleString('es-AR')}</Table.Td>
-                <Table.Td>
-                  {presupuesto.observaciones ? (
-                    <Text truncate="end" maw={200} title={presupuesto.observaciones}>
-                      {presupuesto.observaciones}
-                    </Text>
-                  ) : (
-                    <Text c="dimmed">—</Text>
-                  )}
-                </Table.Td>
-                <Table.Td>
-                  {/* Un presupuesto ya decidido es parte del expediente: el backend
-                      rechaza editarlo y darlo de baja con un 409. */}
-                  <RowActionsMenu
-                    onEdit={() => navigate(`/presupuestos/${presupuesto.id}/editar`)}
-                    onDelete={() => handleEliminar(presupuesto.id)}
-                    deleting={eliminandoId === presupuesto.id}
-                    editDisabled={!estaVigente(presupuesto)}
-                    deleteDisabled={!estaVigente(presupuesto)}
-                    extraItems={
-                      <>
-                        <Menu.Item
-                          leftSection={<IconShieldCheck size={14} />}
-                          onClick={() => setPresupuestoAAuditar(presupuesto)}
-                        >
-                          Ver auditoría
-                        </Menu.Item>
-                        <Menu.Item
-                          leftSection={<IconGavel size={14} />}
-                          onClick={() => setPresupuestoADecidir(presupuesto)}
-                          disabled={presupuesto.estados_posibles.length === 0}
-                        >
-                          Decidir
-                        </Menu.Item>
-                      </>
-                    }
-                  />
-                </Table.Td>
+        <Table.ScrollContainer minWidth={900}>
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th />
+                <Table.Th>ID Reclamo</Table.Th>
+                <Table.Th>Escuela</Table.Th>
+                <Table.Th>Contratista</Table.Th>
+                <Table.Th>Monto</Table.Th>
+                <Table.Th>Estado</Table.Th>
+                <Table.Th>Fecha</Table.Th>
+                <Table.Th>Observaciones</Table.Th>
+                <Table.Th />
               </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {presupuestos.map((presupuesto) => (
+                <Table.Tr
+                  key={presupuesto.id}
+                  onClick={() => setPresupuestoSeleccionado(presupuesto)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <Table.Td w={40}>
+                    <ActionIcon variant="subtle" size="sm" aria-label="Ver ítems">
+                      <IconListDetails size={16} />
+                    </ActionIcon>
+                  </Table.Td>
+                  <Table.Td>{formatearIdReclamo(presupuesto.reclamo.id)}</Table.Td>
+                  <Table.Td>{presupuesto.reclamo.nombre_escuela}</Table.Td>
+                  <Table.Td>{presupuesto.contratista.nombre_empresa}</Table.Td>
+                  <Table.Td>{formatoMoneda.format(Number(presupuesto.monto))}</Table.Td>
+                  <Table.Td>
+                    <BudgetStatusBadge estado={presupuesto.estado} />
+                  </Table.Td>
+                  <Table.Td>{new Date(presupuesto.fecha).toLocaleString('es-AR')}</Table.Td>
+                  <Table.Td>
+                    {presupuesto.observaciones ? (
+                      <Text truncate="end" maw={200} title={presupuesto.observaciones}>
+                        {presupuesto.observaciones}
+                      </Text>
+                    ) : (
+                      <Text c="dimmed">—</Text>
+                    )}
+                  </Table.Td>
+                  <Table.Td>
+                    {/* Un presupuesto ya decidido es parte del expediente: el backend
+                        rechaza editarlo y darlo de baja con un 409. */}
+                    <RowActionsMenu
+                      onEdit={() => navigate(`/presupuestos/${presupuesto.id}/editar`)}
+                      onDelete={() => handleEliminar(presupuesto.id)}
+                      deleting={eliminandoId === presupuesto.id}
+                      editDisabled={!estaVigente(presupuesto)}
+                      deleteDisabled={!estaVigente(presupuesto)}
+                      extraItems={
+                        <>
+                          <Menu.Item
+                            leftSection={<IconShieldCheck size={14} />}
+                            onClick={() => setPresupuestoAAuditar(presupuesto)}
+                          >
+                            Ver auditoría
+                          </Menu.Item>
+                          <Menu.Item
+                            leftSection={<IconGavel size={14} />}
+                            onClick={() => setPresupuestoADecidir(presupuesto)}
+                            disabled={presupuesto.estados_posibles.length === 0}
+                          >
+                            Decidir
+                          </Menu.Item>
+                        </>
+                      }
+                    />
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
 
       <BudgetItemsModal

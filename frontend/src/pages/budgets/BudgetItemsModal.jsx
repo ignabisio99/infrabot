@@ -1,5 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Alert, Badge, Button, Divider, Group, Loader, Modal, ScrollArea, Table, Text } from '@mantine/core';
+import {
+  Alert,
+  Badge,
+  Button,
+  Divider,
+  Group,
+  Loader,
+  Modal,
+  ScrollArea,
+  Table,
+  Text,
+} from '@mantine/core';
 
 import { auditarPresupuesto, obtenerAuditoria } from '../../api/ai';
 import { formatearIdReclamo } from '../../utils/ids';
@@ -27,7 +38,7 @@ function GrupoItems({ titulo, items }) {
         {titulo}
       </Text>
       <ScrollArea.Autosize mah={280} mb="md">
-        <Table withColumnBorders striped>
+        <Table withColumnBorders striped miw={500}>
           <Table.Thead>
             <Table.Tr>
               <Table.Th w="45%">Descripción</Table.Th>
@@ -56,16 +67,13 @@ function GrupoItems({ titulo, items }) {
 
 export function BudgetItemsModal({ presupuesto, onClose }) {
   const [informe, setInforme] = useState(null);
-  const [cargando, setCargando] = useState(false);
+  const [cargadoPara, setCargadoPara] = useState(null);
   const [recalculando, setRecalculando] = useState(false);
+  const cargando = presupuesto !== null && cargadoPara !== presupuesto.id;
 
   useEffect(() => {
-    if (!presupuesto) {
-      setInforme(null);
-      return;
-    }
+    if (!presupuesto) return;
     let vigente = true;
-    setCargando(true);
     obtenerAuditoria(presupuesto.id)
       .then((data) => {
         if (vigente) setInforme(data);
@@ -74,10 +82,12 @@ export function BudgetItemsModal({ presupuesto, onClose }) {
         if (vigente) notifyError(err.message);
       })
       .finally(() => {
-        if (vigente) setCargando(false);
+        if (vigente) setCargadoPara(presupuesto.id);
       });
     return () => {
       vigente = false;
+      setInforme(null);
+      setCargadoPara(null);
     };
   }, [presupuesto]);
 
@@ -130,8 +140,14 @@ export function BudgetItemsModal({ presupuesto, onClose }) {
             </>
           )}
 
-          <GrupoItems titulo="Materiales" items={presupuesto.items.filter((i) => i.tipo !== 'MANO_OBRA')} />
-          <GrupoItems titulo="Mano de obra" items={presupuesto.items.filter((i) => i.tipo === 'MANO_OBRA')} />
+          <GrupoItems
+            titulo="Materiales"
+            items={presupuesto.items.filter((i) => i.tipo !== 'MANO_OBRA')}
+          />
+          <GrupoItems
+            titulo="Mano de obra"
+            items={presupuesto.items.filter((i) => i.tipo === 'MANO_OBRA')}
+          />
 
           <Divider mb="sm" />
 
