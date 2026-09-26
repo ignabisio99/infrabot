@@ -66,6 +66,18 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Copiar config a la EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "docker-compose.prod.yml,deploy/"
+          target: ${{ secrets.DEPLOY_DIR }}
+
       - name: Deploy a la EC2 por SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -82,6 +94,10 @@ jobs:
             # Bajar las imágenes nuevas y recrear los contenedores que cambiaron.
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+            # Recargar nginx por si cambió su config (el up -d no lo reinicia si la
+            # imagen no cambió, pero los archivos montados en deploy/nginx sí pudieron).
+            docker compose -f docker-compose.prod.yml restart nginx
 
             # Limpiar imágenes viejas para no llenar el disco de la EC2.
             docker image prune -f
