@@ -1,0 +1,22 @@
+# No hornear en la imagen archivos sensibles ni basura de desarrollo.
+.env
+.env.*
+*.pem
+*.key
+
+# Uploads de desarrollo (fotos/videos de reclamos): no deben ir en la imagen.
+uploads/
+
+# Cachés y artefactos
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+*.sqlite3
+
+# Git y control de versiones
+.git/
+.gitignore
