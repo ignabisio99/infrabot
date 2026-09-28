@@ -137,6 +137,35 @@ def _limpiar_espacios(texto: str) -> str:
     return " ".join(str(texto or "").split())
 
 
+def _encolar_post_ia(db: Session, reclamo_id: int) -> None:
+    """Encola el análisis de IA para correr en segundo plano (no bloquea el resumen).
+
+    Si Redis no está disponible (ej. dev sin Redis), corre la IA inline como fallback
+    para no perder el análisis; en ese caso el resumen sí espera, pero es aceptable.
+    """
+    from services.cola_whatsapp import encolar
+
+    if encolar({"kind": "post_ia", "reclamo_id": reclamo_id}):
+        return
+    # Fallback sin Redis: correr inline.
+    try:
+        reclamo = db.get(Reclamo, reclamo_id)
+        if reclamo is not None:
+            post_alta_reclamo(db, reclamo)
+            recargado = (
+                db.query(Reclamo)
+                .options(joinedload(Reclamo.fotos))
+                .filter(Reclamo.id == reclamo_id)
+                .first()
+            )
+            if recargado is not None:
+                post_fotos_reclamo(db, recargado)
+            db.commit()
+    except Exception:
+        logger.exception("post_ia inline falló para reclamo %s", reclamo_id)
+        db.rollback()
+
+
 def _mensaje_paso_media(conv: dict) -> str:
     media_count = len(conv.get("media", []))
     if media_count > 0:
@@ -838,34 +867,20 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
                 media_guardados += 1
             if media_guardados > 0:
                 db.commit()
+            db.refresh(nuevo)
 
-            post_alta_reclamo(db, nuevo)
-            recargado = (
-                db.query(Reclamo)
-                .options(joinedload(Reclamo.fotos))
-                .filter(Reclamo.id == nuevo.id)
-                .first()
-            )
-            if recargado is not None:
-                post_fotos_reclamo(db, recargado)
-                nuevo = recargado
-            try:
-                db.commit()
-                db.refresh(nuevo)
-            except Exception:
-                db.rollback()
+            # La IA de análisis (agente: clasificación fundamentada, duplicados, estimación,
+            # fotos) corre en SEGUNDO PLANO para que el resumen salga al instante. El resumen
+            # ya muestra categoría/prioridad de la clasificación rápida del paso descripción.
+            reclamo_id = nuevo.id
+            _encolar_post_ia(db, reclamo_id)
 
             del _conversaciones[usuario]
             media_txt = f"\n📎 Archivos adjuntos: {media_guardados}" if media_guardados else ""
-            derivacion_txt = (
-                "\n\n⚠️ Además, un operador va a revisar tu caso."
-                if nuevo.requiere_revision
-                else ""
-            )
             return (
-                f"🎉 *¡Reclamo #{nuevo.id} creado exitosamente!*\n\n"
-                f"{_formatear_reclamo(nuevo)}{media_txt}{derivacion_txt}\n\n"
-                f"Podés ver su estado con: *ver #{nuevo.id}*"
+                f"🎉 *¡Reclamo #{reclamo_id} creado exitosamente!*\n\n"
+                f"{_formatear_reclamo(nuevo)}{media_txt}\n\n"
+                f"Podés ver su estado con: *ver #{reclamo_id}*"
             )
         elif texto_lower in ("no", "n", "cancelar"):
             del _conversaciones[usuario]

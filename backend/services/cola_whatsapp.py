@@ -42,8 +42,48 @@ def procesar_job(job: dict[str, Any]) -> None:
         _procesar_audio(origen, job.get("media_id") or "")
     elif kind == "media":
         _procesar_media(origen, job.get("media_id") or "", job.get("caption") or "")
+    elif kind == "post_ia":
+        _procesar_post_ia(int(job.get("reclamo_id") or 0))
     else:
         logger.warning("Job WhatsApp desconocido: %s", kind)
+
+
+def _procesar_post_ia(reclamo_id: int) -> None:
+    """Corre la IA de análisis (agente/pipeline + fotos) en segundo plano.
+
+    Se dispara DESPUÉS de confirmarle al usuario que el reclamo fue creado, para que
+    el resumen por WhatsApp salga al instante y no espere las (varias) llamadas al LLM.
+    El resumen ya muestra categoría/prioridad de la clasificación rápida hecha en el
+    paso de descripción; el agente enriquece el análisis (padrón, similares, costos)
+    que se ve en la web.
+    """
+    if not reclamo_id:
+        return
+    from sqlalchemy.orm import joinedload
+
+    from models.reclamo import Reclamo
+    from services.ai.automatico import post_alta_reclamo, post_fotos_reclamo
+
+    db = SessionLocal()
+    try:
+        reclamo = db.get(Reclamo, reclamo_id)
+        if reclamo is None:
+            return
+        post_alta_reclamo(db, reclamo)
+        recargado = (
+            db.query(Reclamo)
+            .options(joinedload(Reclamo.fotos))
+            .filter(Reclamo.id == reclamo_id)
+            .first()
+        )
+        if recargado is not None:
+            post_fotos_reclamo(db, recargado)
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+    finally:
+        db.close()
 
 
 def consumir_uno(timeout: int = 1) -> bool:
