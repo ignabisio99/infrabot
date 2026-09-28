@@ -57,7 +57,14 @@ def consumir_uno(timeout: int = 1) -> bool:
     _, raw = item
     try:
         job = json.loads(raw)
+        logger.info(
+            "WhatsApp desencolado de Redis (%s) de %s [intento %s]",
+            job.get("kind"),
+            job.get("from"),
+            job.get("intentos", 0),
+        )
         procesar_job(job)
+        logger.info("WhatsApp procesado OK (%s) de %s", job.get("kind"), job.get("from"))
     except Exception:
         logger.exception("Fallo procesando job WhatsApp")
         _reencolar(raw)
