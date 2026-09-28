@@ -5,6 +5,7 @@ la base de datos de reclamos. Soporta un flujo de creación de
 reclamos paso a paso.
 """
 
+import logging
 import os
 from datetime import datetime, timezone, timedelta
 
@@ -24,6 +25,8 @@ from services.ai import (
     stt,
 )
 from services.ai.automatico import post_alta_reclamo, post_fotos_reclamo
+
+logger = logging.getLogger(__name__)
 
 # Zona horaria UTC-3 (Argentina), para los timestamps de la info adicional.
 ART = timezone(timedelta(hours=-3))
@@ -164,6 +167,7 @@ def _tras_descripcion_o_completitud(db: Session, conv: dict, datos: dict):
             descripcion=datos.get("descripcion") or "",
         )
     except Exception:
+        logger.exception("Completitud falló; se avanza sin pedir info adicional")
         return _avanzar_a_media_o_duplicados(db, conv, datos)
 
     if resultado.completo or not resultado.faltantes:
@@ -426,6 +430,41 @@ def _iniciar_libre(usuario: str) -> str:
     )
 
 
+def _procesar_escuela_no_encontrada(db: Session, usuario: str, conv: dict, datos: dict, texto: str):
+    """Maneja la respuesta cuando la escuela no está en el padrón."""
+    opcion = texto.strip().lower()
+
+    if opcion in ("esc_cancelar", "cancelar", "no"):
+        del _conversaciones[usuario]
+        return "❌ Carga cancelada. Escribí *nuevo* para empezar de nuevo."
+
+    if opcion in ("esc_reingresar", "reingresar", "corregir"):
+        conv["paso"] = "escuela"
+        return "🏫 Escribí de nuevo el nombre del colegio (revisá que esté bien escrito):"
+
+    if opcion in ("esc_agregar", "agregar", "agregar escuela", "nueva"):
+        # Se acepta la escuela tal como la ingresó el usuario (no está en el padrón).
+        # Queda registrada en el reclamo; el operador puede sumarla al padrón luego.
+        nombre = conv.get("nombre_escuela_ingresado", "").strip()
+        datos["nombre_escuela"] = nombre
+        datos["observaciones"] = (
+            (datos.get("observaciones") or "")
+            + f" [Escuela fuera del padrón, ingresada por el usuario: {nombre}]"
+        ).strip()
+        conv["escuela_confirmada"] = True
+        return _tras_fijar_escuela(db, conv, datos)
+
+    return {
+        "tipo": "botones",
+        "body": "Tocá una opción, por favor:",
+        "botones": [
+            {"id": "esc_reingresar", "title": "✍️ Reingresar nombre"},
+            {"id": "esc_agregar", "title": "➕ Agregar escuela"},
+            {"id": "esc_cancelar", "title": "❌ Cancelar"},
+        ],
+    }
+
+
 def _confirmar_escuela_padron(db: Session, conv: dict, texto_escuela: str):
     """Busca la escuela en el padrón y arma el diálogo de confirmación con botones.
 
@@ -436,7 +475,22 @@ def _confirmar_escuela_padron(db: Session, conv: dict, texto_escuela: str):
 
     coincidencias = buscar_instituciones(db, texto_escuela, limite=3)
     if not coincidencias:
-        return None
+        # La escuela no figura en el padrón del Consejo Escolar de San Martín.
+        # Avisamos y damos opciones en vez de aceptar el texto en silencio.
+        conv["nombre_escuela_ingresado"] = texto_escuela
+        conv["paso"] = "escuela_no_encontrada"
+        return {
+            "tipo": "botones",
+            "body": (
+                f"⚠️ No encontré *{texto_escuela}* en el Consejo Escolar de San Martín.\n\n"
+                "¿El nombre está bien escrito?"
+            ),
+            "botones": [
+                {"id": "esc_reingresar", "title": "✍️ Reingresar nombre"},
+                {"id": "esc_agregar", "title": "➕ Agregar escuela"},
+                {"id": "esc_cancelar", "title": "❌ Cancelar"},
+            ],
+        }
 
     conv["candidatas_escuela"] = [
         {"nombre": i.nombre, "domicilio": i.domicilio, "localidad": i.localidad}
@@ -665,6 +719,9 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
 
     if paso == "confirmar_escuela":
         return _procesar_confirmar_escuela(db, conv, datos, texto)
+
+    if paso == "escuela_no_encontrada":
+        return _procesar_escuela_no_encontrada(db, usuario, conv, datos, texto)
 
     if paso == "elegir_escuela":
         return _procesar_elegir_escuela(db, conv, datos, texto)
