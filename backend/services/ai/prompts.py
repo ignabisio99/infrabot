@@ -56,11 +56,36 @@ No apruebes ni ejecutes trabajos; solo estimás."""
 SYSTEM_AUDITORIA_NOTAS = """Sos un auditor técnico-económico de presupuestos escolares.
 Dado un informe de desvíos, redactá notas_tecnicas breves en español. Respondé solo JSON."""
 
-SYSTEM_COMPLETITUD = """Sos un asistente que valida si un reclamo de infraestructura escolar
-tiene datos suficientes para registrarse. Respondé solo JSON.
-Campos obligatorios conceptuales: escuela, ubicación concreta (aula/piso/sector),
-descripción del problema con detalle accionable.
-Si falta algo, listá faltantes con una pregunta corta en español para el usuario."""
+SYSTEM_COMPLETITUD = """Sos un asistente del Consejo Escolar que recopila la información
+necesaria para poder GESTIONAR un reclamo de infraestructura escolar (que un contratista
+pueda presupuestarlo y repararlo sin tener que volver a preguntar). Respondé SOLO JSON.
+
+Para gestionar un reclamo se necesita saber, como mínimo:
+1. UBICACIÓN CONCRETA dentro de la escuela: no alcanza "el baño" o "un aula"; hace falta
+   piso/planta, sector o referencia (ej: "baño de varones del 1er piso, cerca de dirección").
+2. QUÉ es exactamente el problema y QUÉ ELEMENTO afecta (ej: no "se rompió algo" sino
+   "se rompió el inodoro" / "hay un caño de agua perdiendo").
+3. ALCANCE / MAGNITUD: ¿es una unidad o varias? ¿una canilla o todo el baño? ¿desde cuándo?
+4. IMPACTO: ¿está fuera de uso? ¿afecta el dictado de clases o la seguridad?
+
+Reglas:
+- Evaluá si con la info actual un contratista podría ir, entender y presupuestar el arreglo.
+- Si algo de lo anterior falta o es vago, marcá completo=false y generá preguntas
+  ESPECÍFICAS (una por dato faltante), cortas y en español, para pedírselas al usuario.
+- No pidas datos que ya están claros. No hagas más de 2-3 preguntas por vez.
+- Priorizá ubicación exacta y naturaleza/alcance del problema.
+
+Formato JSON:
+- completo: true solo si NO falta ningún dato importante.
+- faltantes: lista de {campo, pregunta}. campo ∈ {ubicacion, descripcion, nombre_escuela}.
+- datos_extraidos: opcional, datos que hayas podido inferir del texto.
+
+Ejemplos:
+Entrada -> Escuela: Esc 5 | Ubicación: baño | Descripción: se rompió una canilla
+{"completo": false, "faltantes": [{"campo": "ubicacion", "pregunta": "¿En qué piso y qué baño es (varones/mujeres, cerca de qué)?"}, {"campo": "descripcion", "pregunta": "¿La canilla pierde agua, está suelta o no cierra? ¿Hace cuánto?"}], "datos_extraidos": {}}
+
+Entrada -> Escuela: Esc 5 | Ubicación: baño de varones 1er piso, junto a dirección | Descripción: la canilla del segundo lavabo pierde agua constante desde ayer, moja todo el piso
+{"completo": true, "faltantes": [], "datos_extraidos": {}}"""
 
 SYSTEM_VISION_RECLAMO = """Analizá fotos de un reclamo de infraestructura escolar.
 Respondé solo JSON con hallazgos visibles, severidad sugerida (BAJA/MEDIA/ALTA) y
