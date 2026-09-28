@@ -3,14 +3,37 @@
 from __future__ import annotations
 
 import base64
+import html
 import json
 import logging
 import re
+import time
 from typing import Any
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# Reintentos ante errores transitorios del LLM (Gemini 503 por saturación, etc.).
+_MAX_REINTENTOS_LLM = 3
+_BACKOFF_BASE = 1.0  # segundos; crece 1s, 2s, 4s entre intentos.
+_STATUS_REINTENTABLES = frozenset({429, 500, 502, 503, 504})
+
+
+def _desescapar_html(valor: Any) -> Any:
+    """Decodifica entidades HTML (ej. '&#xfa;' -> 'ú') en strings, recursivamente.
+
+    Algunos modelos (Gemini entre ellos) a veces devuelven caracteres no-ASCII
+    escapados como entidades HTML dentro del JSON. json.loads no las decodifica,
+    así que quedarían crudas en el texto que se le muestra al usuario.
+    """
+    if isinstance(valor, str):
+        return html.unescape(valor)
+    if isinstance(valor, list):
+        return [_desescapar_html(v) for v in valor]
+    if isinstance(valor, dict):
+        return {k: _desescapar_html(v) for k, v in valor.items()}
+    return valor
 
 
 class OpenAICompatibleProvider:
@@ -97,30 +120,71 @@ class OpenAICompatibleProvider:
             "Content-Type": "application/json",
         }
 
-        with httpx.Client(timeout=self._timeout, verify=self._verify_ssl) as client:
-            response = client.post(url, headers=headers, json=payload)
-            if response.is_error:
-                logger.error(
-                    "Error LLM %s: %s", response.status_code, response.text[:500]
-                )
-            response.raise_for_status()
-            data = response.json()
-
+        data = self._post_con_reintentos(url, headers, payload)
         content = data["choices"][0]["message"]["content"]
         return _parse_json_content(content)
+
+    def _post_con_reintentos(
+        self, url: str, headers: dict, payload: dict
+    ) -> dict[str, Any]:
+        """POST al LLM reintentando ante errores transitorios (503/429/5xx/red).
+
+        Gemini devuelve 503 cuando está saturado ("spikes are usually temporary");
+        un par de reintentos con backoff lo resuelven casi siempre.
+        """
+        ultimo_error: Exception | None = None
+        for intento in range(_MAX_REINTENTOS_LLM):
+            try:
+                with httpx.Client(timeout=self._timeout, verify=self._verify_ssl) as client:
+                    response = client.post(url, headers=headers, json=payload)
+                if response.status_code in _STATUS_REINTENTABLES:
+                    ultimo_error = httpx.HTTPStatusError(
+                        f"status {response.status_code}",
+                        request=response.request,
+                        response=response,
+                    )
+                    logger.warning(
+                        "LLM %s (intento %s/%s); reintentando...",
+                        response.status_code,
+                        intento + 1,
+                        _MAX_REINTENTOS_LLM,
+                    )
+                    time.sleep(_BACKOFF_BASE * (2**intento))
+                    continue
+                if response.is_error:
+                    logger.error(
+                        "Error LLM %s: %s", response.status_code, response.text[:500]
+                    )
+                response.raise_for_status()
+                return response.json()
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                # Errores de red/timeout: también son transitorios.
+                ultimo_error = exc
+                logger.warning(
+                    "LLM error de red (intento %s/%s): %s; reintentando...",
+                    intento + 1,
+                    _MAX_REINTENTOS_LLM,
+                    type(exc).__name__,
+                )
+                time.sleep(_BACKOFF_BASE * (2**intento))
+
+        # Se agotaron los reintentos: propagamos el último error (el caller ya
+        # tiene su propio fallback: heurística, históricos, mantener clasificación).
+        assert ultimo_error is not None
+        raise ultimo_error
 
 
 def _parse_json_content(content: str) -> dict[str, Any]:
     text = (content or "").strip()
     try:
-        return json.loads(text)
+        return _desescapar_html(json.loads(text))
     except json.JSONDecodeError:
         pass
 
     fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
     if fence:
         try:
-            return json.loads(fence.group(1))
+            return _desescapar_html(json.loads(fence.group(1)))
         except json.JSONDecodeError:
             pass
 
@@ -128,7 +192,7 @@ def _parse_json_content(content: str) -> dict[str, Any]:
     end = text.rfind("}")
     if start != -1 and end > start:
         try:
-            return json.loads(text[start : end + 1])
+            return _desescapar_html(json.loads(text[start : end + 1]))
         except json.JSONDecodeError:
             pass
 
