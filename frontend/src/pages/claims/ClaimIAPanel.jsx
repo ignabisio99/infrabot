@@ -92,6 +92,7 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
             prioridad: payload.prioridad || reclamo.prioridad,
             confianza: clasif.confianza ?? 0,
             justificacion: payload.justificacion || '',
+            razonamiento: payload.razonamiento || '',
           });
         }
         const vis = ultimaDeTipo(recs, 'VISION');
@@ -187,6 +188,7 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
           prioridad: resultado.prioridad,
           confianza: resultado.confianza,
           justificacion: resultado.justificacion,
+          razonamiento: resultado.razonamiento || '',
         });
       }
       if (resultado.duplicados) {
@@ -234,6 +236,11 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
             </Group>
             {clasificacion.justificacion && (
               <Text size="sm">{clasificacion.justificacion}</Text>
+            )}
+            {clasificacion.razonamiento && (
+              <Text size="xs" c="dimmed" mt={4} fs="italic">
+                🧠 Razonamiento: {clasificacion.razonamiento}
+              </Text>
             )}
           </Paper>
         )}

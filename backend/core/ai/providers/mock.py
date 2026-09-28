@@ -73,6 +73,8 @@ class MockProvider:
             }
         if task == "completitud":
             return _completitud(user)
+        if task == "derivacion":
+            return _derivacion(user)
         if task == "duplicados_semanticos":
             return _duplicados_semanticos(user)
         if task == "extraccion_reclamo":
@@ -116,6 +118,8 @@ def _infer_task(system: str, user: str) -> str:
     blob = f"{system}\n{user}".lower()
     if "complet" in blob or "faltantes" in blob:
         return "completitud"
+    if "derivar" in blob or "operador humano" in blob:
+        return "derivacion"
     if "similitud_semantica" in blob or "candidatos:" in blob:
         return "duplicados_semanticos"
     if "mensaje del usuario" in blob or "texto libre" in blob:
@@ -131,6 +135,32 @@ def _infer_task(system: str, user: str) -> str:
     if "audit" in blob or "desvío" in blob or "desvio" in blob:
         return "auditoria_notas"
     return "unknown"
+
+
+def _derivacion(user: str) -> dict[str, Any]:
+    """Mock de derivación con algo de contexto: keywords críticas salvo negación."""
+    texto = user.lower()
+    # Contextos donde una palabra crítica NO implica peligro activo.
+    seguros = ("no hay riesgo", "sin riesgo", "ya cortaron", "ya cortó", "cortado",
+               "el año pasado", "hace tiempo", "ya se solucion")
+    if any(s in texto for s in seguros):
+        return {
+            "razonamiento": "Mock: menciona algo sensible pero el contexto indica que no hay peligro activo.",
+            "derivar": False,
+            "motivo": "Contexto sin peligro activo.",
+        }
+    for kw in ("gas", "incendio", "explos", "evacu", "peligro", "riesgo", "inund", "cortocircuito"):
+        if kw in texto:
+            return {
+                "razonamiento": f"Mock: se detectó '{kw}' en un contexto que sugiere riesgo.",
+                "derivar": True,
+                "motivo": f"Posible situación crítica ('{kw}').",
+            }
+    return {
+        "razonamiento": "Mock: no se detectaron señales de riesgo ni ambigüedad.",
+        "derivar": False,
+        "motivo": "Problema común sin urgencia.",
+    }
 
 
 def _completitud(user: str) -> dict[str, Any]:
@@ -248,6 +278,7 @@ def _clasificar(user: str, hint: dict[str, Any]) -> dict[str, Any]:
         "categoria": categoria,
         "prioridad": prioridad,
         "confianza": confianza,
+        "razonamiento": f"Mock: detecté palabras clave que apuntan a {categoria}; prioridad {prioridad} según urgencia estimada.",
         "justificacion": f"Clasificación mock por palabras clave → {categoria}/{prioridad}.",
     }
 

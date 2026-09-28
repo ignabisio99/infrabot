@@ -22,6 +22,7 @@ class EstadoPipeline(TypedDict, total=False):
     prioridad: str
     confianza: float
     justificacion: str
+    razonamiento: str
     proveedor: str
     duplicados: list[dict[str, Any]]
     estimacion_id: int | None
@@ -86,6 +87,7 @@ def _compilar(db: Session):
                 "categoria": resultado.categoria,
                 "prioridad": resultado.prioridad.value,
                 "justificacion": resultado.justificacion,
+                "razonamiento": resultado.razonamiento,
                 "aplicada": True,
                 "orquestado": True,
             },
@@ -100,6 +102,7 @@ def _compilar(db: Session):
             "prioridad": resultado.prioridad.value,
             "confianza": resultado.confianza,
             "justificacion": resultado.justificacion,
+            "razonamiento": resultado.razonamiento,
             "proveedor": resultado.proveedor,
         }
 

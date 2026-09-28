@@ -331,6 +331,7 @@ def orquestar_reclamo(
         prioridad=estado.get("prioridad"),
         confianza=estado.get("confianza"),
         justificacion=estado.get("justificacion"),
+        razonamiento=estado.get("razonamiento"),
         duplicados=dups,
         estimacion_id=estado.get("estimacion_id"),
         total=estado.get("total"),

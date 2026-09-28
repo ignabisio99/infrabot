@@ -52,6 +52,7 @@ def post_alta_reclamo(db: Session, reclamo: Reclamo) -> None:
                 tipo=TipoRecomendacionIA.DERIVACION,
                 payload={
                     "motivo": der.motivo,
+                    "razonamiento": der.razonamiento,
                     "categoria": actualizado.categoria,
                     "confianza_clasificacion": estado.get("confianza"),
                     "automatico": True,

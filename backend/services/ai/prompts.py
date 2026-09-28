@@ -15,9 +15,33 @@ CATEGORIAS_VALIDAS = [
 ]
 
 SYSTEM_CLASIFICACION = """Sos un asistente del Consejo Escolar que clasifica reclamos de
-infraestructura escolar. Respondé solo JSON.
+infraestructura escolar. Respondé SOLO JSON.
+
 Categorías permitidas: {categorias}.
 Prioridades permitidas: BAJA, MEDIA, ALTA.
+
+Cómo razonar (importante):
+1. Identificá el sistema afectado (agua, electricidad, gas, estructura, etc.) para la categoría.
+2. Evaluá el riesgo para alumnos/docentes y la urgencia para la prioridad:
+   - ALTA: riesgo a personas, servicio esencial cortado, o puede empeorar rápido.
+   - MEDIA: afecta el uso pero no es urgente ni peligroso.
+   - BAJA: estético o menor, sin impacto operativo.
+3. Si la descripción es vaga o ambigua, bajá la confianza.
+
+Devolvé estas claves:
+- razonamiento: 1-3 frases explicando por qué elegiste esa categoría y prioridad.
+- categoria: una de las permitidas.
+- prioridad: BAJA, MEDIA o ALTA.
+- confianza: 0 a 1 (qué tan seguro estás).
+- justificacion: una frase breve para mostrar al operador.
+
+Ejemplos:
+Reclamo: "Hay olor a gas fuerte en la cocina del comedor"
+{{"razonamiento": "Olor a gas es riesgo de explosión/intoxicación para alumnos; sistema de gas.", "categoria": "Gas", "prioridad": "ALTA", "confianza": 0.95, "justificacion": "Posible fuga de gas: riesgo inmediato."}}
+
+Reclamo: "Se descascaró un poco la pintura de un pasillo"
+{{"razonamiento": "Deterioro estético menor, sin afectar el uso ni la seguridad.", "categoria": "Pintura", "prioridad": "BAJA", "confianza": 0.9, "justificacion": "Desgaste estético de pintura."}}
+
 La IA solo sugiere; no toma decisiones finales.""".format(
     categorias=", ".join(CATEGORIAS_VALIDAS)
 )
@@ -45,6 +69,39 @@ una sugerencia_descripcion breve en español. No inventes lo que no se ve."""
 SYSTEM_OCR_PRESUPUESTO = """Extraé ítems de un presupuesto de obra/contratista.
 Respondé solo JSON: items=[{descripcion, cantidad, costo_unitario}] en ARS.
 Si no podés leer un valor, omití el ítem. No inventes precios."""
+
+SYSTEM_DERIVACION = """Sos un asistente del Consejo Escolar que decide si un reclamo de
+infraestructura escolar debe ser revisado con urgencia por un operador humano ANTES de
+seguir el flujo automático. Respondé SOLO JSON.
+
+Derivá a un humano (derivar=true) si:
+- Hay riesgo real para la seguridad de personas (fuga de gas activa, cables pelados con
+  riesgo eléctrico, riesgo de derrumbe, inundación, principio de incendio, etc.).
+- El caso es demasiado ambiguo o incompleto para clasificarlo con confianza.
+
+NO derives (derivar=false) si:
+- Es un problema común sin riesgo inmediato (una canilla que gotea, una pared descascarada,
+  una baldosa floja).
+- El texto MENCIONA una palabra sensible pero en un contexto que NO implica peligro real
+  (ej: "no hay riesgo", "ya cortaron el gas", "el año pasado hubo una fuga").
+
+Razoná el contexto, no reacciones a palabras sueltas.
+
+Devolvé:
+- razonamiento: 1-2 frases explicando tu decisión.
+- derivar: true o false.
+- motivo: frase breve para el operador (si derivar=false, describí por qué es seguro seguir).
+
+Ejemplos:
+Reclamo: "Sale olor a gas en el pasillo y los chicos están ahí"
+{"razonamiento": "Fuga de gas activa con personas presentes: riesgo inmediato.", "derivar": true, "motivo": "Posible fuga de gas con alumnos presentes."}
+
+Reclamo: "La canilla del baño gotea un poco"
+{"razonamiento": "Gotera menor sin riesgo a personas.", "derivar": false, "motivo": "Problema común sin urgencia."}
+
+Reclamo: "Ya cortaron el gas del edificio, ahora hay que arreglar la cañería"
+{"razonamiento": "Menciona gas pero el suministro ya fue cortado, no hay peligro activo.", "derivar": false, "motivo": "Gas ya cortado; reparación programable."}"""
+
 
 SYSTEM_EXTRACCION_RECLAMO = """Sos un asistente del Consejo Escolar que interpreta mensajes
 de texto libre de WhatsApp sobre problemas de infraestructura escolar.
@@ -110,3 +167,10 @@ def user_auditoria_notas(*, resumen: str) -> str:
 
 def user_extraccion_reclamo(*, texto: str) -> str:
     return f"Mensaje del usuario:\n{texto.strip()}"
+
+
+def user_derivacion(*, descripcion: str, categoria: str | None = None) -> str:
+    partes = [f"Reclamo: {descripcion.strip()}"]
+    if categoria:
+        partes.append(f"Categoría clasificada: {categoria}")
+    return "\n".join(partes)

@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 _SCHEMA = {
     "task": "clasificacion",
     "categorias": CATEGORIAS_VALIDAS,
+    "razonamiento": "",
     "categoria": "Otro",
     "prioridad": "MEDIA",
     "confianza": 0.5,
@@ -28,6 +29,7 @@ class ResultadoClasificacion:
     confianza: float
     justificacion: str
     proveedor: str
+    razonamiento: str = ""
 
 
 def clasificar_texto(
@@ -77,10 +79,12 @@ def _parse(raw: dict, proveedor: str) -> ResultadoClasificacion:
     confianza = max(0.0, min(1.0, confianza))
 
     justificacion = str(raw.get("justificacion") or "").strip()
+    razonamiento = str(raw.get("razonamiento") or "").strip()
     return ResultadoClasificacion(
         categoria=categoria,
         prioridad=prioridad,
         confianza=confianza,
         justificacion=justificacion,
         proveedor=proveedor,
+        razonamiento=razonamiento,
     )

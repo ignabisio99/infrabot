@@ -139,6 +139,7 @@ class PipelineOut(BaseModel):
     prioridad: str | None = None
     confianza: float | None = None
     justificacion: str | None = None
+    razonamiento: str | None = None
     duplicados: list[PipelineDuplicadoOut] = []
     estimacion_id: int | None = None
     total: float | None = None
