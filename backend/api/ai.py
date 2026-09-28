@@ -16,6 +16,7 @@ from models.usuario import Usuario
 from schemas.ai import (
     AnalisisMediaOut,
     AuditoriaOut,
+    AgenteOut,
     ClasificacionOut,
     ContratistaSugeridoOut,
     DuplicadoOut,
@@ -30,6 +31,7 @@ from schemas.ai import (
     SeguimientoOut,
 )
 from services.ai import (
+    agente,
     auditoria,
     clasificacion,
     contratistas_sugeridos,
@@ -337,6 +339,42 @@ def orquestar_reclamo(
         total=estado.get("total"),
         requiere_revision=bool(estado.get("requiere_revision")),
         error=estado.get("error"),
+    )
+
+
+@router.post("/reclamos/{reclamo_id}/analizar-agente", response_model=AgenteOut)
+def analizar_con_agente(
+    reclamo_id: int,
+    db: Session = Depends(get_db),
+    _user: Usuario = Depends(get_current_user),
+):
+    """Agente con herramientas: consulta padrón, similares y costos, y produce un
+    análisis fundamentado. Si el agente falla, cae al pipeline determinista."""
+    reclamo = db.get(Reclamo, reclamo_id)
+    if reclamo is None:
+        raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    try:
+        res = agente.analizar_reclamo(db, reclamo)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=502, detail=f"Falló el agente IA: {exc}") from exc
+
+    a = res.analisis
+    return AgenteOut(
+        reclamo_id=reclamo_id,
+        razonamiento=a.get("razonamiento"),
+        categoria=a.get("categoria"),
+        prioridad=a.get("prioridad"),
+        escuela_en_padron=a.get("escuela_en_padron"),
+        es_posible_duplicado=a.get("es_posible_duplicado"),
+        resumen_para_operador=a.get("resumen_para_operador"),
+        confianza=a.get("confianza"),
+        herramientas_usadas=[
+            {"herramienta": p.get("herramienta"), "args": p.get("args") or {}}
+            for p in res.pasos_agente
+        ],
+        proveedor=res.proveedor,
     )
 
 

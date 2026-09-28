@@ -141,6 +141,24 @@ class PipelineOut(BaseModel):
     justificacion: str | None = None
     razonamiento: str | None = None
     duplicados: list[PipelineDuplicadoOut] = []
+
+
+class HerramientaUsadaOut(BaseModel):
+    herramienta: str
+    args: dict = {}
+
+
+class AgenteOut(BaseModel):
+    reclamo_id: int
+    razonamiento: str | None = None
+    categoria: str | None = None
+    prioridad: str | None = None
+    escuela_en_padron: bool | None = None
+    es_posible_duplicado: bool | None = None
+    resumen_para_operador: str | None = None
+    confianza: float | None = None
+    herramientas_usadas: list[HerramientaUsadaOut] = []
+    proveedor: str | None = None
     estimacion_id: int | None = None
     total: float | None = None
     requiere_revision: bool = False

@@ -94,6 +94,53 @@ class MockProvider:
             }
         return {k: v for k, v in hint.items() if k != "task"}
 
+    def complete_with_tools(
+        self,
+        *,
+        system: str,
+        user: str,
+        tools: list[dict[str, Any]],
+        tool_ejecutores: dict[str, Any],
+        schema_hint: dict[str, Any] | None = None,
+        max_iteraciones: int = 5,
+    ) -> dict[str, Any]:
+        """Mock del agente: ejecuta TODAS las herramientas una vez (para simular que
+        el agente las usó) y devuelve un análisis determinista con esos resultados."""
+        pasos = []
+        for nombre, ejecutor in tool_ejecutores.items():
+            try:
+                # Args mínimos deterministas a partir del texto del usuario.
+                if nombre == "consultar_padron_escuela":
+                    args = {"nombre": _campo(user, "Escuela")}
+                elif nombre == "buscar_reclamos_similares":
+                    args = {"nombre_escuela": _campo(user, "Escuela"), "descripcion": _campo(user, "Descripción")}
+                else:
+                    args = {"categoria": "Otro", "descripcion": _campo(user, "Descripción")}
+                res = ejecutor(**args)
+            except Exception:  # noqa: BLE001
+                res = {"error": "mock"}
+            pasos.append({"herramienta": nombre, "args": args, "resultado": res})
+
+        base = _clasificar(user, schema_hint or {})
+        return {
+            "resultado": {
+                "razonamiento": "Mock del agente: consulté padrón, similares y costos.",
+                "categoria": base.get("categoria", "Otro"),
+                "prioridad": base.get("prioridad", "MEDIA"),
+                "escuela_en_padron": bool(
+                    next((p["resultado"].get("encontrada") for p in pasos
+                          if p["herramienta"] == "consultar_padron_escuela"), False)
+                ),
+                "es_posible_duplicado": any(
+                    (p["resultado"].get("cantidad") or 0) > 0 for p in pasos
+                    if p["herramienta"] == "buscar_reclamos_similares"
+                ),
+                "resumen_para_operador": "Análisis mock generado con herramientas.",
+                "confianza": base.get("confianza", 0.7),
+            },
+            "pasos_agente": pasos,
+        }
+
     def complete_json_with_images(
         self,
         *,
@@ -112,6 +159,14 @@ class MockProvider:
             user=user,
             schema_hint={**hint, "task": task if task != "unknown" else "vision_reclamo"},
         )
+
+
+def _campo(texto: str, etiqueta: str) -> str:
+    """Extrae el valor de una línea 'Etiqueta: valor' del user prompt (para el mock)."""
+    for linea in texto.splitlines():
+        if linea.strip().lower().startswith(etiqueta.lower() + ":"):
+            return linea.split(":", 1)[1].strip()
+    return ""
 
 
 def _infer_task(system: str, user: str) -> str:

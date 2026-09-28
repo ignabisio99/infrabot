@@ -88,6 +88,97 @@ class OpenAICompatibleProvider:
             )
         return self._chat(system=system, user_content=parts, schema_hint=schema_hint)
 
+    def complete_with_tools(
+        self,
+        *,
+        system: str,
+        user: str,
+        tools: list[dict[str, Any]],
+        tool_ejecutores: dict[str, Any],
+        schema_hint: dict[str, Any] | None = None,
+        max_iteraciones: int = 5,
+    ) -> dict[str, Any]:
+        """Loop agéntico de function calling.
+
+        El modelo recibe las 'tools' (definiciones OpenAI) y decide cuáles llamar.
+        Por cada tool que pide, se ejecuta el callable de 'tool_ejecutores[nombre]'
+        con los argumentos que dio el modelo, y se le devuelve el resultado. El loop
+        sigue hasta que el modelo responde sin pedir más tools (respuesta final JSON)
+        o hasta 'max_iteraciones'. Devuelve dict con: {resultado, pasos_agente}.
+
+        pasos_agente registra qué herramientas usó y con qué args (para mostrar el
+        "razonamiento y acciones" del agente en la UI / defensa).
+        """
+        schema_note = ""
+        if schema_hint:
+            expected = {k: v for k, v in schema_hint.items() if k != "task"}
+            schema_note = (
+                "\n\nCuando tengas toda la información, respondé ÚNICAMENTE con un JSON "
+                f"que respete estas claves:\n{json.dumps(expected, ensure_ascii=False)}"
+            )
+
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": system + schema_note},
+            {"role": "user", "content": user},
+        ]
+        url = f"{self._base_url}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
+        pasos_agente: list[dict[str, Any]] = []
+
+        for _ in range(max_iteraciones):
+            payload: dict[str, Any] = {
+                "model": self._model,
+                "temperature": 0.2,
+                "messages": messages,
+                "tools": tools,
+                "tool_choice": "auto",
+            }
+            data = self._post_con_reintentos(url, headers, payload)
+            msg = data["choices"][0]["message"]
+            tool_calls = msg.get("tool_calls") or []
+
+            if not tool_calls:
+                # Respuesta final: no pidió más herramientas.
+                contenido = msg.get("content") or "{}"
+                return {
+                    "resultado": _parse_json_content(contenido),
+                    "pasos_agente": pasos_agente,
+                }
+
+            # El modelo pidió ejecutar una o más herramientas.
+            messages.append(msg)
+            for call in tool_calls:
+                nombre = call.get("function", {}).get("name", "")
+                args_raw = call.get("function", {}).get("arguments") or "{}"
+                try:
+                    args = json.loads(args_raw)
+                except json.JSONDecodeError:
+                    args = {}
+                ejecutor = tool_ejecutores.get(nombre)
+                if ejecutor is None:
+                    resultado_tool = {"error": f"herramienta desconocida: {nombre}"}
+                else:
+                    try:
+                        resultado_tool = ejecutor(**args)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.exception("Herramienta %s falló", nombre)
+                        resultado_tool = {"error": str(exc)}
+                pasos_agente.append({"herramienta": nombre, "args": args, "resultado": resultado_tool})
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.get("id"),
+                        "content": json.dumps(resultado_tool, ensure_ascii=False, default=str),
+                    }
+                )
+
+        # Se agotaron las iteraciones sin respuesta final.
+        logger.warning("Agente: se alcanzó el máximo de iteraciones sin respuesta final")
+        return {"resultado": {}, "pasos_agente": pasos_agente}
+
     def _chat(
         self,
         *,

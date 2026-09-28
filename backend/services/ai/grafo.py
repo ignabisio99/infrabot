@@ -58,6 +58,48 @@ def ejecutar_pipeline(db: Session, reclamo: Reclamo) -> EstadoPipeline:
     return grafo.invoke(inicial)
 
 
+def _clasificar_con_agente(db: Session, reclamo: Reclamo):
+    """Corre el agente con herramientas y devuelve un ResultadoClasificacion.
+
+    Devuelve None si el agente no está disponible o falla, para que el caller use
+    la clasificación simple como fallback. Aplica la categoría/prioridad al reclamo.
+    """
+    from models.reclamo import PrioridadReclamo
+    from services.ai import agente as agente_svc
+    from services.ai.clasificacion import ResultadoClasificacion
+    from services.ai.prompts import CATEGORIAS_VALIDAS
+
+    try:
+        res = agente_svc.analizar_reclamo(db, reclamo)
+    except Exception:
+        logger.warning("Agente no disponible en reclamo %s; uso clasificación simple", reclamo.id)
+        return None
+
+    analisis = res.analisis or {}
+    categoria = str(analisis.get("categoria") or "").strip()
+    if categoria not in CATEGORIAS_VALIDAS:
+        categoria = "Otro"
+    try:
+        prioridad = PrioridadReclamo(str(analisis.get("prioridad") or "MEDIA").strip().upper())
+    except ValueError:
+        prioridad = PrioridadReclamo.MEDIA
+    try:
+        confianza = max(0.0, min(1.0, float(analisis.get("confianza", 0.5))))
+    except (TypeError, ValueError):
+        confianza = 0.5
+
+    resultado = ResultadoClasificacion(
+        categoria=categoria,
+        prioridad=prioridad,
+        confianza=confianza,
+        justificacion=str(analisis.get("resumen_para_operador") or "").strip(),
+        proveedor=res.proveedor or "agente",
+        razonamiento=str(analisis.get("razonamiento") or "").strip(),
+    )
+    clasificacion.aplicar_clasificacion(reclamo, resultado)
+    return resultado
+
+
 def _compilar(db: Session):
     from langgraph.graph import END, START, StateGraph
 
@@ -65,21 +107,28 @@ def _compilar(db: Session):
         reclamo = db.get(Reclamo, state["reclamo_id"])
         if reclamo is None:
             return {"error": "Reclamo no encontrado", "pasos": [*state.get("pasos", []), "error"]}
-        try:
-            resultado = clasificacion.clasificar_reclamo(reclamo)
-            clasificacion.aplicar_clasificacion(reclamo, resultado)
-        except Exception:
-            logger.exception(
-                "Clasificación LLM falló en reclamo %s; se mantiene la del alta",
-                reclamo.id,
-            )
-            resultado = clasificacion.ResultadoClasificacion(
-                categoria=reclamo.categoria,
-                prioridad=reclamo.prioridad,
-                confianza=0.0,
-                justificacion="El proveedor de IA no respondió; se mantiene categoría y prioridad del alta.",
-                proveedor="fallback",
-            )
+
+        # Primero intentamos el AGENTE con herramientas: consulta el padrón y reclamos
+        # similares reales antes de clasificar, así la categoría/prioridad quedan
+        # fundamentadas en datos del sistema y no solo en el texto. Si el agente o el
+        # LLM fallan, se cae a la clasificación simple (y de ahí al fallback del alta).
+        resultado = _clasificar_con_agente(db, reclamo)
+        if resultado is None:
+            try:
+                resultado = clasificacion.clasificar_reclamo(reclamo)
+                clasificacion.aplicar_clasificacion(reclamo, resultado)
+            except Exception:
+                logger.exception(
+                    "Clasificación LLM falló en reclamo %s; se mantiene la del alta",
+                    reclamo.id,
+                )
+                resultado = clasificacion.ResultadoClasificacion(
+                    categoria=reclamo.categoria,
+                    prioridad=reclamo.prioridad,
+                    confianza=0.0,
+                    justificacion="El proveedor de IA no respondió; se mantiene categoría y prioridad del alta.",
+                    proveedor="fallback",
+                )
         registro.registrar(
             db,
             tipo=TipoRecomendacionIA.CLASIFICACION,

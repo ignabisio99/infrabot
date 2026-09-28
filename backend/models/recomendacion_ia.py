@@ -19,6 +19,7 @@ class TipoRecomendacionIA(str, enum.Enum):
     COMPLETITUD = "COMPLETITUD"
     STT = "STT"
     DERIVACION = "DERIVACION"
+    ANALISIS_AGENTE = "ANALISIS_AGENTE"
 
 
 class RecomendacionIA(Base):
