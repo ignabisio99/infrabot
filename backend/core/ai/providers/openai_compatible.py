@@ -20,12 +20,21 @@ _BACKOFF_BASE = 1.0  # segundos; crece 1s, 2s, 4s entre intentos.
 _STATUS_REINTENTABLES = frozenset({429, 500, 502, 503, 504})
 
 
+# Instrucción de formato que se agrega a TODOS los prompts JSON. Evita que el modelo
+# genere entidades HTML (&eacute;, &#xfa;, etc.) que a veces se corrompen en el
+# transporte y aparecen crudas/mal formadas en el texto que ve el usuario.
+_INSTRUCCION_TEXTO_PLANO = (
+    "\n\nIMPORTANTE sobre el texto: escribí en español normal con acentos y ñ "
+    "directos en UTF-8 (á, é, í, ó, ú, ñ, ¿, ¡). NO uses entidades HTML ni escapes "
+    "(nada de &eacute;, &aacute;, &#xfa;, \\u00e9, etc.). Texto plano legible."
+)
+
+
 def _desescapar_html(valor: Any) -> Any:
     """Decodifica entidades HTML (ej. '&#xfa;' -> 'ú') en strings, recursivamente.
 
-    Algunos modelos (Gemini entre ellos) a veces devuelven caracteres no-ASCII
-    escapados como entidades HTML dentro del JSON. json.loads no las decodifica,
-    así que quedarían crudas en el texto que se le muestra al usuario.
+    Red de seguridad por si el modelo igual devuelve alguna entidad bien formada.
+    (La prevención principal es _INSTRUCCION_TEXTO_PLANO en el prompt.)
     """
     if isinstance(valor, str):
         return html.unescape(valor)
@@ -118,7 +127,7 @@ class OpenAICompatibleProvider:
             )
 
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": system + schema_note},
+            {"role": "system", "content": system + schema_note + _INSTRUCCION_TEXTO_PLANO},
             {"role": "user", "content": user},
         ]
         url = f"{self._base_url}/chat/completions"
@@ -198,7 +207,7 @@ class OpenAICompatibleProvider:
             "model": self._model,
             "temperature": 0.2,
             "messages": [
-                {"role": "system", "content": system + schema_note},
+                {"role": "system", "content": system + schema_note + _INSTRUCCION_TEXTO_PLANO},
                 {"role": "user", "content": user_content},
             ],
         }
