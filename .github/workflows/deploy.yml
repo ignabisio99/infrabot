@@ -54,7 +54,7 @@ jobs:
           file: ./frontend/Dockerfile.prod
           push: true
           build-args: |
-            VITE_API_URL=${{ vars.VITE_API_URL }}
+            VITE_API_URL=${{ vars.VITE_API_URL || '/api' }}
             VITE_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
           tags: |
             ${{ steps.img.outputs.base }}-frontend:latest

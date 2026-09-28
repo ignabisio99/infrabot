@@ -1,4 +1,8 @@
-export const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+// La API vive bajo /api del mismo dominio (nginx rutea /api/* al backend y le quita
+// el prefijo). Usar ruta relativa evita colisiones con las rutas del SPA (ej: /reclamos)
+// y hace que el F5 en cualquier página funcione. En dev, VITE_API_URL apunta al backend.
+// Si VITE_API_URL está vacía o sin definir, se usa /api (mismo dominio, ruteado por nginx).
+export const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 export function extraerMensajeError(detail, mensajePorDefecto) {
   if (typeof detail === 'string') return detail;
