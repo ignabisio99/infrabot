@@ -77,3 +77,17 @@ def asegurar_tipo_usuario_inspector(bind=engine):
     """
     with bind.begin() as conn:
         conn.execute(text("ALTER TYPE tipo_usuario ADD VALUE IF NOT EXISTS 'INSPECTOR'"))
+
+
+def asegurar_valor_analisis_agente(bind=engine):
+    """Agrega ANALISIS_AGENTE al enum `tipo_recomendacion_ia` si la base es anterior.
+
+    Igual que arriba: `create_all` no altera un enum ya existente. Sin esto, registrar
+    una recomendación del agente falla con 'invalid input value for enum'.
+    """
+    with bind.begin() as conn:
+        conn.execute(
+            text(
+                "ALTER TYPE tipo_recomendacion_ia ADD VALUE IF NOT EXISTS 'ANALISIS_AGENTE'"
+            )
+        )

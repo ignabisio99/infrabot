@@ -28,6 +28,7 @@ from core.database import (
     asegurar_columna_detalle_tarea,
     asegurar_columna_tipo_item,
     asegurar_tipo_usuario_inspector,
+    asegurar_valor_analisis_agente,
     engine,
 )
 from core.storage import UPLOADS_DIR
@@ -74,6 +75,7 @@ async def lifespan(app: FastAPI):
     asegurar_columna_tipo_item()
     asegurar_columna_detalle_tarea()
     asegurar_tipo_usuario_inspector()
+    asegurar_valor_analisis_agente()
     db_roles = SessionLocal()
     try:
         from models.rol_mano_obra import asegurar_roles_iniciales
