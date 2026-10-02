@@ -19,10 +19,10 @@ export async function obtenerReporte(tipo, filtros = {}) {
   return response.json();
 }
 
-/** Descarga el reporte como CSV, disparando la descarga en el navegador. */
-export async function descargarReporteCsv(tipo, filtros = {}) {
+/** Descarga el reporte en el formato indicado ('csv' o 'pdf'). */
+async function descargarReporte(tipo, formato, filtros = {}) {
   const response = await fetchConAuth(
-    `${API_URL}/reportes/${tipo}/csv${construirQuery(filtros)}`,
+    `${API_URL}/reportes/${tipo}/${formato}${construirQuery(filtros)}`,
   );
   if (!response.ok) {
     const error = await response.json().catch(() => null);
@@ -32,9 +32,17 @@ export async function descargarReporteCsv(tipo, filtros = {}) {
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `reporte_${tipo}.csv`;
+  a.download = `reporte_${tipo}.${formato}`;
   document.body.appendChild(a);
   a.click();
   a.remove();
   window.URL.revokeObjectURL(url);
+}
+
+export function descargarReporteCsv(tipo, filtros = {}) {
+  return descargarReporte(tipo, 'csv', filtros);
+}
+
+export function descargarReportePdf(tipo, filtros = {}) {
+  return descargarReporte(tipo, 'pdf', filtros);
 }

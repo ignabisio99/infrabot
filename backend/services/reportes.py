@@ -262,3 +262,82 @@ def a_csv(reporte: Reporte) -> str:
     for fila in reporte.filas:
         writer.writerow(fila)
     return buffer.getvalue()
+
+
+def _periodo_texto(reporte: Reporte) -> str:
+    if reporte.desde and reporte.hasta:
+        # `hasta` interno es exclusivo (día +1); se muestra el día real pedido.
+        fin = reporte.hasta - timedelta(days=1)
+        return f"Período: {reporte.desde.strftime('%d/%m/%Y')} a {fin.strftime('%d/%m/%Y')}"
+    if reporte.desde:
+        return f"Desde: {reporte.desde.strftime('%d/%m/%Y')}"
+    if reporte.hasta:
+        fin = reporte.hasta - timedelta(days=1)
+        return f"Hasta: {fin.strftime('%d/%m/%Y')}"
+    return "Período: histórico completo"
+
+
+def a_pdf(reporte: Reporte) -> bytes:
+    """Genera un PDF con título, período, resumen y la tabla del reporte.
+
+    Usa fpdf2 (puro Python, sin dependencias del sistema). Devuelve los bytes del PDF.
+    """
+    from fpdf import FPDF
+
+    pdf = FPDF(orientation="L", unit="mm", format="A4")  # horizontal: tablas anchas
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    # Encabezado
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, _latin(reporte.titulo), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(90, 90, 90)
+    pdf.cell(0, 6, _latin(_periodo_texto(reporte)), new_x="LMARGIN", new_y="NEXT")
+    emitido = datetime.now(ART).strftime("%d/%m/%Y %H:%M")
+    pdf.cell(0, 6, _latin(f"Emitido: {emitido} - InfraBot"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+
+    ancho_util = pdf.w - pdf.l_margin - pdf.r_margin
+
+    # Resumen (si hay)
+    if reporte.resumen:
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 7, "Resumen", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 9)
+        for clave, valor in reporte.resumen.items():
+            if isinstance(valor, dict):
+                detalle = ", ".join(f"{k}: {v}" for k, v in valor.items())
+                texto = f"- {clave.replace('_', ' ')}: {detalle}"
+            else:
+                texto = f"- {clave.replace('_', ' ')}: {valor}"
+            pdf.multi_cell(ancho_util, 5, _latin(texto), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(2)
+
+    # Tabla
+    ancho_col = ancho_util / max(1, len(reporte.columnas))
+
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_fill_color(230, 230, 230)
+    for col in reporte.columnas:
+        pdf.cell(ancho_col, 7, _latin(str(col)), border=1, fill=True)
+    pdf.ln()
+
+    pdf.set_font("Helvetica", "", 8)
+    for fila in reporte.filas:
+        for celda in fila:
+            texto = _latin(str(celda))
+            # Recortar textos largos para que no desborden la celda.
+            if len(texto) > 40:
+                texto = texto[:37] + "..."
+            pdf.cell(ancho_col, 6, texto, border=1)
+        pdf.ln()
+
+    salida = pdf.output()
+    return bytes(salida)
+
+
+def _latin(texto: str) -> str:
+    """Las fuentes core de fpdf2 son latin-1. Reemplaza lo que no entra para no romper."""
+    return str(texto).encode("latin-1", "replace").decode("latin-1")

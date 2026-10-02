@@ -471,6 +471,95 @@ def crear_reclamos(db, contratistas):
     return reclamos
 
 
+# Reclamos "históricos" para que el reporte de métricas tenga datos repartidos en el
+# tiempo y con distintos desenlaces. `dias_atras` es cuándo se creó (desde hoy), y
+# `dias_resolucion` cuántos días tardó en finalizar (None = sigue abierto en `estado_final`).
+RECLAMOS_REPORTE = [
+    # Finalizados en distintos meses (alimentan tasa de resolución y días promedio).
+    dict(escuela="Escuela N°15 - Rosario Vera", categoria="Plomería", prioridad=PrioridadReclamo.MEDIA, dias_atras=150, dias_resolucion=20),
+    dict(escuela="Escuela N°7 - Mariano Moreno", categoria="Electricidad", prioridad=PrioridadReclamo.ALTA, dias_atras=130, dias_resolucion=12),
+    dict(escuela="Escuela N°30 - Hipólito Yrigoyen", categoria="Techos", prioridad=PrioridadReclamo.ALTA, dias_atras=110, dias_resolucion=35),
+    dict(escuela="Escuela N°9 - Nicolás Avellaneda", categoria="Pintura", prioridad=PrioridadReclamo.BAJA, dias_atras=95, dias_resolucion=8),
+    dict(escuela="Escuela N°18 - Esteban Echeverría", categoria="Pisos", prioridad=PrioridadReclamo.MEDIA, dias_atras=80, dias_resolucion=25),
+    dict(escuela="Escuela N°2 - Guillermo Rawson", categoria="Plomería", prioridad=PrioridadReclamo.MEDIA, dias_atras=60, dias_resolucion=15),
+    dict(escuela="Escuela N°11 - Cornelio Saavedra", categoria="Gas", prioridad=PrioridadReclamo.ALTA, dias_atras=45, dias_resolucion=18),
+    dict(escuela="Escuela N°25 - Juan B. Justo", categoria="Aberturas", prioridad=PrioridadReclamo.BAJA, dias_atras=30, dias_resolucion=10),
+    # Abiertos (sin resolver), repartidos en el tiempo.
+    dict(escuela="Escuela N°14 - Bartolomé Mitre", categoria="Electricidad", prioridad=PrioridadReclamo.ALTA, dias_atras=20, dias_resolucion=None, estado_final=EstadoReclamo.PENDIENTE_PRESUPUESTO),
+    dict(escuela="Escuela N°6 - Dalmacio Vélez", categoria="Infraestructura", prioridad=PrioridadReclamo.MEDIA, dias_atras=10, dias_resolucion=None, estado_final=EstadoReclamo.PENDIENTE_REVISION),
+    dict(escuela="Escuela N°19 - Juana Manso", categoria="Techos", prioridad=PrioridadReclamo.ALTA, dias_atras=5, dias_resolucion=None, estado_final=EstadoReclamo.PENDIENTE_REVISION),
+    dict(escuela="Escuela N°1 - Manuel Dorrego", categoria="Pintura", prioridad=PrioridadReclamo.BAJA, dias_atras=2, dias_resolucion=None, estado_final=EstadoReclamo.PENDIENTE_REVISION),
+]
+
+
+def _seed_reclamos_reporte(db):
+    """Crea reclamos con fechas pasadas y desenlaces variados para poblar el reporte.
+
+    A diferencia de RECLAMOS (que muestran el flujo), estos existen para que el reporte
+    de métricas tenga volumen, finalizados y distribución temporal. Las fechas de
+    creación y de los asientos del historial se backdatean a mano.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    ahora = datetime.now(timezone.utc)
+    for data in RECLAMOS_REPORTE:
+        creado = ahora - timedelta(days=data["dias_atras"])
+        reclamo = Reclamo(
+            nombre_escuela=data["escuela"],
+            ubicacion="Sector a definir",
+            prioridad=data["prioridad"],
+            categoria=data["categoria"],
+            descripcion=f"Reclamo de {data['categoria'].lower()} para reporte de prueba.",
+            estado=estados_reclamo.ESTADO_INICIAL,
+            fecha_creacion=creado,
+        )
+        db.add(reclamo)
+        inicial = estados_reclamo.registrar_estado_inicial(db, reclamo)
+        db.flush()
+        inicial.fecha = creado
+
+        if data["dias_resolucion"] is not None:
+            # Camino completo hasta FINALIZADO. Se backdatea el último asiento a la
+            # fecha de resolución para que días-promedio y serie mensual sean realistas.
+            resuelto = creado + timedelta(days=data["dias_resolucion"])
+            camino = [
+                EstadoReclamo.PENDIENTE_PRESUPUESTO,
+                EstadoReclamo.EN_EVALUACION,
+                EstadoReclamo.APROBADO,
+                EstadoReclamo.PENDIENTE_COORDINACION,
+                EstadoReclamo.VISITA_COORDINADA,
+                EstadoReclamo.EN_EJECUCION,
+                EstadoReclamo.FINALIZADO,
+            ]
+            for i, estado in enumerate(camino):
+                origen = (
+                    OrigenCambioEstado.AUTOMATICO
+                    if estado in (EstadoReclamo.EN_EVALUACION, EstadoReclamo.APROBADO,
+                                  EstadoReclamo.PENDIENTE_COORDINACION, EstadoReclamo.VISITA_COORDINADA)
+                    else OrigenCambioEstado.MANUAL
+                )
+                try:
+                    evento = estados_reclamo.cambiar_estado(db, reclamo, estado, origen=origen)
+                except estados_reclamo.TransicionInvalida:
+                    # Si alguna transición no es válida por reglas, se corta el camino.
+                    break
+                db.flush()
+                # Distribuir las fechas de los asientos entre creación y resolución.
+                evento.fecha = creado + timedelta(
+                    days=data["dias_resolucion"] * (i + 1) / len(camino)
+                )
+        else:
+            estado_final = data.get("estado_final", EstadoReclamo.PENDIENTE_REVISION)
+            if estado_final != EstadoReclamo.PENDIENTE_REVISION:
+                try:
+                    evento = estados_reclamo.cambiar_estado(db, reclamo, estado_final)
+                    db.flush()
+                    evento.fecha = creado + timedelta(days=1)
+                except estados_reclamo.TransicionInvalida:
+                    pass
+    db.flush()
+
+
 def seed(db):
     # `email_cuenta` no es columna de Contratista: sale acá y se usa para el login.
     emails = [data.get("email_cuenta") for data in CONTRATISTAS]
@@ -483,6 +572,7 @@ def seed(db):
 
     crear_cuentas_de_contratistas(db, contratistas, emails)
     crear_reclamos(db, contratistas)
+    _seed_reclamos_reporte(db)
 
     db.add_all([ReferenciaCosto(**r) for r in REFERENCIAS_COSTO])
     db.add_all([IndiceInflacion(**i) for i in INDICES_INFLACION])

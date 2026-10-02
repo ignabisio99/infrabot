@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Badge,
@@ -14,9 +14,9 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { IconDownload, IconFileText } from '@tabler/icons-react';
+import { IconDownload, IconFileTypePdf } from '@tabler/icons-react';
 
-import { descargarReporteCsv, obtenerReporte } from '../../api/reportes';
+import { descargarReporteCsv, descargarReportePdf, obtenerReporte } from '../../api/reportes';
 import { notifyError } from '../../utils/notifications';
 
 const TIPOS = [
@@ -98,30 +98,47 @@ export function ReportsPage() {
   const [hasta, setHasta] = useState('');
   const [reporte, setReporte] = useState(null);
   const [cargando, setCargando] = useState(false);
-  const [descargando, setDescargando] = useState(false);
+  const [descargando, setDescargando] = useState(null); // 'csv' | 'pdf' | null
 
   const filtros = { desde: desde || undefined, hasta: hasta || undefined };
 
-  async function generar() {
+  // Genera el reporte. Memoizado para poder usarlo como dependencia del efecto.
+  const generar = useCallback(async () => {
     setCargando(true);
     try {
-      const data = await obtenerReporte(tipo, filtros);
+      const data = await obtenerReporte(tipo, { desde, hasta });
       setReporte(data);
     } catch (err) {
       notifyError(err.message);
     } finally {
       setCargando(false);
     }
-  }
+  }, [tipo, desde, hasta]);
 
-  async function descargar() {
-    setDescargando(true);
+  // Solo genera cuando AMBAS fechas están cargadas. Así al entrar no muestra nada y,
+  // una vez elegido el rango, cambiar de tipo (métricas/reclamos/presupuestos) o de
+  // fechas regenera solo, sin apretar un botón. Debounce para no disparar al tipear.
+  useEffect(() => {
+    if (!desde || !hasta) {
+      setReporte(null);
+      return;
+    }
+    const timer = setTimeout(generar, 300);
+    return () => clearTimeout(timer);
+  }, [generar, desde, hasta]);
+
+  async function descargar(formato) {
+    setDescargando(formato);
     try {
-      await descargarReporteCsv(tipo, filtros);
+      if (formato === 'pdf') {
+        await descargarReportePdf(tipo, filtros);
+      } else {
+        await descargarReporteCsv(tipo, filtros);
+      }
     } catch (err) {
       notifyError(err.message);
     } finally {
-      setDescargando(false);
+      setDescargando(null);
     }
   }
 
@@ -158,29 +175,42 @@ export function ReportsPage() {
                 style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #ced4da' }}
               />
             </div>
-            <Button leftSection={<IconFileText size={16} />} onClick={generar} loading={cargando}>
-              Generar
-            </Button>
             <Button
               variant="light"
               leftSection={<IconDownload size={16} />}
-              onClick={descargar}
-              loading={descargando}
-              disabled={!reporte}
+              onClick={() => descargar('csv')}
+              loading={descargando === 'csv'}
+              disabled={!reporte || cargando || descargando === 'pdf'}
             >
               Descargar CSV
             </Button>
+            <Button
+              variant="light"
+              color="red"
+              leftSection={<IconFileTypePdf size={16} />}
+              onClick={() => descargar('pdf')}
+              loading={descargando === 'pdf'}
+              disabled={!reporte || cargando || descargando === 'csv'}
+            >
+              Descargar PDF
+            </Button>
           </Group>
           <Text size="xs" c="dimmed">
-            Dejá las fechas vacías para incluir todo el histórico.
+            Elegí un rango de fechas (desde y hasta) para generar el reporte.
           </Text>
         </Stack>
       </Paper>
 
-      {cargando && <Loader />}
+      {(!desde || !hasta) && (
+        <Alert color="gray" variant="light">
+          Seleccioná las fechas <strong>Desde</strong> y <strong>Hasta</strong> para ver el reporte.
+        </Alert>
+      )}
 
-      {reporte && !cargando && (
-        <Stack gap="md">
+      {cargando && !reporte && <Loader />}
+
+      {reporte && (
+        <Stack gap="md" style={{ opacity: cargando ? 0.5 : 1, transition: 'opacity 0.15s' }}>
           <TarjetasResumen tipo={tipo} resumen={reporte.resumen} />
           <DesglosePorEstado resumen={reporte.resumen} />
 

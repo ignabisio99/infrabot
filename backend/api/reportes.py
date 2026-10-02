@@ -65,3 +65,22 @@ def descargar_reporte_csv(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
     )
+
+
+@router.get("/{tipo}/pdf")
+def descargar_reporte_pdf(
+    tipo: str,
+    desde: str | None = Query(None, description="YYYY-MM-DD"),
+    hasta: str | None = Query(None, description="YYYY-MM-DD"),
+    estado: str | None = Query(None),
+    db: Session = Depends(get_db),
+    _admin: Usuario = Depends(get_current_admin),
+):
+    rep = _generar(db, tipo, desde, hasta, estado)
+    contenido = reportes_svc.a_pdf(rep)
+    nombre = f"reporte_{tipo}.pdf"
+    return StreamingResponse(
+        iter([contenido]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+    )

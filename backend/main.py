@@ -15,6 +15,7 @@ from api.ai import router as ai_router
 from api.configuracion import router as configuracion_router
 from api.contratistas import router as contratistas_router
 from api.dashboard import router as dashboard_router
+from api.reportes import router as reportes_router
 from api.listas_contratistas import router as listas_contratistas_router
 from api.presupuestos import router as presupuestos_router
 from api.reclamos import router as reclamos_router
@@ -158,6 +159,7 @@ app.include_router(visitas_router)
 app.include_router(ai_router)
 app.include_router(configuracion_router)
 app.include_router(roles_mano_obra_router)
+app.include_router(reportes_router)
 
 @app.get("/")
 def read_root():
