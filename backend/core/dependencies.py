@@ -65,3 +65,29 @@ def get_current_admin(
             detail="Solo los administradores pueden realizar esta acción",
         )
     return usuario
+
+
+def get_current_inspector(
+    usuario: Usuario = Depends(get_current_user),
+) -> Usuario:
+    """Exige que el usuario autenticado sea INSPECTOR."""
+    if not usuario.es_inspector:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los inspectores pueden realizar esta acción",
+        )
+    return usuario
+
+
+def get_current_contratista(
+    usuario: Usuario = Depends(get_current_user),
+) -> Usuario:
+    """Exige que el usuario autenticado sea CONTRATISTA."""
+    from models.usuario import TipoUsuario
+
+    if usuario.tipo is not TipoUsuario.CONTRATISTA:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los contratistas pueden realizar esta acción",
+        )
+    return usuario

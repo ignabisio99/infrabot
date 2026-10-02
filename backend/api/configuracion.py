@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from core.database import get_db
-from core.dependencies import get_current_user
+from core.dependencies import get_current_admin
 from models.usuario import Usuario
 from schemas.configuracion import UmbralesAuditoriaOut, UmbralesAuditoriaUpdate
 from services.configuracion_auditoria import obtener_o_crear
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/configuracion", tags=["configuracion"])
 @router.get("/auditoria", response_model=UmbralesAuditoriaOut)
 def obtener_auditoria(
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     fila = obtener_o_crear(db)
     db.commit()
@@ -27,7 +27,7 @@ def obtener_auditoria(
 def actualizar_auditoria(
     datos: UmbralesAuditoriaUpdate,
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     fila = obtener_o_crear(db)
     fila.umbral_aprobar = datos.umbral_aprobar

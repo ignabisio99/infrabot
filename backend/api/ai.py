@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from core.ai import config as ai_config
 from core.database import get_db
-from core.dependencies import get_current_user
+from core.dependencies import get_current_admin
 from models.presupuesto import Presupuesto
 from models.reclamo import Reclamo
 from models.recomendacion_ia import RecomendacionIA, TipoRecomendacionIA
@@ -68,7 +68,7 @@ def clasificar_reclamo(
     reclamo_id: int,
     aplicar: bool = Query(False, description="Si true, actualiza categoria/prioridad del reclamo"),
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
@@ -112,7 +112,7 @@ def clasificar_reclamo(
 def listar_duplicados(
     reclamo_id: int,
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
@@ -162,7 +162,7 @@ def listar_duplicados(
 def crear_estimacion(
     reclamo_id: int,
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
@@ -178,7 +178,7 @@ def crear_estimacion(
 def obtener_ultima_estimacion(
     reclamo_id: int,
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     if db.get(Reclamo, reclamo_id) is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
@@ -193,7 +193,7 @@ def obtener_ultima_estimacion(
 def auditar_presupuesto(
     presupuesto_id: int,
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     presupuesto = (
         db.query(Presupuesto)
@@ -214,7 +214,7 @@ def auditar_presupuesto(
 def obtener_ultima_auditoria(
     presupuesto_id: int,
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     presupuesto = db.get(Presupuesto, presupuesto_id)
     if presupuesto is None:
@@ -262,7 +262,7 @@ def obtener_ultima_auditoria(
 @router.post("/inflacion/sync", response_model=InflacionSyncOut)
 def sincronizar_inflacion(
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     try:
         filas = inflacion.sync_indices(db)
@@ -283,7 +283,7 @@ def sincronizar_inflacion(
 @router.post("/referencias/sync", response_model=ReferenciasSyncOut)
 def sincronizar_referencias(
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     resultado = sync_historicos.sync_desde_presupuestos(db)
     db.commit()
@@ -301,7 +301,7 @@ def sincronizar_referencias(
 def listar_recomendaciones(
     reclamo_id: int | None = Query(None),
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     q = db.query(RecomendacionIA).order_by(RecomendacionIA.fecha.desc())
     if reclamo_id is not None:
@@ -313,7 +313,7 @@ def listar_recomendaciones(
 def orquestar_reclamo(
     reclamo_id: int,
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
@@ -346,7 +346,7 @@ def orquestar_reclamo(
 def analizar_con_agente(
     reclamo_id: int,
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     """Agente con herramientas: consulta padrón, similares y costos, y produce un
     análisis fundamentado. Si el agente falla, cae al pipeline determinista."""
@@ -381,7 +381,7 @@ def analizar_con_agente(
 @router.post("/seguimiento/ejecutar", response_model=SeguimientoOut)
 def ejecutar_seguimiento_contratistas(
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     from services.seguimiento import ejecutar_seguimiento, seguimiento_horas
 
@@ -405,7 +405,7 @@ def ejecutar_seguimiento_contratistas(
 def listar_contratistas_sugeridos(
     reclamo_id: int,
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
@@ -434,7 +434,7 @@ def analizar_media_reclamo(
         description="Si true, appende la sugerencia a observaciones (no pisa descripcion)",
     ),
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     reclamo = (
         db.query(Reclamo)
@@ -491,7 +491,7 @@ def analizar_media_reclamo(
 def extraer_presupuesto(
     archivo: UploadFile = File(...),
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     try:
         resultado = ocr_presupuesto.extraer_items_desde_archivo(db, archivo)

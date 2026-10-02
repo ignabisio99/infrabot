@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from core.database import get_db
-from core.dependencies import get_current_user
+from core.dependencies import get_current_admin
 from core.storage import storage
 from core.whatsapp_handler import procesar_audio, procesar_media, procesar_mensaje
 from models.usuario import Usuario
@@ -29,7 +29,7 @@ def _salida(respuesta) -> SimularWhatsAppOut:
 def simular_texto(
     datos: SimularTextoIn,
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     return _salida(procesar_mensaje(db, datos.texto, usuario=datos.origen))
 
@@ -40,7 +40,7 @@ def simular_media(
     caption: str = Form(""),
     archivo: UploadFile = File(...),
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    _admin: Usuario = Depends(get_current_admin),
 ):
     mime = archivo.content_type or "application/octet-stream"
     if mime.startswith("audio/"):

@@ -5,7 +5,12 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session, joinedload
 
 from core.database import get_db
-from core.dependencies import get_current_admin, get_current_user
+from core.dependencies import (
+    get_current_admin,
+    get_current_contratista,
+    get_current_inspector,
+    get_current_user,
+)
 from core.storage import storage
 from core.email import enviar_solicitud_presupuesto
 from core.whatsapp_client import enviar_mensaje
@@ -79,7 +84,7 @@ def _email_del_contratista(db: Session, contratista: Contratista) -> str | None:
 
 
 @router.post("", response_model=ReclamoOut, status_code=201)
-def crear_reclamo(reclamo: ReclamoCreate, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
+def crear_reclamo(reclamo: ReclamoCreate, db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
     nuevo_reclamo = Reclamo(**reclamo.model_dump(), estado=estados_reclamo.ESTADO_INICIAL)
     db.add(nuevo_reclamo)
     estados_reclamo.registrar_estado_inicial(db, nuevo_reclamo)
@@ -109,7 +114,7 @@ def obtener_reclamo(reclamo_id: int, db: Session = Depends(get_db), _user: Usuar
 
 
 @router.put("/{reclamo_id}", response_model=ReclamoOut)
-def actualizar_reclamo(reclamo_id: int, datos: ReclamoCreate, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
+def actualizar_reclamo(reclamo_id: int, datos: ReclamoCreate, db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
@@ -127,14 +132,13 @@ def cambiar_estado_reclamo(
     reclamo_id: int,
     datos: CambioEstadoReclamo,
     db: Session = Depends(get_db),
-    user: Usuario = Depends(get_current_user),
+    user: Usuario = Depends(get_current_admin),
 ):
     reclamo = _con_fotos(db.query(Reclamo)).filter(Reclamo.id == reclamo_id).first()
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
 
     try:
-        # TODO: validar contra el rol del usuario cuando existan (gestor/contratista).
         estados_reclamo.cambiar_estado(
             db, reclamo, datos.estado, motivo=datos.motivo, usuario_id=user.id
         )
@@ -182,10 +186,8 @@ def crear_comentario_reclamo(
     reclamo_id: int,
     datos: ComentarioReclamoIn,
     db: Session = Depends(get_db),
-    usuario: Usuario = Depends(get_current_user),
+    usuario: Usuario = Depends(get_current_inspector),
 ):
-    if not usuario.es_inspector:
-        raise HTTPException(status_code=403, detail="Solo los inspectores pueden comentar reclamos")
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
@@ -205,7 +207,7 @@ def crear_comentario_reclamo(
 
 
 @router.delete("/{reclamo_id}", status_code=204)
-def eliminar_reclamo(reclamo_id: int, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
+def eliminar_reclamo(reclamo_id: int, db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
@@ -223,7 +225,7 @@ def eliminar_reclamo(reclamo_id: int, db: Session = Depends(get_db), _user: Usua
 
 
 @router.post("/{reclamo_id}/fotos", response_model=FotoReclamoOut, status_code=201)
-def subir_foto(reclamo_id: int, archivo: UploadFile = File(...), db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
+def subir_foto(reclamo_id: int, archivo: UploadFile = File(...), db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
@@ -258,7 +260,7 @@ def subir_foto(reclamo_id: int, archivo: UploadFile = File(...), db: Session = D
 
 
 @router.delete("/{reclamo_id}/fotos/{foto_id}", status_code=204)
-def eliminar_foto(reclamo_id: int, foto_id: int, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
+def eliminar_foto(reclamo_id: int, foto_id: int, db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
     foto = (
         db.query(FotoReclamo)
         .filter(FotoReclamo.id == foto_id, FotoReclamo.reclamo_id == reclamo_id)
@@ -437,7 +439,7 @@ def solicitar_informacion(
     reclamo_id: int,
     datos: SolicitarInformacionIn,
     db: Session = Depends(get_db),
-    usuario: Usuario = Depends(get_current_user),
+    usuario: Usuario = Depends(get_current_contratista),
 ):
     """Un contratista pide información adicional sobre el reclamo.
 
