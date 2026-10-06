@@ -561,6 +561,11 @@ def _seed_reclamos_reporte(db):
 
 
 def seed(db):
+    from services.instituciones import cargar_padron_si_vacio
+
+    cargar_padron_si_vacio(db)
+    db.commit()
+
     # `email_cuenta` no es columna de Contratista: sale acá y se usa para el login.
     emails = [data.get("email_cuenta") for data in CONTRATISTAS]
     contratistas = [
