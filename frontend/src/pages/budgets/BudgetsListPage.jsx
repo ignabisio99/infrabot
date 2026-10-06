@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   ActionIcon,
   Alert,
@@ -7,30 +6,24 @@ import {
   Container,
   Group,
   Loader,
-  Menu,
   Table,
   Text,
   Title,
 } from '@mantine/core';
 import { IconGavel, IconListDetails, IconShieldCheck } from '@tabler/icons-react';
 
-import { RowActionsMenu } from '../../components/RowActionsMenu';
-import { eliminarPresupuesto, listarPresupuestos } from '../../api/presupuestos';
+import { listarPresupuestos } from '../../api/presupuestos';
 import { formatearIdReclamo } from '../../utils/ids';
-import { notifyError, notifySuccess } from '../../utils/notifications';
 import { formatoMoneda } from '../../utils/formatters';
 import { BudgetAuditModal } from './BudgetAuditModal';
 import { BudgetItemsModal } from './BudgetItemsModal';
 import { BudgetStatusBadge } from './BudgetStatusBadge';
 import { DecideBudgetModal } from './DecideBudgetModal';
-import { estaVigente } from './estados';
 
 export function BudgetsListPage() {
-  const navigate = useNavigate();
   const [presupuestos, setPresupuestos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
-  const [eliminandoId, setEliminandoId] = useState(null);
   const [presupuestoSeleccionado, setPresupuestoSeleccionado] = useState(null);
   const [presupuestoAAuditar, setPresupuestoAAuditar] = useState(null);
   const [presupuestoADecidir, setPresupuestoADecidir] = useState(null);
@@ -48,26 +41,10 @@ export function BudgetsListPage() {
     cargar();
   }, [cargar]);
 
-  const handleEliminar = async (id) => {
-    if (!window.confirm('¿Seguro que querés eliminar este presupuesto?')) return;
-
-    setEliminandoId(id);
-    try {
-      await eliminarPresupuesto(id);
-      setPresupuestos((actuales) => actuales.filter((presupuesto) => presupuesto.id !== id));
-      notifySuccess('El presupuesto fue eliminado correctamente.');
-    } catch (error) {
-      notifyError(error?.message);
-    } finally {
-      setEliminandoId(null);
-    }
-  };
-
   return (
     <Container fluid px={0}>
       <Group justify="space-between" mb="md">
         <Title order={2}>Presupuestos</Title>
-        <Button onClick={() => navigate('/presupuestos/nuevo')}>+ Nuevo Presupuesto</Button>
       </Group>
 
       {cargando && <Loader />}
@@ -127,33 +104,27 @@ export function BudgetsListPage() {
                       <Text c="dimmed">—</Text>
                     )}
                   </Table.Td>
-                  <Table.Td>
-                    {/* Un presupuesto ya decidido es parte del expediente: el backend
-                        rechaza editarlo y darlo de baja con un 409. */}
-                    <RowActionsMenu
-                      onEdit={() => navigate(`/presupuestos/${presupuesto.id}/editar`)}
-                      onDelete={() => handleEliminar(presupuesto.id)}
-                      deleting={eliminandoId === presupuesto.id}
-                      editDisabled={!estaVigente(presupuesto)}
-                      deleteDisabled={!estaVigente(presupuesto)}
-                      extraItems={
-                        <>
-                          <Menu.Item
-                            leftSection={<IconShieldCheck size={14} />}
-                            onClick={() => setPresupuestoAAuditar(presupuesto)}
-                          >
-                            Ver auditoría
-                          </Menu.Item>
-                          <Menu.Item
-                            leftSection={<IconGavel size={14} />}
-                            onClick={() => setPresupuestoADecidir(presupuesto)}
-                            disabled={presupuesto.estados_posibles.length === 0}
-                          >
-                            Decidir
-                          </Menu.Item>
-                        </>
-                      }
-                    />
+                  <Table.Td onClick={(e) => e.stopPropagation()}>
+                    <Group gap="xs" wrap="nowrap" justify="flex-end">
+                      <Button
+                        size="xs"
+                        variant="light"
+                        color="gray"
+                        leftSection={<IconShieldCheck size={14} />}
+                        onClick={() => setPresupuestoAAuditar(presupuesto)}
+                      >
+                        Auditoría
+                      </Button>
+                      <Button
+                        size="xs"
+                        color="teal"
+                        leftSection={<IconGavel size={14} />}
+                        onClick={() => setPresupuestoADecidir(presupuesto)}
+                        disabled={presupuesto.estados_posibles.length === 0}
+                      >
+                        Aprobar / Rechazar
+                      </Button>
+                    </Group>
                   </Table.Td>
                 </Table.Tr>
               ))}
@@ -165,6 +136,10 @@ export function BudgetsListPage() {
       <BudgetItemsModal
         presupuesto={presupuestoSeleccionado}
         onClose={() => setPresupuestoSeleccionado(null)}
+        onDecidido={() => {
+          setPresupuestoSeleccionado(null);
+          cargar();
+        }}
       />
 
       <BudgetAuditModal

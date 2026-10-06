@@ -12,10 +12,14 @@ import {
   Text,
 } from '@mantine/core';
 
+import { IconGavel } from '@tabler/icons-react';
+
 import { auditarPresupuesto, obtenerAuditoria } from '../../api/ai';
 import { formatearIdReclamo } from '../../utils/ids';
 import { formatoMoneda, formatoNumero } from '../../utils/formatters';
 import { notifyError } from '../../utils/notifications';
+import { esAdministrador } from '../../utils/auth';
+import { DecideBudgetModal } from './DecideBudgetModal';
 
 const colorPorRecomendacion = {
   APROBAR: 'green',
@@ -65,11 +69,14 @@ function GrupoItems({ titulo, items }) {
   );
 }
 
-export function BudgetItemsModal({ presupuesto, onClose }) {
+export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
   const [informe, setInforme] = useState(null);
   const [cargadoPara, setCargadoPara] = useState(null);
   const [recalculando, setRecalculando] = useState(false);
+  const [decidirAbierto, setDecidirAbierto] = useState(false);
   const cargando = presupuesto !== null && cargadoPara !== presupuesto.id;
+  const esAdmin = esAdministrador();
+  const puedeDecidir = esAdmin && (presupuesto?.estados_posibles?.length ?? 0) > 0;
 
   useEffect(() => {
     if (!presupuesto) return;
@@ -199,11 +206,31 @@ export function BudgetItemsModal({ presupuesto, onClose }) {
               <Button variant="subtle" size="xs" loading={recalculando} onClick={recalcular}>
                 Recalcular auditoría
               </Button>
+              {puedeDecidir && (
+                <Button
+                  size="xs"
+                  color="teal"
+                  leftSection={<IconGavel size={14} />}
+                  onClick={() => setDecidirAbierto(true)}
+                >
+                  Aprobar / Rechazar
+                </Button>
+              )}
               <Text fw={700} size="lg">
                 Total: {formatoMoneda.format(Number(presupuesto.monto))}
               </Text>
             </Group>
           </Group>
+
+          <DecideBudgetModal
+            presupuesto={decidirAbierto ? presupuesto : null}
+            onClose={() => setDecidirAbierto(false)}
+            onDecidido={() => {
+              setDecidirAbierto(false);
+              onDecidido?.();
+              onClose();
+            }}
+          />
         </>
       )}
     </Modal>

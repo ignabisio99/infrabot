@@ -84,10 +84,12 @@ def fusionar_respuesta(
     """Actualiza el dict de conversación con la respuesta del usuario."""
     texto = respuesta.strip()
     if campo == "ubicacion":
-        datos["ubicacion"] = f"{datos.get('ubicacion', '')} — {texto}".strip(" —")
+        if datos.get("ubicacion"):
+            datos["info_extra"] = f"{datos.get('info_extra', '')} {texto}".strip()
+        else:
+            datos["ubicacion"] = texto
     elif campo == "nombre_escuela":
         datos["nombre_escuela"] = texto or datos.get("nombre_escuela")
     else:
-        # Por defecto enriquece la descripción
         base = datos.get("descripcion") or ""
         datos["descripcion"] = f"{base}\n{texto}".strip()

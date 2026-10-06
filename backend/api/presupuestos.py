@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 from core.database import get_db
-from core.dependencies import get_current_admin, get_current_user
+from core.dependencies import get_current_admin, get_current_contratista, get_current_user
 from models.contratista import Contratista
 from models.historial_estado_presupuesto import HistorialEstadoPresupuesto
 from models.presupuesto import ItemPresupuesto, Presupuesto
@@ -81,7 +81,7 @@ def _validar_contratista(contratista_id: int, db: Session) -> None:
 
 
 @router.post("", response_model=PresupuestoOut, status_code=201)
-def crear_presupuesto(datos: PresupuestoCreate, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
+def crear_presupuesto(datos: PresupuestoCreate, db: Session = Depends(get_db), user: Usuario = Depends(get_current_contratista)):
     reclamo = _obtener_reclamo_cotizable(datos.reclamo_id, db)
     # Al contratista se le impone su ficha; si no, podría ofertar por otra empresa.
     contratista_id = (
@@ -133,7 +133,7 @@ def obtener_presupuesto(presupuesto_id: int, db: Session = Depends(get_db), user
 
 @router.put("/{presupuesto_id}", response_model=PresupuestoOut)
 def actualizar_presupuesto(
-    presupuesto_id: int, datos: PresupuestoUpdate, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)
+    presupuesto_id: int, datos: PresupuestoUpdate, db: Session = Depends(get_db), user: Usuario = Depends(get_current_contratista)
 ):
     presupuesto = db.get(Presupuesto, presupuesto_id)
     if presupuesto is None:
@@ -164,7 +164,7 @@ def actualizar_presupuesto(
 
 
 @router.delete("/{presupuesto_id}", status_code=204)
-def eliminar_presupuesto(presupuesto_id: int, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
+def eliminar_presupuesto(presupuesto_id: int, db: Session = Depends(get_db), user: Usuario = Depends(get_current_contratista)):
     presupuesto = db.get(Presupuesto, presupuesto_id)
     if presupuesto is None:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado")

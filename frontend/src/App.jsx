@@ -11,8 +11,6 @@ import { ConfirmarEmailPage } from './pages/auth/ConfirmarEmailPage';
 import { LoginPage } from './pages/auth/LoginPage';
 import { PendienteAprobacionPage } from './pages/auth/PendienteAprobacionPage';
 import { BudgetsListPage } from './pages/budgets/BudgetsListPage';
-import { EditBudgetPage } from './pages/budgets/EditBudgetPage';
-import { NewBudgetPage } from './pages/budgets/NewBudgetPage';
 import { CalendarPage } from './pages/calendar/CalendarPage';
 import { ClaimsListPage } from './pages/claims/ClaimsListPage';
 import { EditClaimPage } from './pages/claims/EditClaimPage';
@@ -213,14 +211,11 @@ function App() {
         <Route path="/reclamos/nuevo" element={<NewClaimPage />} />
         <Route path="/reclamos" element={<ClaimsListPage />} />
         <Route path="/reclamos/:id/editar" element={<EditClaimPage />} />
-        <Route path="/reclamos/:id/presupuestar" element={<PresupuestarReclamoPage />} />
         <Route path="/contratistas/nuevo" element={<NewContractorPage />} />
         <Route path="/contratistas" element={<ContractorsListPage />} />
         <Route path="/contratistas/listas" element={<ContractorListsPage />} />
         <Route path="/contratistas/:id/editar" element={<EditContractorPage />} />
-        <Route path="/presupuestos/nuevo" element={<NewBudgetPage />} />
         <Route path="/presupuestos" element={<BudgetsListPage />} />
-        <Route path="/presupuestos/:id/editar" element={<EditBudgetPage />} />
         <Route path="/calendario" element={<CalendarPage />} />
         <Route path="/reportes" element={<ReportsPage />} />
         <Route path="/solicitudes" element={<UsersApprovalPage />} />

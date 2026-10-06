@@ -95,6 +95,10 @@ export function BudgetRequestsList({ reclamoId }) {
       <BudgetItemsModal
         presupuesto={presupuestoVisto}
         onClose={() => setPresupuestoVisto(null)}
+        onDecidido={() => {
+          setPresupuestoVisto(null);
+          listarSolicitudesPresupuesto(reclamoId).then(setSolicitudes).catch(() => {});
+        }}
       />
     </>
   );

@@ -583,7 +583,7 @@ def _procesar_libre(db: Session, conv: dict, datos: dict, texto: str) -> str:
     if extraidos.nombre_escuela:
         datos["nombre_escuela"] = extraidos.nombre_escuela
     if extraidos.ubicacion:
-        datos["ubicacion"] = extraidos.ubicacion
+        datos["info_extra"] = extraidos.ubicacion
     datos["descripcion"] = extraidos.descripcion
 
     try:
@@ -675,9 +675,13 @@ def _tras_fijar_escuela(db: Session, conv: dict, datos: dict):
     conv["escuela_confirmada"] = True
 
     if conv.get("modo") == "ia":
-        # No arrastramos la sugerencia de ubicación del padrón en modo libre: en ese
-        # flujo se le pregunta la ubicación específica igual.
-        conv.pop("sugerencia_ubicacion", None)
+        # La ubicación del reclamo es la dirección del padrón. Lo que el usuario haya
+        # dicho sobre el lugar interno (aula, piso) no pisa la dirección: va aparte.
+        sug = conv.get("sugerencia_ubicacion")
+        if sug:
+            if datos.get("ubicacion"):
+                datos["info_extra"] = datos["ubicacion"]
+            datos["ubicacion"] = sug
         return _continuar_ia(db, conv, datos)
 
     conv["paso"] = "ubicacion"
@@ -761,17 +765,15 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
     if paso == "ubicacion":
         if len(texto) < 2:
             return "⚠️ La ubicación debe tener al menos 2 caracteres. Intentá de nuevo:"
-        datos["ubicacion"] = texto
+        sug = conv.get("sugerencia_ubicacion")
+        if sug:
+            datos["ubicacion"] = sug
+            if texto.lower() not in ("ok", "si", "sí", "dale", "listo"):
+                datos["info_extra"] = texto
+        else:
+            datos["ubicacion"] = texto
         if conv.get("modo") == "ia":
             return _siguiente_tras_libre(db, conv, datos)
-        # Si hay una dirección sugerida del padrón, "ok" la acepta tal cual.
-        sug = conv.get("sugerencia_ubicacion")
-        if sug and texto.lower() in ("ok", "si", "sí", "dale", "listo"):
-            datos["ubicacion"] = sug
-        else:
-            if len(texto) < 2:
-                return "⚠️ La ubicación debe tener al menos 2 caracteres. Intentá de nuevo:"
-            datos["ubicacion"] = texto
         conv["paso"] = "descripcion"
         return "📝 *Paso 3/4:* Describí el problema (mínimo 10 caracteres):"
 
@@ -816,11 +818,17 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
             media_count = len(conv.get("media", []))
             # No se muestran categoría ni prioridad: son preliminares y las asigna el
             # sistema al registrar el reclamo. Mostrarlas confundía (podían cambiar).
+            info_txt = (
+                f"ℹ️ Información adicional: {datos['info_extra']}\n"
+                if datos.get("info_extra")
+                else ""
+            )
             resumen = (
                 "✅ *Resumen del reclamo:*\n\n"
                 f"🏫 Escuela: {datos['nombre_escuela']}\n"
                 f"📍 Ubicación: {datos['ubicacion']}\n"
                 f"📝 Descripción: {datos['descripcion']}\n"
+                f"{info_txt}"
                 f"📎 Archivos: {media_count}\n\n"
                 "¿Confirmás la carga?"
             )
@@ -837,13 +845,16 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
     if paso == "confirmacion":
         texto_lower = texto.lower()
         if texto_lower in ("si", "sí", "s", "yes", "confirmar"):
-            # Crear el reclamo en la base de datos
+            descripcion = datos["descripcion"]
+            info_extra = (datos.get("info_extra") or "").strip()
+            if info_extra:
+                descripcion = f"{descripcion}\n\nInformación adicional: {info_extra}"
             nuevo = Reclamo(
                 nombre_escuela=datos["nombre_escuela"],
                 ubicacion=datos["ubicacion"],
                 prioridad=PrioridadReclamo(datos["prioridad"]),
                 categoria=datos["categoria"],
-                descripcion=datos["descripcion"],
+                descripcion=descripcion,
                 observaciones=datos.get("observaciones"),
                 telefono_creador=usuario or None,
                 estado=estados_reclamo.ESTADO_INICIAL,
