@@ -83,8 +83,12 @@ DEFINICIONES_TOOLS = [
 ]
 
 
-def construir_ejecutores(db: Session) -> dict:
-    """Devuelve el mapa nombre_tool -> función ejecutable, con la sesión de BD inyectada."""
+def construir_ejecutores(db: Session, reclamo: Reclamo | None = None) -> dict:
+    """Devuelve el mapa nombre_tool -> función ejecutable, con la sesión de BD inyectada.
+
+    `reclamo` es el reclamo que el agente está analizando (ya persistido). Se usa para
+    excluirlo de la búsqueda de similares y que no se marque como su propio duplicado.
+    """
 
     def consultar_padron_escuela(nombre: str = "") -> dict:
         from services.instituciones import buscar_instituciones
@@ -101,15 +105,18 @@ def construir_ejecutores(db: Session) -> dict:
         }
 
     def buscar_reclamos_similares(nombre_escuela: str = "", descripcion: str = "") -> dict:
-        tentativo = Reclamo(
-            nombre_escuela=nombre_escuela or "",
-            ubicacion="",
-            categoria="Sin clasificar",
-            descripcion=descripcion or "",
-        )
         from services.ai import duplicados
-
-        candidatos = duplicados.buscar_duplicados(db, tentativo, limite=3)
+        
+        if reclamo is not None:
+            objetivo = reclamo
+        else:
+            objetivo = Reclamo(
+                nombre_escuela=nombre_escuela or "",
+                ubicacion="",
+                categoria="Sin clasificar",
+                descripcion=descripcion or "",
+            )
+        candidatos = duplicados.buscar_duplicados(db, objetivo, limite=3)
         return {
             "cantidad": len(candidatos),
             "similares": [

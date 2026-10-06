@@ -53,7 +53,7 @@ def analizar_reclamo(db: Session, reclamo: Reclamo) -> ResultadoAgente:
     if not hasattr(provider, "complete_with_tools"):
         raise RuntimeError(f"El proveedor {provider.name} no soporta herramientas")
 
-    ejecutores = herramientas.construir_ejecutores(db)
+    ejecutores = herramientas.construir_ejecutores(db, reclamo)
     salida = provider.complete_with_tools(
         system=SYSTEM_AGENTE,
         user=user_agente(

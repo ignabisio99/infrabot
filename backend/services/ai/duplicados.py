@@ -22,7 +22,7 @@ _ESTADOS_FINALES = frozenset(
     }
 )
 
-UMBRAL_SEMANTICO = 0.5
+UMBRAL_SEMANTICO = 0.7
 
 # Cuántos candidatos abiertos de la misma escuela se mandan al LLM como máximo.
 # Con modo semántico no prefiltramos por Jaccard, así que acotamos por acá.
@@ -74,16 +74,14 @@ def buscar_duplicados(
     """
     escuela = reclamo.nombre_escuela.strip()
 
+    query = db.query(Reclamo).filter(
+        Reclamo.nombre_escuela.ilike(escuela),
+        Reclamo.estado.notin_(list(_ESTADOS_FINALES)),
+    )
+    if reclamo.id is not None:
+        query = query.filter(Reclamo.id != reclamo.id)
     candidatos_db = (
-        db.query(Reclamo)
-        .filter(
-            Reclamo.id != reclamo.id,
-            Reclamo.nombre_escuela.ilike(escuela),
-            Reclamo.estado.notin_(list(_ESTADOS_FINALES)),
-        )
-        .order_by(Reclamo.fecha_creacion.desc())
-        .limit(50)
-        .all()
+        query.order_by(Reclamo.fecha_creacion.desc()).limit(50).all()
     )
     if not candidatos_db:
         return []
@@ -125,7 +123,7 @@ def _preparar_candidatos(
                 and reclamo.categoria.lower() == otro.categoria.lower()
                 and reclamo.categoria.lower() != "sin clasificar"
             ):
-                sim = min(1.0, sim + 0.1)
+                sim = min(1.0, sim + 0.05)
         preparados.append(
             CandidatoDuplicado(
                 reclamo_id=otro.id,
@@ -169,20 +167,30 @@ def _evaluar_semantico(
         f"categoria={reclamo.categoria or 'sin clasificar'}\n"
         f"descripcion: {reclamo.descripcion}\n\n"
         f"RECLAMOS YA EXISTENTES en la misma escuela (candidatos):\n{lista}\n\n"
+        "Todos los candidatos son de la MISMA escuela, así que estar en la misma escuela "
+        "NO los hace duplicados. Lo que decide es si describen el MISMO problema concreto.\n\n"
         "Para CADA candidato devolvé similitud_semantica entre 0 y 1, donde:\n"
-        "- 1.0 = describe el MISMO problema físico concreto (misma falla, mismo lugar), "
-        "aunque esté redactado con otras palabras.\n"
-        "- 0.0 = es un problema distinto.\n"
-        "Considerá que dos textos pueden referirse al mismo problema aunque usen "
-        "sinónimos o distinto nivel de detalle (ej: «pérdida de agua en el baño» y "
-        "«gotea la canilla del sanitario»). No exijas que compartan palabras."
+        "- 1.0 = es el MISMO problema físico concreto: misma falla, mismo elemento y mismo "
+        "lugar, aunque esté redactado con otras palabras.\n"
+        "- 0.0 = es un problema distinto (otra falla, otro elemento u otro lugar), aunque "
+        "sea del mismo rubro/categoría.\n\n"
+        "Importante:\n"
+        "- Dos problemas del MISMO tipo pero en LUGARES distintos NO son duplicados "
+        "(ej: «pérdida de agua en el baño del 1er piso» vs «pérdida de agua en el baño de "
+        "planta baja» → distintos, score bajo).\n"
+        "- Dos descripciones del mismo problema con otras palabras SÍ son duplicados "
+        "(ej: «pérdida de agua en el baño del 1er piso» vs «gotea la canilla del sanitario "
+        "de arriba» → mismo problema, score alto).\n"
+        "- Si no hay forma de saber que es el mismo lugar/elemento, score bajo."
     )
     raw = provider.complete_json(
         system=(
-            "Sos un detector de reclamos duplicados de infraestructura escolar. "
-            "Comparás un reclamo nuevo contra reclamos existentes de la misma escuela "
-            "y decidís cuáles describen el mismo problema. Respondé SOLO JSON con la "
-            "clave 'scores': una lista de {reclamo_id, similitud_semantica}."
+            "Sos un detector de reclamos duplicados de infraestructura escolar. Comparás "
+            "un reclamo nuevo contra reclamos existentes de la misma escuela y decidís "
+            "cuáles describen EL MISMO problema concreto (misma falla, mismo elemento, "
+            "mismo lugar). Mismo rubro o misma escuela no basta: tiene que ser el mismo "
+            "problema. Respondé SOLO JSON con la clave 'scores': una lista de "
+            "{reclamo_id, similitud_semantica}."
         ),
         user=user,
         schema_hint=_SCHEMA_SEMANTICO,
