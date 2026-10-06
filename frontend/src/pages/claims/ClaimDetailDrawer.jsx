@@ -27,6 +27,7 @@ import {
   IconReceipt2,
   IconSparkles,
   IconTruck,
+  IconArrowsExchange,
 } from '@tabler/icons-react';
 
 import {
@@ -39,6 +40,7 @@ import { formatearIdReclamo } from '../../utils/ids';
 import { esAdministrador, esInspector } from '../../utils/auth';
 import { notifyError } from '../../utils/notifications';
 import { BudgetRequestsList } from './BudgetRequestsList';
+import { ChangeStatusModal } from './ChangeStatusModal';
 import { ClaimCommentsThread } from './ClaimComments';
 import { ClaimIAPanel } from './ClaimIAPanel';
 import { ClaimPhotosManager } from './ClaimPhotosManager';
@@ -127,6 +129,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
   }, [reclamoId, recarga]);
 
   const [notificarAbierto, setNotificarAbierto] = useState(false);
+  const [cambiarEstadoAbierto, setCambiarEstadoAbierto] = useState(false);
 
   const cargadoCoincide = ultimoCargado.id === reclamoId;
   const reclamo = cargadoCoincide ? ultimoCargado.reclamo : null;
@@ -138,6 +141,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
   const proximoPaso = reclamo ? proximoPasoPorEstado[reclamo.estado] : null;
   const esAdmin = esAdministrador();
   const inspector = esInspector();
+  const puedeCambiarEstado = esAdmin && (reclamo?.estados_posibles?.length ?? 0) > 0;
   const puedeNotificar = esAdmin && reclamo?.estado === 'PENDIENTE_PRESUPUESTO';
   // Una vez solicitado el presupuesto, el reclamo deja PENDIENTE_REVISION. A partir
   // de ahí tiene sentido ver a quién se le pidió y quién ya respondió.
@@ -264,6 +268,19 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
             <Text size="sm" c="dimmed" mb="md" ml={2}>
               🕓 Esperando que el responsable del reclamo elija un horario para la visita.
             </Text>
+          )}
+
+          {puedeCambiarEstado && (
+            <Button
+              fullWidth
+              mb="md"
+              variant="light"
+              color="#1fa7b3"
+              leftSection={<IconArrowsExchange size={18} />}
+              onClick={() => setCambiarEstadoAbierto(true)}
+            >
+              Cambiar estado del reclamo
+            </Button>
           )}
 
           {puedeNotificar && (
@@ -417,6 +434,16 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
               onClose={() => setNotificarAbierto(false)}
             />
           )}
+
+          <ChangeStatusModal
+            reclamo={cambiarEstadoAbierto ? reclamo : null}
+            onClose={() => setCambiarEstadoAbierto(false)}
+            onEstadoCambiado={() => {
+              setCambiarEstadoAbierto(false);
+              setRecarga((n) => n + 1);
+              onReclamoActualizado?.();
+            }}
+          />
         </>
       )}
     </Drawer>
