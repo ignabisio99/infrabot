@@ -58,7 +58,7 @@ export function PhotoGrid({ items, onRemove, onSelect, removingId }) {
   if (items.length === 0) return null;
 
   return (
-    <SimpleGrid cols={4} spacing="sm" mt="md">
+    <SimpleGrid cols={{ base: 2, xs: 3, sm: 4 }} spacing="sm" mt="md">
       {items.map((item) => (
         <div key={item.id} style={{ position: 'relative', aspectRatio: '1 / 1' }}>
           <MediaThumbnail item={item} onClick={onSelect ? () => onSelect(item) : undefined} />

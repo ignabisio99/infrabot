@@ -152,7 +152,7 @@ export function ReportsPage() {
         <Stack gap="md">
           <SegmentedControl data={TIPOS} value={tipo} onChange={setTipo} />
 
-          <Group align="flex-end" gap="md">
+          <Group align="flex-end" gap="md" wrap="wrap">
             <div>
               <Text size="sm" fw={500} mb={4}>
                 Desde

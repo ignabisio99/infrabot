@@ -196,7 +196,7 @@ export function ClaimsListPage() {
 
   return (
     <Container fluid px={0}>
-      <Group justify="space-between" mb="md">
+      <Group justify="space-between" mb="md" wrap="wrap">
         <Title order={2}>Reclamos</Title>
         {!soloLectura && (
           <Button onClick={() => navigate('/reclamos/nuevo')}>+ Nuevo Reclamo</Button>
@@ -204,7 +204,7 @@ export function ClaimsListPage() {
       </Group>
 
       {!cargando && reclamos.length > 0 && (
-        <Group mb="md" align="flex-end">
+        <Group mb="md" align="flex-end" wrap="wrap">
           <TextInput
             label="ID"
             placeholder="Ej: REC-00000034 o 34"
