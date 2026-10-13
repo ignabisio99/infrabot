@@ -501,6 +501,44 @@ def seed(db):
     db.commit()
 
 
+def reaplicar_permisos_solo_lectura(db):
+    """Re-otorga SELECT al rol de solo lectura (Adminer) sobre las tablas actuales.
+
+    `--reset` recrea las tablas, así que los GRANT dados a mano quedan sobre tablas que
+    ya no existen y el rol pierde acceso. Esto lo vuelve a dejar consultando todo, sin
+    tener que acordarse de correr los GRANT después de cada reset.
+
+    No crea el rol ni le toca la contraseña: si no existe (p. ej. en dev), no hace nada.
+    El nombre del rol se puede cambiar con DB_READONLY_ROLE (default: lector).
+    """
+    import os
+
+    from sqlalchemy import text
+
+    rol = (os.getenv("DB_READONLY_ROLE") or "lector").strip()
+    if not rol.isidentifier():
+        logger.warning("DB_READONLY_ROLE inválido (%r); se omite reaplicar permisos", rol)
+        return
+
+    existe = db.execute(
+        text("SELECT 1 FROM pg_roles WHERE rolname = :rol"), {"rol": rol}
+    ).scalar()
+    if not existe:
+        logger.info("Rol de solo lectura %r no existe; no se reaplican permisos", rol)
+        return
+
+    # El rol va interpolado (no admite bind param en GRANT), por eso se validó isidentifier.
+    db.execute(text(f'GRANT USAGE ON SCHEMA public TO "{rol}"'))
+    db.execute(text(f'GRANT SELECT ON ALL TABLES IN SCHEMA public TO "{rol}"'))
+    db.execute(
+        text(
+            f'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO "{rol}"'
+        )
+    )
+    db.commit()
+    logger.info("Permisos de solo lectura reaplicados al rol %r.", rol)
+
+
 def main():
     reiniciar = "--reset" in sys.argv
     if reiniciar:
@@ -525,6 +563,11 @@ def main():
             logger.info("Inspector creado: %s / %s", INSPECTOR_EMAIL, INSPECTOR_PASSWORD)
 
         asegurar_roles_iniciales(db)
+
+        # Tras recrear/crear tablas, re-otorgar SELECT al rol de solo lectura (Adminer).
+        # Se hace siempre, antes del posible return de abajo, para que un --reset no deje
+        # al rol sin acceso a las tablas nuevas.
+        reaplicar_permisos_solo_lectura(db)
 
         creadas_refs = cargar_referencias_si_faltan(db)
         if creadas_refs:
