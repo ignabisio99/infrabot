@@ -96,12 +96,12 @@ export function PortalLayout({ links, etiquetaRol }) {
           <Menu shadow="md" width={200}>
             <Menu.Target>
               <UnstyledButton>
-                <Group gap="xs">
+                <Group gap="xs" wrap="nowrap">
                   <Avatar color="#1fa7b3" radius="xl">
                     {usuario.iniciales}
                   </Avatar>
-                  <div style={{ lineHeight: 1.1 }}>
-                    <Text size="sm" fw={500}>
+                  <div style={{ lineHeight: 1.1, maxWidth: 160 }} className="header-user-info">
+                    <Text size="sm" fw={500} truncate>
                       {usuario.nombre}
                     </Text>
                     <Text size="xs" c="dimmed">

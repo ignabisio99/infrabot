@@ -9,6 +9,18 @@ body {
   overflow-x: hidden;
 }
 
+/* Fila de ítem del presupuesto (material / mano de obra). En desktop los campos van en
+   una fila horizontal alineados abajo; el botón "Quitar" queda al final. */
+.line-item-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: var(--mantine-spacing-sm);
+}
+.line-item-row .line-item-remove {
+  flex: 0 0 auto;
+}
+
 @media (max-width: 48em) {
   /* 2) Tablas anchas: scroll horizontal propio en vez de romper el layout.
      Mantine envuelve <table> en .mantine-Table-table; se hace scrolleable su contenedor. */
@@ -43,10 +55,33 @@ body {
 
   /* 5) Grupos (header "título + botón", filtros, acciones): envolver en mobile para no
      forzar una fila más ancha que la pantalla. Mantine usa flex-wrap: nowrap por defecto
-     en varios Group; acá se permite el wrap y se agrega separación vertical. */
+     en varios Group; acá se permite el wrap y se agrega separación vertical.
+     EXCEPCIÓN: los Group dentro del header del AppShell deben quedar en una sola fila
+     (logo a la izquierda, usuario a la derecha), así que no se les fuerza el wrap. */
   .mantine-Group-root {
     flex-wrap: wrap !important;
     row-gap: var(--mantine-spacing-xs);
+  }
+  .mantine-AppShell-header .mantine-Group-root {
+    flex-wrap: nowrap !important;
+    row-gap: 0;
+  }
+
+  /* El nombre/rol de usuario en el header se oculta en mobile: alcanza con el avatar y
+     el chevron. Así nunca tapa ni empuja el logo. El menú (perfil/salir) sigue igual. */
+  .header-user-info {
+    display: none !important;
+  }
+
+  /* 9) Ítems del presupuesto en mobile: cada campo ocupa su propia fila a ancho completo
+     (nada de inputs angostos lado a lado) y el botón "Quitar" va full-width al final. */
+  .line-item-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--mantine-spacing-xs);
+  }
+  .line-item-row .line-item-remove {
+    width: 100%;
   }
 
   /* 6) Modales y Drawers casi a pantalla completa en mobile. */
