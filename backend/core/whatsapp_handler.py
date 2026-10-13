@@ -1764,8 +1764,6 @@ def procesar_media(db: Session, usuario: str, url_local: str, mime_type: str, ca
             _conversaciones[usuario] = estado_av
 
     if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "avance_ejecucion":
-        from services import avance_contratista
-
         conv = _conversaciones[usuario]
         reclamo = db.get(Reclamo, conv["reclamo_id"])
         if reclamo is None:
