@@ -29,6 +29,7 @@ from core.database import (
     SessionLocal,
     asegurar_columna_detalle_tarea,
     asegurar_columna_tipo_item,
+    asegurar_columnas_seguimiento,
     asegurar_tipo_usuario_inspector,
     asegurar_valor_analisis_agente,
     asegurar_valores_estado_reclamo,
@@ -77,6 +78,7 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     asegurar_columna_tipo_item()
     asegurar_columna_detalle_tarea()
+    asegurar_columnas_seguimiento()
     asegurar_tipo_usuario_inspector()
     asegurar_valor_analisis_agente()
     asegurar_valores_estado_reclamo()
