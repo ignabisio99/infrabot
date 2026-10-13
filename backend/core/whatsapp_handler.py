@@ -391,17 +391,18 @@ def _tras_descripcion_o_completitud(db: Session, conv: dict, datos: dict):
         escuela=datos.get("nombre_escuela") or "",
         ubicacion=datos.get("ubicacion") or "",
         descripcion=datos.get("descripcion") or "",
+        info_extra=datos.get("info_extra") or "",
     )
 
     if resultado.completo or not resultado.faltantes:
-        conv.pop("faltantes_cola", None)
         conv.pop("faltante_campo", None)
         return _avanzar_a_media_o_duplicados(db, conv, datos)
 
-    primera, *resto = resultado.faltantes
+    # Se pregunta solo la primera faltante y se re-evalúa en la próxima respuesta con todo
+    # lo que el usuario ya aportó. Así no se repregunta algo que recién fue respondido.
+    primera = resultado.faltantes[0]
     conv["paso"] = "faltantes"
     conv["faltante_campo"] = primera.campo
-    conv["faltantes_cola"] = [{"campo": f.campo, "pregunta": f.pregunta} for f in resto]
     return f"❓ {primera.pregunta}"
 
 
@@ -1051,18 +1052,12 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
         return _tras_descripcion_o_completitud(db, conv, datos)
 
     if paso == "faltantes":
-        cola = conv.get("faltantes_cola") or []
         campo_actual = conv.get("faltante_campo") or "descripcion"
         completitud.fusionar_respuesta(datos=datos, campo=campo_actual, respuesta=texto)
         conv["faltantes_rondas"] = int(conv.get("faltantes_rondas") or 0) + 1
 
-        # Si quedan preguntas prearmadas de la misma evaluación, seguir la cola.
-        if cola:
-            siguiente = cola.pop(0)
-            conv["faltantes_cola"] = cola
-            conv["faltante_campo"] = siguiente.get("campo") or "descripcion"
-            return f"❓ {siguiente.get('pregunta')}"
-
+        # Re-evaluar con TODO lo aportado hasta ahora (incluye info_extra), para no volver
+        # a preguntar algo que el usuario ya respondió en esta misma ronda.
         return _tras_descripcion_o_completitud(db, conv, datos)
 
     if paso == "media":

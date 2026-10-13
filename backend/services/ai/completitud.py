@@ -104,6 +104,7 @@ def evaluar_completitud(
     escuela: str,
     ubicacion: str,
     descripcion: str,
+    info_extra: str = "",
 ) -> ResultadoCompletitud:
     try:
         provider = get_llm_provider()
@@ -113,6 +114,7 @@ def evaluar_completitud(
                 escuela=escuela,
                 ubicacion=ubicacion,
                 descripcion=descripcion,
+                info_extra=info_extra,
             ),
             schema_hint=_SCHEMA,
         )

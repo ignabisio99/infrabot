@@ -90,6 +90,9 @@ Cómo generar las preguntas:
 - Si algo importante falta o es vago, marcá completo=false y generá preguntas ESPECÍFICAS
   (una por dato faltante), cortas y en español.
 - No pidas datos que ya están claros. No hagas más de 2-3 preguntas por vez.
+- IMPORTANTE: si viene una línea "Datos adicionales ya aportados por el usuario", tomá
+  esa información como YA RESPONDIDA. Nunca vuelvas a preguntar algo que ahí ya figura
+  (p. ej. si ya aclaró el baño, el piso o de dónde sale el agua, no lo repreguntes).
 
 Formato JSON:
 - completo: true solo si NO falta ningún dato importante.
@@ -216,12 +219,18 @@ def user_estimacion(
     return "\n".join(partes)
 
 
-def user_completitud(*, escuela: str, ubicacion: str, descripcion: str) -> str:
-    return (
-        f"Escuela: {escuela}\n"
-        f"Ubicación: {ubicacion}\n"
-        f"Descripción: {descripcion}"
-    )
+def user_completitud(
+    *, escuela: str, ubicacion: str, descripcion: str, info_extra: str = ""
+) -> str:
+    partes = [
+        f"Escuela: {escuela}",
+        f"Ubicación: {ubicacion}",
+        f"Descripción: {descripcion}",
+    ]
+    if (info_extra or "").strip():
+        # Respuestas que ya dio el usuario en rondas anteriores. NO volver a preguntarlas.
+        partes.append(f"Datos adicionales ya aportados por el usuario: {info_extra.strip()}")
+    return "\n".join(partes)
 
 
 def user_auditoria_notas(*, resumen: str) -> str:
