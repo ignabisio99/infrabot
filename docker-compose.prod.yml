@@ -59,6 +59,18 @@ services:
       - db
       - redis
 
+  # Consola web de la BD, accesible por internet en https://infrabot.site/adminer/
+  # (Nginx la pasa; no se abre ningún puerto público propio). Entrar SIEMPRE con el
+  # usuario de solo lectura (ver infra.md), no con el POSTGRES_USER principal.
+  adminer:
+    image: adminer:4
+    container_name: adminer_infrabot
+    restart: always
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+    depends_on:
+      - db
+
   frontend:
     image: ${IMAGE_BASE}-frontend:latest
     container_name: frontend_app
@@ -80,6 +92,7 @@ services:
     depends_on:
       - frontend
       - backend
+      - adminer
 
   certbot:
     image: certbot/certbot:latest

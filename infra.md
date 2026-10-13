@@ -126,3 +126,93 @@ docker compose -f docker-compose.prod.yml exec backend python seed.py --reset
 ```bash
 docker compose -f docker-compose.prod.yml down
 ```
+
+## Consola de base de datos (Adminer) — solo lectura
+
+Adminer queda publicado en `https://infrabot.site/adminer/` (lo pasa el nginx de borde,
+no abre ningún puerto nuevo; el acceso va cifrado por el mismo certificado del dominio).
+
+No hay ningún botón ni link a esta URL dentro de la app: es un path que solo se accede
+sabiéndolo. Además está protegido por **dos candados independientes**:
+
+1. **Auth básica de nginx** sobre `/adminer/`: usuario y contraseña propios del path,
+   independientes de la base de datos. Sin eso ni siquiera carga la pantalla de Adminer.
+2. **Usuario de Postgres de solo lectura**: una vez dentro de Adminer, se entra con un
+   usuario que solo puede consultar, nunca con `POSTGRES_USER`.
+
+### Candado 1 — contraseña del path (auth básica de nginx)
+
+Se genera un archivo `.adminer_htpasswd` dentro de `deploy/nginx/` (ese directorio se
+monta en el nginx como `/etc/nginx/conf.d`). El archivo NO se commitea (está en
+`.gitignore`). En la EC2, parado en el directorio de deploy:
+
+```bash
+# Reemplazá 'admin' por el usuario que quieras; pedirá la contraseña de forma interactiva.
+docker run --rm -it httpd:2.4-alpine htpasswd -nB admin >> deploy/nginx/.adminer_htpasswd
+```
+
+Eso agrega una línea `usuario:hash_bcrypt` al archivo. Para recargar nginx:
+
+```bash
+docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
+# o, si no toma el archivo nuevo:
+docker compose -f docker-compose.prod.yml restart nginx
+```
+
+Al entrar a `https://infrabot.site/adminer/`, el navegador pedirá ese usuario/contraseña
+ANTES de mostrar Adminer. Para cambiar la clave, borrá la línea del archivo y volvé a
+generarla.
+
+### Candado 2 — usuario de Postgres de solo lectura
+
+**Regla de oro:** dentro de Adminer, entrar SIEMPRE con el usuario de **solo lectura**,
+nunca con `POSTGRES_USER`. Así, aunque alguien pase el primer candado, no puede modificar
+ni borrar datos.
+
+### Crear el usuario de solo lectura (una sola vez)
+
+Conectado por SSH y parado en el directorio de deploy:
+
+```bash
+docker compose -f docker-compose.prod.yml exec db \
+  psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+```
+
+Dentro de `psql`, ejecutar (reemplazá `una_clave_segura` por una contraseña propia):
+
+```sql
+-- 1) El rol de solo lectura.
+CREATE ROLE lector LOGIN PASSWORD 'una_clave_segura';
+
+-- 2) Puede conectarse y "ver" el esquema público, pero no crear objetos.
+GRANT CONNECT ON DATABASE infrabot TO lector;   -- usar el nombre real de POSTGRES_DB
+GRANT USAGE ON SCHEMA public TO lector;
+
+-- 3) SELECT sobre todas las tablas y vistas existentes.
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO lector;
+
+-- 4) Que también aplique a las tablas que se creen en el futuro
+--    (p. ej. tras un seed --reset o una migración).
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO lector;
+
+\q
+```
+
+Si `POSTGRES_DB` no es `infrabot`, cambiá ese nombre en el `GRANT CONNECT`.
+
+### Usar Adminer
+
+1. Abrir `https://infrabot.site/adminer/`.
+2. Completar:
+   - **Motor**: PostgreSQL
+   - **Servidor**: `db`
+   - **Usuario**: `lector`
+   - **Contraseña**: la que definiste arriba
+   - **Base de datos**: el valor de `POSTGRES_DB` (ej. `infrabot`)
+
+El usuario `lector` solo puede consultar: cualquier INSERT/UPDATE/DELETE/DROP falla con
+error de permisos. Para tareas de escritura se sigue usando `psql` con el usuario principal.
+
+> Nota de seguridad: Adminer queda accesible por internet. El usuario de solo lectura
+> acota el riesgo, pero si querés un candado extra podés sumar autenticación básica de
+> nginx sobre el `location /adminer/` o restringir por IP con `allow`/`deny`.
