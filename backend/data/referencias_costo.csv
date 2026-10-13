@@ -1,0 +1,13 @@
+categoria,descripcion,monto_ars,fecha_referencia,unidad,fuente
+Electricidad,Reparación de tablero eléctrico principal escolar,180000,2024-06-01,trabajo,seed_csv
+Electricidad,Cambio de cables y tomas en aula,95000,2024-03-01,aula,seed_csv
+Plomería,Reparación de pérdida de agua en baño escolar,75000,2024-08-01,baño,seed_csv
+Plomería,Reemplazo de cañería PVC y grifería,110000,2024-01-01,trabajo,seed_csv
+Techos,Reparación de filtraciones y chapas en techo SUM,320000,2024-05-01,techo,seed_csv
+Techos,Sellado de goteras en aula,85000,2023-11-01,aula,seed_csv
+Gas,Revisión y reparación de instalación de gas escolar,150000,2024-04-01,trabajo,seed_csv
+Pintura,Pintura de aula estándar,60000,2024-02-01,aula,seed_csv
+Pisos,Reposición de baldosas en pasillo,140000,2024-07-01,pasillo,seed_csv
+Aberturas,Cambio de ventana de aula,200000,2024-09-01,ventana,seed_csv
+Infraestructura,Reparación de grieta estructural en pared de patio,250000,2023-12-01,trabajo,seed_csv
+Otro,Trabajo general de mantenimiento menor,50000,2024-10-01,trabajo,seed_csv

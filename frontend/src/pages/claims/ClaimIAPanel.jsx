@@ -48,6 +48,30 @@ function ultimaDeTipo(recomendaciones, tipo) {
   return recomendaciones.find((item) => item.tipo === tipo);
 }
 
+function leerDetalleEstimacion(detalle) {
+  if (!detalle) return { sinPrecedencias: false, aviso: null };
+  try {
+    const parsed = typeof detalle === 'string' ? JSON.parse(detalle) : detalle;
+    const motivo = parsed.validacion?.motivo;
+    const refs = parsed.referencias_ids;
+    const sinPrecedencias =
+      motivo === 'sin_referencias' ||
+      motivo === 'promedio_refs_invalido' ||
+      (Array.isArray(refs) && refs.length === 0);
+    let aviso = parsed.aviso || null;
+    if (!aviso && sinPrecedencias) {
+      aviso =
+        'No hay datos históricos similares para basar esta estimación. Se recomienda inspección técnica presencial.';
+    }
+    if (!aviso && motivo === 'desvio_vs_historicos') {
+      aviso = 'El total se aleja de los costos históricos similares.';
+    }
+    return { sinPrecedencias, aviso };
+  } catch {
+    return { sinPrecedencias: false, aviso: null };
+  }
+}
+
 export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) {
   const [clasificacion, setClasificacion] = useState(null);
   const [aplicando, setAplicando] = useState(false);
@@ -65,6 +89,9 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
   const [pipeline, setPipeline] = useState(null);
 
   const hayFotos = (reclamo.fotos || []).some((foto) => foto.tipo === 'IMAGEN');
+  const metaEstimacion = estimacion ? leerDetalleEstimacion(estimacion.detalle) : null;
+  const sinPrecedencias = Boolean(estimacion?.sin_precedentes || metaEstimacion?.sinPrecedencias);
+  const aviso = metaEstimacion?.aviso;
 
   useEffect(() => {
     let vigente = true;
@@ -306,15 +333,29 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
               <Text size="sm" fw={700}>
                 Total {formatoMoneda.format(Number(estimacion.total))}
               </Text>
-              <Badge size="xs" variant="light">
-                {Math.round(estimacion.confianza * 100)}%
-              </Badge>
+              {sinPrecedencias ? (
+                <Badge size="xs" color="gray" variant="light">
+                  Sin precedentes históricos
+                </Badge>
+              ) : (
+                <Badge size="xs" variant="light">
+                  {Math.round(estimacion.confianza * 100)}% confianza
+                </Badge>
+              )}
               {estimacion.requiere_revision && (
                 <Badge size="xs" color="orange">
                   Requiere revisión
                 </Badge>
               )}
             </Group>
+            {estimacion.justificacion && (
+              <Text size="sm">{estimacion.justificacion}</Text>
+            )}
+            {aviso && (
+              <Text size="xs" c="dimmed">
+                {aviso}
+              </Text>
+            )}
           </Stack>
         )}
         <Button size="xs" variant="subtle" loading={generandoEst} onClick={generar}>

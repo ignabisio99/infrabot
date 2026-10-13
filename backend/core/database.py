@@ -69,6 +69,20 @@ def asegurar_columna_detalle_tarea(bind=engine):
         conn.execute(text("ALTER TABLE presupuesto ADD COLUMN detalle_tarea TEXT"))
 
 
+def asegurar_valores_estado_reclamo(bind=engine):
+    """Agrega valores nuevos al enum `estado_reclamo` si la base se creó antes.
+
+    `create_all` no altera un tipo enum que ya existe.
+    """
+    from models.reclamo import EstadoReclamo
+
+    with bind.begin() as conn:
+        for valor in EstadoReclamo:
+            conn.execute(
+                text(f"ALTER TYPE estado_reclamo ADD VALUE IF NOT EXISTS '{valor.value}'")
+            )
+
+
 def asegurar_tipo_usuario_inspector(bind=engine):
     """Agrega INSPECTOR al enum `tipo_usuario` si la base se creó antes de ese valor.
 
@@ -80,14 +94,18 @@ def asegurar_tipo_usuario_inspector(bind=engine):
 
 
 def asegurar_valor_analisis_agente(bind=engine):
-    """Agrega ANALISIS_AGENTE al enum `tipo_recomendacion_ia` si la base es anterior.
+    """Agrega valores nuevos al enum `tipo_recomendacion_ia` si la base es anterior.
 
-    Igual que arriba: `create_all` no altera un enum ya existente. Sin esto, registrar
-    una recomendación del agente falla con 'invalid input value for enum'.
+    `create_all` no altera un enum ya existente. Sin STT, registrar una transcripción
+    de audio falla con 'invalid input value for enum'.
     """
+    from models.recomendacion_ia import TipoRecomendacionIA
+
     with bind.begin() as conn:
-        conn.execute(
-            text(
-                "ALTER TYPE tipo_recomendacion_ia ADD VALUE IF NOT EXISTS 'ANALISIS_AGENTE'"
+        for valor in TipoRecomendacionIA:
+            # El nombre del valor del enum es literal; no se puede bindear.
+            conn.execute(
+                text(
+                    f"ALTER TYPE tipo_recomendacion_ia ADD VALUE IF NOT EXISTS '{valor.value}'"
+                )
             )
-        )

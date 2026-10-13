@@ -3,7 +3,7 @@ import {
   Alert,
   Badge,
   Button,
-  FileButton,
+  Container,
   Group,
   Paper,
   ScrollArea,
@@ -12,12 +12,44 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import { IconPaperclip, IconSend } from '@tabler/icons-react';
+import { IconMicrophone, IconPaperclip, IconRefresh, IconSend } from '@tabler/icons-react';
 
-import { simularWhatsAppMedia, simularWhatsAppTexto } from '../../api/whatsappSim';
+import {
+  reiniciarSimuladorWhatsApp,
+  simularWhatsAppMedia,
+  simularWhatsAppTexto,
+} from '../../api/whatsappSim';
+import { useGrabarAudio } from '../../hooks/useGrabarAudio';
 import { notifyError } from '../../utils/notifications';
 
 const ORIGEN_DEFAULT = 'sim5491100000000';
+const ORIGEN_KEY = 'infrabot_whatsapp_sim_origen';
+
+function etiquetaStt(proveedor) {
+  if (proveedor === 'local') return 'Whisper small';
+  return proveedor || '';
+}
+
+function claveMensajes(origen) {
+  return `infrabot_whatsapp_sim_msgs:${(origen || '').trim() || ORIGEN_DEFAULT}`;
+}
+
+function leerOrigenGuardado() {
+  try {
+    return localStorage.getItem(ORIGEN_KEY) || ORIGEN_DEFAULT;
+  } catch {
+    return ORIGEN_DEFAULT;
+  }
+}
+
+function leerMensajes(origen) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(claveMensajes(origen)) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 
 function burbuja(de, contenido) {
   return {
@@ -28,15 +60,32 @@ function burbuja(de, contenido) {
 }
 
 export function WhatsAppSimPage() {
-  const [origen, setOrigen] = useState(ORIGEN_DEFAULT);
+  const [origen, setOrigen] = useState(leerOrigenGuardado);
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
-  const [mensajes, setMensajes] = useState([]);
+  const [mensajes, setMensajes] = useState(() => leerMensajes(leerOrigenGuardado()));
   const abajo = useRef(null);
+  const adjuntoRef = useRef(null);
+  const origenRef = useRef(origen);
+  const { grabando, empezar, detener } = useGrabarAudio();
 
   useEffect(() => {
     abajo.current?.scrollIntoView({ behavior: 'smooth' });
   }, [mensajes]);
+
+  useEffect(() => {
+    if (origenRef.current !== origen) {
+      origenRef.current = origen;
+      setMensajes(leerMensajes(origen));
+      return;
+    }
+    try {
+      localStorage.setItem(ORIGEN_KEY, origen);
+      localStorage.setItem(claveMensajes(origen), JSON.stringify(mensajes));
+    } catch {
+      // Quota o modo privado: la charla sigue en pantalla.
+    }
+  }, [origen, mensajes]);
 
   const agregarRespuesta = (respuesta) => {
     setMensajes((actuales) => [
@@ -72,35 +121,95 @@ export function WhatsAppSimPage() {
 
   const adjuntar = async (archivo) => {
     if (!archivo || enviando) return;
+    const esAudio = archivo.type.startsWith('audio/');
     setEnviando(true);
+    const idNota = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     setMensajes((actuales) => [
       ...actuales,
-      burbuja('yo', { texto: `📎 ${archivo.name}`, botones: [], secciones: [] }),
+      {
+        id: idNota,
+        de: 'yo',
+        texto: esAudio ? '🎤 Nota de voz' : `📎 ${archivo.name}`,
+        transcripcion: esAudio ? 'Transcribiendo…' : null,
+        proveedorStt: esAudio ? 'local' : null,
+        botones: [],
+        secciones: [],
+      },
     ]);
     try {
       const respuesta = await simularWhatsAppMedia(origen, archivo);
+      if (esAudio) {
+        setMensajes((actuales) =>
+          actuales.map((msg) =>
+            msg.id === idNota
+              ? {
+                  ...msg,
+                  transcripcion: respuesta.transcripcion || 'No se pudo transcribir.',
+                  proveedorStt: respuesta.proveedor_stt || 'local',
+                }
+              : msg,
+          ),
+        );
+      }
       agregarRespuesta(respuesta);
     } catch (err) {
+      if (esAudio) {
+        setMensajes((actuales) =>
+          actuales.map((msg) =>
+            msg.id === idNota
+              ? { ...msg, transcripcion: err.message || 'No se pudo transcribir.' }
+              : msg,
+          ),
+        );
+      }
       notifyError(err.message);
     } finally {
       setEnviando(false);
     }
   };
 
+  const nuevaCharla = async () => {
+    if (enviando || grabando) return;
+    try {
+      await reiniciarSimuladorWhatsApp(origen);
+      setMensajes([]);
+      localStorage.removeItem(claveMensajes(origen));
+    } catch (err) {
+      notifyError(err.message || 'No se pudo empezar una charla nueva.');
+    }
+  };
+
+  const grabarNota = async () => {
+    if (enviando) return;
+    try {
+      if (!grabando) {
+        await empezar();
+        return;
+      }
+      const archivo = await detener();
+      if (archivo) await adjuntar(archivo);
+    } catch (err) {
+      notifyError(err.message || 'No se pudo grabar el audio.');
+    }
+  };
+
   return (
-    <Stack gap="md" maw={720}>
+    <Container size={520} px="xs">
+      <Stack gap="md">
       <div>
-        <Title order={2}>Simulador de WhatsApp</Title>
-        <Text size="sm" c="dimmed">
+        <Title order={2} ta="center">
+          Simulador de WhatsApp
+        </Title>
+        <Text size="sm" c="dimmed" ta="center">
           Habla con el mismo bot que Meta, en tu máquina. No usa ngrok ni Redis.
           Los botones envían el id, igual que en WhatsApp.
         </Text>
       </div>
 
       <Alert color="blue">
-        El estado de la conversación vive en memoria del backend. Si recargás el
-        contenedor, se pierde el paso a paso (el reclamo ya confirmado queda en la
-        base). Cambiá el “número simulado” si querés otra conversación en paralelo.
+        Los mensajes se guardan en este navegador. Si reiniciás el backend, el
+        bot pierde el paso a paso (el reclamo ya confirmado queda en la base).
+        Usá “Empezar nueva charla” para resetear.
       </Alert>
 
       <TextInput
@@ -116,13 +225,26 @@ export function WhatsAppSimPage() {
         p="sm"
         style={{ background: '#0b141a' }}
       >
-        <Group justify="space-between" mb="xs">
+        <Group justify="space-between" mb="xs" wrap="nowrap">
           <Text size="sm" c="gray.4" fw={600}>
             InfraBot
           </Text>
-          <Badge size="xs" variant="light" color="green">
-            local
-          </Badge>
+          <Group gap={6} wrap="nowrap">
+            <Button
+              type="button"
+              size="xs"
+              variant="subtle"
+              color="gray"
+              leftSection={<IconRefresh size={14} />}
+              onClick={nuevaCharla}
+              disabled={enviando || grabando}
+            >
+              Empezar nueva charla
+            </Button>
+            <Badge size="xs" variant="light" color="green">
+              local
+            </Badge>
+          </Group>
         </Group>
         <ScrollArea h={420} offsetScrollbars>
           <Stack gap="xs" p={4}>
@@ -145,6 +267,12 @@ export function WhatsAppSimPage() {
                 <Text size="sm" c="gray.1" style={{ whiteSpace: 'pre-wrap' }}>
                   {msg.texto}
                 </Text>
+                {msg.transcripcion && (
+                  <Text size="xs" c="gray.4" mt={4} style={{ whiteSpace: 'pre-wrap' }}>
+                    {msg.transcripcion}
+                    {msg.proveedorStt ? ` (${etiquetaStt(msg.proveedorStt)})` : ''}
+                  </Text>
+                )}
                 {msg.botones?.length > 0 && (
                   <Stack gap={6} mt="xs">
                     {msg.botones.map((boton) => (
@@ -186,14 +314,38 @@ export function WhatsAppSimPage() {
         </ScrollArea>
       </Paper>
 
+      <input
+        ref={adjuntoRef}
+        type="file"
+        accept="image/*,video/*"
+        hidden
+        onChange={(e) => {
+          const archivo = e.currentTarget.files?.[0];
+          e.currentTarget.value = '';
+          if (archivo) adjuntar(archivo);
+        }}
+      />
       <Group align="flex-end" wrap="nowrap">
-        <FileButton onChange={adjuntar} accept="image/*,video/*,audio/*">
-          {(props) => (
-            <Button {...props} variant="default" px="sm" disabled={enviando}>
-              <IconPaperclip size={18} />
-            </Button>
-          )}
-        </FileButton>
+        <Button
+          type="button"
+          variant="default"
+          px="sm"
+          disabled={enviando || grabando}
+          title="Adjuntar foto o video"
+          onClick={() => adjuntoRef.current?.click()}
+        >
+          <IconPaperclip size={18} />
+        </Button>
+        <Button
+          type="button"
+          variant={grabando ? 'filled' : 'light'}
+          color={grabando ? 'red' : 'teal'}
+          disabled={enviando}
+          onClick={grabarNota}
+          leftSection={<IconMicrophone size={18} />}
+        >
+          {grabando ? 'Enviar nota' : 'Grabar nota'}
+        </Button>
         <TextInput
           style={{ flex: 1 }}
           placeholder="Escribí un mensaje…"
@@ -212,6 +364,7 @@ export function WhatsAppSimPage() {
           Enviar
         </Button>
       </Group>
-    </Stack>
+      </Stack>
+    </Container>
   );
 }

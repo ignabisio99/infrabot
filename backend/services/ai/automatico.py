@@ -14,6 +14,7 @@ from models.presupuesto import Presupuesto
 from models.reclamo import Reclamo
 from models.recomendacion_ia import TipoRecomendacionIA
 from services.ai import auditoria as auditoria_svc
+from services.ai.contexto_reclamo import texto_para_ia
 from services.ai.derivacion import evaluar_derivacion
 from services.ai.grafo import ejecutar_pipeline
 from services.ai.registro import registrar
@@ -36,7 +37,7 @@ def post_alta_reclamo(db: Session, reclamo: Reclamo) -> None:
         if actualizado is None:
             return
         der = evaluar_derivacion(
-            descripcion=actualizado.descripcion,
+            descripcion=texto_para_ia(actualizado, db),
             categoria=actualizado.categoria,
             confianza=estado.get("confianza"),
         )

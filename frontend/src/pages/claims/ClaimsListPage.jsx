@@ -119,6 +119,14 @@ export function ClaimsListPage() {
       .finally(() => setCargando(false));
   }, []);
 
+  useEffect(() => {
+    const abrir = searchParams.get('abrir');
+    if (abrir) {
+      const id = Number(abrir);
+      if (!Number.isNaN(id)) setReclamoIdSeleccionado(id);
+    }
+  }, [searchParams]);
+
   const reclamosFiltrados = useMemo(() => {
     const desde = parsearFechaFiltro(rangoFechas[0]);
     const hasta = parsearFechaFiltro(rangoFechas[1]);

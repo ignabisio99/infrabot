@@ -14,6 +14,24 @@ import {
 import { crearComentarioReclamo, listarComentariosReclamo } from '../../api/reclamos';
 import { notifyError } from '../../utils/notifications';
 
+function etiquetaAutorComentario(comentario) {
+  if (comentario.autor) return comentario.autor;
+  const texto = comentario.texto || '';
+  const whatsapp = /\[WhatsApp — ([^\]]+)\]/.exec(texto);
+  if (whatsapp) return `${whatsapp[1]} (WhatsApp)`;
+  if (texto.startsWith('[Sistema]') || texto.includes('Pendiente de intervención')) {
+    return 'Sistema';
+  }
+  return 'Usuario eliminado';
+}
+
+function textoVisibleComentario(texto) {
+  return (texto || '')
+    .replace(/\[CU-05\]\s*/g, '')
+    .replace(/^\[Sistema\]\s*/i, '')
+    .trim();
+}
+
 export function ClaimCommentsThread({
   reclamoId,
   comentarios,
@@ -47,14 +65,14 @@ export function ClaimCommentsThread({
           <Paper key={comentario.id} withBorder radius="md" p="sm">
             <Group justify="space-between" mb={4}>
               <Text size="sm" fw={600}>
-                {comentario.autor ?? 'Usuario eliminado'}
+                {etiquetaAutorComentario(comentario)}
               </Text>
               <Text size="xs" c="dimmed">
                 {new Date(comentario.fecha).toLocaleString('es-AR')}
               </Text>
             </Group>
             <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
-              {comentario.texto}
+              {textoVisibleComentario(comentario.texto)}
             </Text>
           </Paper>
         ))

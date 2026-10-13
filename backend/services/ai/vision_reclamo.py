@@ -12,6 +12,7 @@ from core.ai.factory import get_llm_provider
 from core.storage import UPLOADS_DIR
 from models.foto_reclamo import TipoMedia
 from models.reclamo import Reclamo
+from services.ai.contexto_reclamo import texto_para_ia
 from services.ai.prompts import SYSTEM_VISION_RECLAMO
 
 logger = logging.getLogger(__name__)
@@ -73,7 +74,7 @@ def analizar_media_reclamo(db: Session, reclamo: Reclamo) -> AnalisisMediaReclam
     user = (
         f"Escuela: {reclamo.nombre_escuela}\n"
         f"Ubicación: {reclamo.ubicacion}\n"
-        f"Descripción actual: {reclamo.descripcion}\n"
+        f"Descripción actual: {texto_para_ia(reclamo)}\n"
         f"Analizá {len(imagenes)} foto(s) adjunta(s)."
     )
     raw = provider.complete_json_with_images(

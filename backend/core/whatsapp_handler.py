@@ -7,15 +7,18 @@ reclamos paso a paso.
 
 import logging
 import os
+import re
 from datetime import datetime, timezone, timedelta
+from difflib import SequenceMatcher
 
 from sqlalchemy.orm import Session, joinedload
 
 from core.ai import config as ai_config
 from models.foto_reclamo import FotoReclamo, TipoMedia
-from models.reclamo import PrioridadReclamo, Reclamo
+from models.reclamo import EstadoReclamo, PrioridadReclamo, Reclamo
+from models.visita import Visita
 from models.recomendacion_ia import TipoRecomendacionIA
-from services import estados_reclamo
+from services import avance_contratista, estados_reclamo
 from services.ai import (
     clasificacion,
     completitud,
@@ -56,6 +59,160 @@ RATE_LIMIT_MAX = 15
 RATE_LIMIT_VENTANA = timedelta(minutes=1)
 RATE_LIMIT_BLOQUEO = timedelta(minutes=5)
 
+_SALUDOS_INICIO = (
+    "buenos dias",
+    "buenos días",
+    "buenas tardes",
+    "buenas noches",
+    "hola",
+    "buenas",
+    "hi",
+    "che",
+)
+
+
+def _normalizar_comando(texto: str) -> str:
+    """Minúsculas y sin signos alrededor: '¡Listo!' → 'listo'."""
+    t = (texto or "").strip().lower()
+    return re.sub(r"^[^\wáéíóúüñ]+|[^\wáéíóúüñ]+$", "", t, flags=re.UNICODE)
+
+
+def _es_comando(texto: str, *opciones: str) -> bool:
+    return _normalizar_comando(texto) in opciones
+
+
+def _es_comando_listo(texto: str) -> bool:
+    if _es_comando(texto, "listo", "continuar", "siguiente", "ok"):
+        return True
+    norm = _normalizar_comando(texto)
+    palabras = norm.split()
+    if not palabras or len(palabras) > 3:
+        return False
+    # Whisper a veces devuelve "lito" / "lito lito chatelito" por "listo".
+    return _similitud(palabras[0], "listo") >= 0.75
+
+
+def _similitud(a: str, b: str) -> float:
+    if not a or not b:
+        return 0.0
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def _sin_saludo_inicial(texto: str) -> str:
+    resto = (texto or "").strip()
+    while resto:
+        bajo = resto.lower()
+        matcheo = False
+        for saludo in sorted(_SALUDOS_INICIO, key=len, reverse=True):
+            if bajo == saludo:
+                return ""
+            if bajo.startswith(saludo) and bajo[len(saludo) : len(saludo) + 1] in ("", " ", ",", ".", "!", "¡", "?", "¿", ";", ":"):
+                resto = resto[len(saludo) :].lstrip(" ,.;:¡!¿?")
+                matcheo = True
+                break
+        if not matcheo:
+            break
+    return resto.strip()
+
+
+# Conectores / presentación. No es un catálogo de desperfectos: sirve para
+# ignorar "hola, soy de la escuela 5" y dejar pasar cualquier relato real.
+_RELLENO_PRESENTACION = frozenset({
+    "hola", "buenas", "buen", "buenos", "dias", "días", "tardes", "noches",
+    "mira", "mirá", "che", "eh", "mm", "bueno", "ok", "dale", "gracias",
+    "este", "esta", "esto", "ese", "esa", "eso", "aqui", "aquí", "aca", "acá",
+    "ahi", "ahí", "alla", "allá",
+    "el", "la", "los", "las", "un", "una", "unos", "unas",
+    "de", "del", "en", "al", "a", "y", "o", "u", "que", "qué", "si", "sí",
+    "no", "por", "con", "para", "se", "me", "mi", "tu", "su", "les", "le",
+    "es", "son", "soy", "somos", "estoy", "estamos", "esta", "está",
+    "ser", "estar",
+    "numero", "número", "nro", "n", "escuela", "colegio", "jardin", "jardín",
+    "pero", "como", "cómo", "cuando", "cuándo", "donde", "dónde",
+    "yo", "nosotros", "usted", "ustedes", "hola",
+})
+
+
+def _palabras_contenido(texto: str) -> list[str]:
+    resto = _sin_saludo_inicial(texto).lower()
+    resto = re.sub(r"[^\wáéíóúüñ\s]", " ", resto, flags=re.UNICODE)
+    out: list[str] = []
+    for p in resto.split():
+        if not p or p.isdigit() or p in _RELLENO_PRESENTACION:
+            continue
+        out.append(p)
+    return out
+
+
+def _parece_solo_presentacion(texto: str) -> bool:
+    """True si no hay relato: saludo, nombrarse o decir de qué escuela es."""
+    resto = _sin_saludo_inicial(texto)
+    if len(resto) < 8:
+        return True
+    return len(_palabras_contenido(texto)) <= 1
+
+
+def _parece_relato(texto: str) -> bool:
+    """Hay sustancia más allá de presentarse (cualquier redacción)."""
+    return not _parece_solo_presentacion(texto)
+
+
+def _parece_descripcion_reclamo(mensaje: str) -> bool:
+    """True si además de un saludo ya cuenta algo (no solo 'hola' o 'escuela 5')."""
+    resto = _sin_saludo_inicial(mensaje)
+    return len(resto) >= 10 and _parece_relato(mensaje)
+
+
+def _descripcion_debil(texto: str, escuela: str | None = None) -> bool:
+    if _parece_solo_presentacion(texto):
+        return True
+    t = _sin_saludo_inicial(texto).strip()
+    if len(t) < 12:
+        return True
+    if escuela:
+        esc = re.sub(r"[^\wáéíóúüñ\s]", " ", escuela.lower())
+        if esc and esc in t.lower() and len(_palabras_contenido(t)) <= 2:
+            return True
+    return False
+
+
+def _acumular_nota(datos: dict, texto: str) -> None:
+    t = (texto or "").strip()
+    if not t:
+        return
+    if _es_comando_listo(t) or _es_comando(
+        t, "si", "sí", "s", "no", "cancelar", "ok", "dale"
+    ):
+        return
+    bajo = t.lower()
+    if bajo.startswith("escuela_") or bajo.startswith("esc_"):
+        return
+    notas: list = datos.setdefault("notas", [])
+    if t not in notas:
+        notas.append(t)
+
+
+def _fusionar_descripcion(actual: str | None, nuevo: str | None) -> str:
+    a = (actual or "").strip()
+    n = (nuevo or "").strip()
+    if not n:
+        return a
+    if not a:
+        return n
+    if n.lower() in a.lower():
+        return a
+    if a.lower() in n.lower():
+        return n
+    return f"{a}\n{n}".strip()
+
+
+def _incorporar_detalle(datos: dict, texto: str) -> None:
+    """Cualquier relato en cualquier paso se guarda; no se filtra por vocabulario."""
+    _acumular_nota(datos, texto)
+    if not _parece_relato(texto):
+        return
+    datos["descripcion"] = _fusionar_descripcion(datos.get("descripcion"), texto)
+
 
 def _esta_bloqueado(usuario: str) -> bool:
     """True si el número está temporalmente bloqueado por flood."""
@@ -88,6 +245,14 @@ def _registrar_y_chequear_flood(usuario: str) -> bool:
     return False
 
 
+def reiniciar_conversacion(usuario: str) -> None:
+    """Borra el estado en memoria de un número (simulador: nueva charla)."""
+    _conversaciones.pop(usuario, None)
+    _ultima_actividad.pop(usuario, None)
+    _historial_mensajes.pop(usuario, None)
+    _bloqueados_hasta.pop(usuario, None)
+
+
 def _es_sesion_nueva(usuario: str) -> bool:
     """True si el usuario no escribió en la última hora (o es su primer mensaje)."""
     ultima = _ultima_actividad.get(usuario)
@@ -116,6 +281,7 @@ ETIQUETA_ESTADO = {
     "PENDIENTE_COORDINACION": "Coordinando la visita",
     "VISITA_COORDINADA": "Visita agendada",
     "EN_EJECUCION": "En ejecución",
+    "PENDIENTE_INTERVENCION": "Pendiente de intervención",
     "FINALIZADO": "Finalizado",
     "DESIERTO": "Sin ofertas",
     "RECHAZADO": "Rechazado",
@@ -189,15 +355,11 @@ def _tras_descripcion_o_completitud(db: Session, conv: dict, datos: dict):
         ).strip()
         return _avanzar_a_media_o_duplicados(db, conv, datos)
 
-    try:
-        resultado = completitud.evaluar_completitud(
-            escuela=datos.get("nombre_escuela") or "",
-            ubicacion=datos.get("ubicacion") or "",
-            descripcion=datos.get("descripcion") or "",
-        )
-    except Exception:
-        logger.exception("Completitud falló; se avanza sin pedir info adicional")
-        return _avanzar_a_media_o_duplicados(db, conv, datos)
+    resultado = completitud.evaluar_completitud(
+        escuela=datos.get("nombre_escuela") or "",
+        ubicacion=datos.get("ubicacion") or "",
+        descripcion=datos.get("descripcion") or "",
+    )
 
     if resultado.completo or not resultado.faltantes:
         conv.pop("faltantes_cola", None)
@@ -580,25 +742,28 @@ def _procesar_libre(db: Session, conv: dict, datos: dict, texto: str) -> str:
             proveedor="fallback",
         )
 
+    _acumular_nota(datos, texto)
     if extraidos.nombre_escuela:
         datos["nombre_escuela"] = extraidos.nombre_escuela
     if extraidos.ubicacion:
-        datos["info_extra"] = extraidos.ubicacion
-    datos["descripcion"] = extraidos.descripcion
+        datos["ubicacion"] = extraidos.ubicacion
+    desc_nueva = (extraidos.descripcion or "").strip()
+    if desc_nueva and not _parece_solo_presentacion(desc_nueva):
+        datos["descripcion"] = _fusionar_descripcion(datos.get("descripcion"), desc_nueva)
+    elif _parece_relato(texto):
+        datos["descripcion"] = _fusionar_descripcion(datos.get("descripcion"), texto)
+    datos.setdefault("categoria", "Sin clasificar")
+    datos.setdefault("prioridad", "MEDIA")
+    datos.setdefault("confianza_clasificacion", 0.0)
 
-    try:
-        resultado = clasificacion.clasificar_texto(
-            datos["descripcion"],
-            escuela=datos.get("nombre_escuela"),
-            ubicacion=datos.get("ubicacion"),
+    if _descripcion_debil(
+        datos.get("descripcion") or "", escuela=datos.get("nombre_escuela")
+    ):
+        conv["paso"] = "libre"
+        return (
+            "📝 Anoté lo que dijiste. ¿Qué problema hay? "
+            "Contame qué no funciona, desde cuándo y si afecta un aula o toda la escuela."
         )
-        datos["categoria"] = resultado.categoria
-        datos["prioridad"] = resultado.prioridad.value
-        datos["confianza_clasificacion"] = resultado.confianza
-    except Exception:
-        datos["categoria"] = "Sin clasificar"
-        datos["prioridad"] = "MEDIA"
-        datos["confianza_clasificacion"] = 0.0
 
     registro.registrar(
         db,
@@ -660,8 +825,10 @@ def _procesar_confirmar_escuela(db: Session, conv: dict, datos: dict, texto: str
         datos["nombre_escuela"] = conv.get("nombre_escuela_ingresado", "")
         return _tras_fijar_escuela(db, conv, datos)
 
+    _incorporar_detalle(datos, texto)
+    extra = "Anoté lo que contaste. " if _parece_relato(texto) else ""
     return (
-        "Elegí una opción: *Sí, es ese*, *Ver otras* o *Usar lo que puse* "
+        f"{extra}Elegí una opción: *Sí, es ese*, *Ver otras* o *Usar lo que puse* "
         "(tocá uno de los botones)."
     )
 
@@ -716,7 +883,9 @@ def _procesar_elegir_escuela(db: Session, conv: dict, datos: dict, texto: str):
     try:
         indice = int(limpio.replace("#", ""))
     except ValueError:
-        return "⚠️ Respondé con el número de la opción, o *ninguna*."
+        _incorporar_detalle(datos, texto)
+        extra = "Anoté lo que contaste. " if _parece_relato(texto) else ""
+        return f"{extra}⚠️ Respondé con el número de la opción, o *ninguna*."
 
     if indice < 1 or indice > len(candidatas):
         return "⚠️ Ese número no está en la lista. Probá de nuevo."
@@ -726,6 +895,34 @@ def _procesar_elegir_escuela(db: Session, conv: dict, datos: dict, texto: str):
     if elegida.get("domicilio"):
         conv["sugerencia_ubicacion"] = _limpiar_espacios(elegida["domicilio"])
     return _tras_fijar_escuela(db, conv, datos)
+
+
+def _redactar_resumen_reclamo(datos: dict) -> None:
+    """Reescribe descripción + notas sueltas en un párrafo claro para el resumen."""
+    partes = list(datos.get("notas") or [])
+    partes.append(datos.get("descripcion") or "")
+    extra = (datos.get("info_extra") or "").strip()
+    if extra:
+        partes.append(extra)
+    seen: set[str] = set()
+    unicas: list[str] = []
+    for p in partes:
+        t = (p or "").strip()
+        if not t or t in seen:
+            continue
+        seen.add(t)
+        unicas.append(t)
+    bruto = "\n".join(unicas)
+    if not bruto:
+        return
+    try:
+        limpio = extraccion_reclamo.redactar_descripcion(bruto)
+    except Exception:
+        logger.warning("No se pudo redactar el resumen con el LLM; se limpia en local")
+        limpio = extraccion_reclamo.redactar_descripcion_local(bruto)
+    if limpio:
+        datos["descripcion"] = limpio
+        datos.pop("info_extra", None)
 
 
 def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
@@ -741,13 +938,31 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
         if len(texto) < 3:
             return "⚠️ El nombre debe tener al menos 3 caracteres. Intentá de nuevo:"
 
+        _incorporar_detalle(datos, texto)
+        nombre = texto
+        if _parece_relato(texto) and len(_palabras_contenido(texto)) >= 3:
+            try:
+                extraidos = extraccion_reclamo.extraer_datos_reclamo(texto)
+            except Exception:
+                extraidos = None
+            if extraidos and extraidos.nombre_escuela:
+                nombre = extraidos.nombre_escuela
+            if extraidos and extraidos.ubicacion and not datos.get("ubicacion"):
+                datos["ubicacion"] = extraidos.ubicacion
+            if extraidos and extraidos.descripcion and not _parece_solo_presentacion(
+                extraidos.descripcion
+            ):
+                datos["descripcion"] = _fusionar_descripcion(
+                    datos.get("descripcion"), extraidos.descripcion
+                )
+
         # Buscar la escuela en el padrón para confirmarla con el usuario.
-        dialogo = _confirmar_escuela_padron(db, conv, texto)
+        dialogo = _confirmar_escuela_padron(db, conv, nombre)
         if dialogo is not None:
             return dialogo
 
-        # Sin coincidencias en el padrón: se usa el texto tal cual.
-        datos["nombre_escuela"] = texto
+        # Sin coincidencias en el padrón: se usa el nombre extraído (o el texto).
+        datos["nombre_escuela"] = nombre
         return _tras_fijar_escuela(db, conv, datos)
 
     if paso == "confirmar_escuela":
@@ -765,11 +980,17 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
     if paso == "ubicacion":
         if len(texto) < 2:
             return "⚠️ La ubicación debe tener al menos 2 caracteres. Intentá de nuevo:"
+        _incorporar_detalle(datos, texto)
         sug = conv.get("sugerencia_ubicacion")
         if sug:
             datos["ubicacion"] = sug
-            if texto.lower() not in ("ok", "si", "sí", "dale", "listo"):
+            if not _es_comando(texto, "ok", "si", "sí", "dale", "listo"):
                 datos["info_extra"] = texto
+        elif _parece_relato(texto) and len(_palabras_contenido(texto)) >= 5:
+            # El relato del problema no es una ubicación: se guardó en descripción.
+            if not datos.get("ubicacion"):
+                conv["paso"] = "ubicacion"
+                return "📍 ¿En qué parte de la escuela es el problema? (aula, piso, sector)"
         else:
             datos["ubicacion"] = texto
         if conv.get("modo") == "ia":
@@ -780,10 +1001,10 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
     if paso == "descripcion":
         if len(texto) < 10:
             return "⚠️ La descripción debe tener al menos 10 caracteres. Intentá de nuevo:"
-        datos["descripcion"] = texto
+        datos["descripcion"] = _fusionar_descripcion(datos.get("descripcion"), texto)
         try:
             resultado = clasificacion.clasificar_texto(
-                texto,
+                datos["descripcion"],
                 escuela=datos.get("nombre_escuela"),
                 ubicacion=datos.get("ubicacion"),
             )
@@ -813,22 +1034,32 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
         return _tras_descripcion_o_completitud(db, conv, datos)
 
     if paso == "media":
-        if texto.lower() in ("listo", "continuar", "siguiente", "ok"):
+        if _es_comando_listo(texto):
+            if _descripcion_debil(
+                datos.get("descripcion") or "", escuela=datos.get("nombre_escuela")
+            ) and datos.get("notas"):
+                datos["descripcion"] = _fusionar_descripcion(
+                    datos.get("descripcion"),
+                    "\n".join(datos.get("notas") or []),
+                )
+            if _descripcion_debil(
+                datos.get("descripcion") or "", escuela=datos.get("nombre_escuela")
+            ):
+                conv["paso"] = "descripcion" if conv.get("modo") != "ia" else "libre"
+                return (
+                    "📝 Todavía no tengo claro el problema. "
+                    "Contame qué no funciona (agua, luz, techo, etc.)."
+                )
             conv["paso"] = "confirmacion"
             media_count = len(conv.get("media", []))
+            _redactar_resumen_reclamo(datos)
             # No se muestran categoría ni prioridad: son preliminares y las asigna el
             # sistema al registrar el reclamo. Mostrarlas confundía (podían cambiar).
-            info_txt = (
-                f"ℹ️ Información adicional: {datos['info_extra']}\n"
-                if datos.get("info_extra")
-                else ""
-            )
             resumen = (
                 "✅ *Resumen del reclamo:*\n\n"
                 f"🏫 Escuela: {datos['nombre_escuela']}\n"
                 f"📍 Ubicación: {datos['ubicacion']}\n"
                 f"📝 Descripción: {datos['descripcion']}\n"
-                f"{info_txt}"
                 f"📎 Archivos: {media_count}\n\n"
                 "¿Confirmás la carga?"
             )
@@ -840,15 +1071,16 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
                     {"id": "no", "title": "❌ Cancelar"},
                 ],
             }
+        _incorporar_detalle(datos, texto)
+        if _parece_relato(texto):
+            return (
+                "📝 Anoté esa descripción. Podés mandar fotos o escribir *listo* para continuar."
+            )
         return "📎 Enviá fotos/videos o escribí *listo* para continuar."
 
     if paso == "confirmacion":
-        texto_lower = texto.lower()
-        if texto_lower in ("si", "sí", "s", "yes", "confirmar"):
+        if _es_comando(texto, "si", "sí", "s", "yes", "confirmar"):
             descripcion = datos["descripcion"]
-            info_extra = (datos.get("info_extra") or "").strip()
-            if info_extra:
-                descripcion = f"{descripcion}\n\nInformación adicional: {info_extra}"
             nuevo = Reclamo(
                 nombre_escuela=datos["nombre_escuela"],
                 ubicacion=datos["ubicacion"],
@@ -893,7 +1125,7 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
                 f"{_formatear_reclamo(nuevo)}{media_txt}\n\n"
                 f"Podés ver su estado con: *ver #{reclamo_id}*"
             )
-        elif texto_lower in ("no", "n", "cancelar"):
+        elif _es_comando(texto, "no", "n", "cancelar"):
             del _conversaciones[usuario]
             return "❌ Carga cancelada. Escribí *nuevo* para empezar de nuevo."
         else:
@@ -936,16 +1168,27 @@ def _procesar_info_adicional(db: Session, usuario: str, mensaje: str) -> str:
     reclamo_id = conv["reclamo_id"]
     texto = mensaje.strip()
 
-    if texto.lower() in ("listo", "terminar", "fin", "ok", "gracias"):
+    if _es_comando(texto, "listo", "terminar", "fin", "ok", "gracias"):
         telefono_contratista = conv.get("telefono_contratista")
         nombre_contratista = conv.get("nombre_contratista", "")
         del _conversaciones[usuario]
+
+        reclamo = db.get(Reclamo, reclamo_id)
+        if reclamo is not None:
+            try:
+                post_alta_reclamo(db, reclamo)
+                db.commit()
+            except Exception:
+                db.rollback()
+                logger.exception(
+                    "No se pudo recalcular la IA tras info adicional del reclamo %s",
+                    reclamo_id,
+                )
 
         # Avisar al contratista que ya está disponible la información que había pedido.
         if telefono_contratista:
             from core.whatsapp_client import enviar_mensaje
 
-            reclamo = db.get(Reclamo, reclamo_id)
             escuela = reclamo.nombre_escuela if reclamo else ""
             link = f"{APP_URL}/portal/reclamos/{reclamo_id}/presupuestar"
             aviso = (
@@ -997,7 +1240,7 @@ def _procesar_visita_disponibilidad(db: Session, usuario: str, mensaje: str) -> 
 
     texto = mensaje.strip()
 
-    if texto.lower() in ("listo", "terminar", "fin", "ok"):
+    if _es_comando(texto, "listo", "terminar", "fin", "ok"):
         if coordinacion_visita.finalizar_disponibilidad(db, visita):
             del _conversaciones[usuario]
             return (
@@ -1051,6 +1294,49 @@ def _procesar_visita_eleccion(db: Session, usuario: str, mensaje: str) -> str:
     )
 
 
+def _procesar_avance_ejecucion(db: Session, usuario: str, mensaje: str) -> str:
+    """El contratista manda avance (texto) o reporta que terminó. No cierra el reclamo."""
+    from services import avance_contratista
+
+    conv = _conversaciones[usuario]
+    reclamo = db.get(Reclamo, conv["reclamo_id"])
+    if reclamo is None:
+        del _conversaciones[usuario]
+        return "⚠️ No encontré el reclamo. Escribí *ayuda* para ver los comandos."
+
+    hallado = avance_contratista.reclamo_en_ejecucion_de(db, usuario)
+    contratista = hallado[1] if hallado else None
+    texto = mensaje.strip()
+    norma = _normalizar_comando(texto)
+
+    if _es_comando(texto, "terminé", "termine", "finalizado", "finalicé", "finalice"):
+        avance_contratista.registrar_avance_texto(
+            db, reclamo, contratista, texto, termino=True
+        )
+        del _conversaciones[usuario]
+        return (
+            f"✅ Anoté que el trabajo del reclamo #{reclamo.id} está *terminado*.\n"
+            "El consejo lo revisa y da por finalizado. No hace falta que hagas nada más."
+        )
+
+    if _es_comando_listo(texto) or norma in ("listo",):
+        del _conversaciones[usuario]
+        return (
+            "👍 Quedó registrado lo que mandaste.\n"
+            "Si hay más avance, escribí cuando te pidamos novedades o mandá *terminé* "
+            "si el trabajo ya está listo."
+        )
+
+    if len(texto) < 2:
+        return "⚠️ Contame el avance (porcentaje, qué hiciste) o mandá una foto."
+
+    avance_contratista.registrar_avance_texto(db, reclamo, contratista, texto)
+    return (
+        f"📝 Anoté el avance en el reclamo #{reclamo.id}.\n"
+        "Podés seguir mandando texto o fotos. Cuando termines el trabajo, escribí *terminé*."
+    )
+
+
 def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
     """Recibe un mensaje de texto y devuelve la respuesta del bot."""
     texto = mensaje.strip().lower()
@@ -1068,6 +1354,7 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
 
     # Evaluar si es una sesión nueva ANTES de registrar esta interacción.
     sesion_nueva = _es_sesion_nueva(usuario)
+    tenia_actividad = bool(usuario) and usuario in _ultima_actividad
     if usuario:
         _ultima_actividad[usuario] = datetime.now(timezone.utc)
 
@@ -1084,30 +1371,80 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
     if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "buscar_id":
         return _procesar_buscar_id(db, usuario, mensaje)
 
+    # Si pasó más de una hora y ya no hay recordatorio pendiente, no seguir en avances.
+    if (
+        sesion_nueva
+        and tenia_actividad
+        and usuario in _conversaciones
+        and _conversaciones[usuario].get("paso") == "avance_ejecucion"
+        and avance_contratista.estado_conversacion_avance(db, usuario) is None
+    ):
+        del _conversaciones[usuario]
+
     # Coordinación de visita: contratista cargando disponibilidad
     if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "visita_disponibilidad":
+        visita_id = _conversaciones[usuario].get("visita_id")
+        visita = db.get(Visita, visita_id) if visita_id else None
+        reclamo_visita = db.get(Reclamo, visita.reclamo_id) if visita else None
+        if reclamo_visita and reclamo_visita.estado == EstadoReclamo.EN_EJECUCION:
+            _conversaciones[usuario] = {
+                "paso": "avance_ejecucion",
+                "reclamo_id": reclamo_visita.id,
+            }
+            return _procesar_avance_ejecucion(db, usuario, mensaje)
         return _procesar_visita_disponibilidad(db, usuario, mensaje)
 
     # Coordinación de visita: creador eligiendo un horario
     if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "visita_eleccion":
         return _procesar_visita_eleccion(db, usuario, mensaje)
 
+    # Avance de obra: respuesta al recordatorio (paso en memoria o reconstruido)
+    if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "avance_ejecucion":
+        if texto in (
+            "ayuda",
+            "help",
+            "menu",
+            "menú",
+            "inicio",
+            "hola",
+            "hi",
+            "nuevo",
+            "crear",
+            "cargar",
+            "nuevo reclamo",
+            "libre",
+        ):
+            del _conversaciones[usuario]
+        else:
+            return _procesar_avance_ejecucion(db, usuario, mensaje)
+
     # Si no hay estado en memoria (ej. el backend se reinició), reconstruirlo desde la
     # base para no perder una coordinación de visita en curso.
     if usuario not in _conversaciones:
+        from services.avance_contratista import estado_conversacion_avance
         from services.coordinacion_visita import estado_conversacion_pendiente
 
         estado_db = estado_conversacion_pendiente(db, usuario)
+        if estado_db is None:
+            estado_db = estado_conversacion_avance(db, usuario)
         if estado_db is not None:
             _conversaciones[usuario] = estado_db
             if estado_db["paso"] == "visita_disponibilidad":
                 return _procesar_visita_disponibilidad(db, usuario, mensaje)
             if estado_db["paso"] == "visita_eleccion":
                 return _procesar_visita_eleccion(db, usuario, mensaje)
+            if estado_db["paso"] == "avance_ejecucion":
+                return _procesar_avance_ejecucion(db, usuario, mensaje)
 
     # Si el usuario está en medio de una conversación de creación
     if usuario in _conversaciones:
         return _procesar_creacion(db, usuario, mensaje)
+
+    # Primer mensaje que ya cuenta un problema → no mostrar el menú de bienvenida.
+    if ai_config.ai_whatsapp_enabled() and _parece_descripcion_reclamo(mensaje):
+        _iniciar_libre(usuario)
+        cuerpo = _sin_saludo_inicial(mensaje) or mensaje
+        return _procesar_creacion(db, usuario, cuerpo)
 
     # Comando: nuevo reclamo
     if texto in ("nuevo", "crear", "cargar", "nuevo reclamo"):
@@ -1203,6 +1540,26 @@ def procesar_media(db: Session, usuario: str, url_local: str, mime_type: str, ca
     if usuario:
         _ultima_actividad[usuario] = datetime.now(timezone.utc)
 
+    if usuario not in _conversaciones or _conversaciones[usuario].get("paso") != "avance_ejecucion":
+        estado_av = avance_contratista.estado_conversacion_avance(db, usuario)
+        if estado_av is not None:
+            _conversaciones[usuario] = estado_av
+
+    if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "avance_ejecucion":
+        from services import avance_contratista
+
+        conv = _conversaciones[usuario]
+        reclamo = db.get(Reclamo, conv["reclamo_id"])
+        if reclamo is None:
+            del _conversaciones[usuario]
+            return "⚠️ No encontré el reclamo. Escribí *ayuda* para ver los comandos."
+        avance_contratista.registrar_avance_media(db, reclamo, url_local, mime_type)
+        tipo_str = "📹 Video" if "video" in (mime_type or "") else "📷 Foto"
+        return (
+            f"{tipo_str} de avance en el reclamo #{reclamo.id} ✅\n"
+            "Podés seguir enviando o, si el trabajo ya está listo, escribí *terminé*."
+        )
+
     # Si el creador está aportando información adicional, guardar el archivo en el reclamo
     if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "info_adicional":
         conv = _conversaciones[usuario]
@@ -1258,37 +1615,46 @@ def procesar_media(db: Session, usuario: str, url_local: str, mime_type: str, ca
     )
 
 
-def procesar_audio(db: Session, usuario: str, audio: bytes, mime_type: str):
-    """Transcribe una nota de voz y la procesa como si fuera texto.
-
-    Si el usuario no tiene flujo en curso y el modo IA está habilitado,
-    arranca el modo libre directamente con el transcript.
-    """
-    try:
-        texto = stt.transcribir_audio(audio, mime_type)
-    except stt.TranscripcionError:
-        return "⚠️ No pude transcribir el audio. Probá escribir el mensaje."
-
-    registro.registrar(
-        db,
-        tipo=TipoRecomendacionIA.STT,
-        payload={"transcripcion": texto, "mime_type": mime_type},
-        proveedor=ai_config.ai_provider_name(),
+def procesar_audio(
+    db: Session,
+    usuario: str,
+    audio: bytes,
+    mime_type: str,
+    proveedor_stt: str | None = None,
+):
+    """Transcribe una nota de voz y la procesa como si fuera texto."""
+    _texto, _proveedor, respuesta = procesar_audio_detalle(
+        db, usuario, audio, mime_type, proveedor_stt=proveedor_stt
     )
-    db.commit()
+    return respuesta
 
-    prefijo = f'🎤 Entendí: "{texto}"\n\n'
 
-    if usuario not in _conversaciones:
-        if not ai_config.ai_whatsapp_enabled():
-            return (
-                prefijo
-                + "Para cargar un reclamo escribí *nuevo* y seguí los pasos."
-            )
-        _iniciar_libre(usuario)
+def procesar_audio_detalle(
+    db: Session,
+    usuario: str,
+    audio: bytes,
+    mime_type: str,
+    proveedor_stt: str | None = None,
+) -> tuple[str | None, str, object]:
+    """Como procesar_audio, pero también devuelve (transcripcion, proveedor, respuesta)."""
+    proveedor = ai_config.resolver_stt_provider(proveedor_stt)
+    try:
+        texto = stt.transcribir_audio(audio, mime_type, proveedor=proveedor)
+    except stt.TranscripcionError:
+        return None, proveedor, "⚠️ No pude transcribir el audio. Probá escribir el mensaje."
 
-    respuesta = procesar_mensaje(db, texto, usuario)
-    if isinstance(respuesta, dict):
-        respuesta["body"] = prefijo + respuesta.get("body", "")
-        return respuesta
-    return prefijo + respuesta
+    try:
+        registro.registrar(
+            db,
+            tipo=TipoRecomendacionIA.STT,
+            payload={"transcripcion": texto, "mime_type": mime_type},
+            proveedor=proveedor,
+        )
+        db.commit()
+    except Exception:
+        logger.exception("No se pudo persistir la transcripción STT")
+        db.rollback()
+
+    # El audio entra como texto: menú si es el primer mensaje, reclamo solo si
+    # ya eligió *nuevo* / modo IA o si el transcript es ese comando.
+    return texto, proveedor, procesar_mensaje(db, texto, usuario)

@@ -51,8 +51,38 @@ def ai_whatsapp_enabled() -> bool:
     return raw in ("1", "true", "yes", "on")
 
 
+def ai_stt_provider() -> str:
+    """Quién transcribe: mock | local | openai | gemini.
+
+    Por defecto Whisper local (faster-whisper). Mock sólo si AI_PROVIDER=mock
+    o si se setea AI_STT_PROVIDER=mock.
+    """
+    explicit = (os.getenv("AI_STT_PROVIDER") or "").strip().lower()
+    if explicit in ("mock", "local", "openai", "gemini"):
+        return explicit
+    if ai_provider_name() == "mock":
+        return "mock"
+    return "local"
+
+
+def resolver_stt_provider(override: str | None = None) -> str:
+    raw = (override or "").strip().lower()
+    if raw in ("mock", "local", "openai", "gemini"):
+        return raw
+    return ai_stt_provider()
+
+
 def ai_stt_model() -> str:
     return (os.getenv("AI_STT_MODEL") or "whisper-1").strip()
+
+
+def ai_stt_local_model() -> str:
+    return (os.getenv("AI_STT_LOCAL_MODEL") or "base").strip()
+
+
+def ai_stt_base_url() -> str | None:
+    raw = (os.getenv("AI_STT_BASE_URL") or "").strip().rstrip("/")
+    return raw or None
 
 
 def ai_stt_mock_texto() -> str:

@@ -17,10 +17,20 @@ export async function simularWhatsAppTexto(origen, texto) {
   return leerJson(response, 'No se pudo simular el mensaje.');
 }
 
-export async function simularWhatsAppMedia(origen, archivo, caption = '') {
+export async function reiniciarSimuladorWhatsApp(origen) {
+  const response = await fetchConAuth(`${API_URL}/whatsapp/simular/reiniciar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ origen }),
+  });
+  return leerJson(response, 'No se pudo reiniciar la charla.');
+}
+
+export async function simularWhatsAppMedia(origen, archivo, caption = '', proveedorStt = '') {
   const form = new FormData();
   form.append('origen', origen);
   form.append('caption', caption);
+  if (proveedorStt) form.append('proveedor_stt', proveedorStt);
   form.append('archivo', archivo);
   const response = await fetchConAuth(`${API_URL}/whatsapp/simular/media`, {
     method: 'POST',

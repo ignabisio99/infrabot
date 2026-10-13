@@ -1,7 +1,8 @@
+import json
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from models.adjunto_presupuesto import TipoAdjuntoPresupuesto
 from models.reclamo import EstadoReclamo, PrioridadReclamo
@@ -33,6 +34,43 @@ class DuplicadosOut(BaseModel):
     candidatos: list[DuplicadoOut]
 
 
+def _detalle_sin_precedentes(detalle: str | None) -> bool:
+    if not detalle:
+        return False
+    try:
+        data = json.loads(detalle) if isinstance(detalle, str) else detalle
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    motivo = (data.get("validacion") or {}).get("motivo")
+    if motivo in ("sin_referencias", "promedio_refs_invalido"):
+        return True
+    refs = data.get("referencias_ids")
+    return isinstance(refs, list) and len(refs) == 0
+
+
+def _justificacion_de_detalle(detalle: str | None) -> str | None:
+    if not detalle:
+        return None
+    try:
+        data = json.loads(detalle) if isinstance(detalle, str) else detalle
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    texto = data.get("justificacion")
+    if isinstance(texto, str) and texto.strip():
+        return texto.strip()
+    return None
+
+
+class TranscripcionOut(BaseModel):
+    texto: str
+    proveedor: str
+    mime_type: str
+
+
 class EstimacionPreliminarOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -48,6 +86,16 @@ class EstimacionPreliminarOut(BaseModel):
     requiere_revision: bool = False
     fecha: datetime
 
+    @computed_field
+    @property
+    def sin_precedentes(self) -> bool:
+        return _detalle_sin_precedentes(self.detalle)
+
+    @computed_field
+    @property
+    def justificacion(self) -> str | None:
+        return _justificacion_de_detalle(self.detalle)
+
 
 class AuditoriaOut(BaseModel):
     presupuesto_id: int
@@ -60,6 +108,7 @@ class AuditoriaOut(BaseModel):
     notas_tecnicas: str
     proveedor_notas: str
     sin_estimacion: bool
+    sin_precedentes: bool = False
 
 
 class InflacionSyncOut(BaseModel):
@@ -168,5 +217,6 @@ class AgenteOut(BaseModel):
 class SeguimientoOut(BaseModel):
     enviados: int
     omitidos: int
+    escalados: int = 0
     umbral_horas: float
     mensaje: str

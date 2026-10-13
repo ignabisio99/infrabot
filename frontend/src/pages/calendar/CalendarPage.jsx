@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Calendar, dayjsLocalizer } from 'react-big-calendar';
 import dayjs from 'dayjs';
 import {
@@ -14,8 +15,12 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import { IconArrowRight } from '@tabler/icons-react';
 
 import { listarVisitas } from '../../api/visitas';
+import { esAdministrador, esInspector } from '../../utils/auth';
+import { formatearIdReclamo } from '../../utils/ids';
+import { ClaimDetailDrawer } from '../claims/ClaimDetailDrawer';
 
 const localizer = dayjsLocalizer(dayjs);
 
@@ -91,12 +96,23 @@ function BarraCalendario({ date, label, onNavigate, onView, view }) {
 const componentes = { toolbar: BarraCalendario };
 
 export function CalendarPage() {
+  const navigate = useNavigate();
   const [fecha, setFecha] = useState(new Date());
   const [vista, setVista] = useState('month');
   const [visitas, setVisitas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [visitaSeleccionada, setVisitaSeleccionada] = useState(null);
+  const [reclamoId, setReclamoId] = useState(null);
+
+  const abrirReclamo = (id) => {
+    if (esAdministrador() || esInspector()) {
+      setVisitaSeleccionada(null);
+      setReclamoId(id);
+      return;
+    }
+    navigate(`/portal/reclamos/${id}/presupuestar`);
+  };
 
   useEffect(() => {
     listarVisitas()
@@ -187,7 +203,7 @@ export function CalendarPage() {
                   <Text size="xs" c="dimmed">
                     Reclamo
                   </Text>
-                  <Text>#{visitaSeleccionada.reclamo_id}</Text>
+                  <Text>{formatearIdReclamo(visitaSeleccionada.reclamo_id)}</Text>
                 </div>
               </SimpleGrid>
               {visitaSeleccionada.horario_confirmado && (
@@ -198,9 +214,16 @@ export function CalendarPage() {
                   {visitaSeleccionada.horario_confirmado}
                 </Text>
               )}
+              <Button
+                rightSection={<IconArrowRight size={16} />}
+                onClick={() => abrirReclamo(visitaSeleccionada.reclamo_id)}
+              >
+                Ver reclamo
+              </Button>
             </Stack>
           )}
         </Modal>
+        <ClaimDetailDrawer reclamoId={reclamoId} onClose={() => setReclamoId(null)} />
       </Stack>
     </Container>
   );

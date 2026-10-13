@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from core.ai import config as ai_config
 from core.ai.factory import get_llm_provider
 from models.reclamo import EstadoReclamo, Reclamo
+from services.ai.contexto_reclamo import texto_para_ia
 
 logger = logging.getLogger(__name__)
 
@@ -90,17 +91,17 @@ def buscar_duplicados(
 
     if semantico:
         # Sin prefiltro Jaccard: el LLM ve todos los candidatos (acotados) y decide.
-        preseleccion = _preparar_candidatos(reclamo, candidatos_db, con_jaccard=True)
+        preseleccion = _preparar_candidatos(reclamo, candidatos_db, db=db, con_jaccard=True)
         preseleccion = preseleccion[:MAX_CANDIDATOS_LLM]
         try:
-            return _evaluar_semantico(reclamo, preseleccion)[:limite]
+            return _evaluar_semantico(reclamo, preseleccion, db=db)[:limite]
         except Exception:
             logger.exception("Fallo duplicados semánticos; se cae a Jaccard")
             # Fallback: quedarse con los que Jaccard considera similares.
             return _filtrar_por_jaccard(preseleccion, umbral)[:limite]
 
     # Modo sin LLM: Jaccard puro.
-    preseleccion = _preparar_candidatos(reclamo, candidatos_db, con_jaccard=True)
+    preseleccion = _preparar_candidatos(reclamo, candidatos_db, db=db, con_jaccard=True)
     return _filtrar_por_jaccard(preseleccion, umbral)[:limite]
 
 
@@ -109,9 +110,10 @@ def _preparar_candidatos(
     candidatos_db: list[Reclamo],
     *,
     con_jaccard: bool,
+    db: Session | None = None,
 ) -> list[CandidatoDuplicado]:
     """Convierte filas de Reclamo en CandidatoDuplicado, calculando Jaccard como pista."""
-    tokens_origen = _tokens(reclamo.descripcion)
+    tokens_origen = _tokens(texto_para_ia(reclamo, db))
     preparados: list[CandidatoDuplicado] = []
     for otro in candidatos_db:
         sim = 0.0
@@ -145,7 +147,9 @@ def _filtrar_por_jaccard(
 
 
 def _evaluar_semantico(
-    reclamo: Reclamo, candidatos: list[CandidatoDuplicado]
+    reclamo: Reclamo,
+    candidatos: list[CandidatoDuplicado],
+    db: Session | None = None,
 ) -> list[CandidatoDuplicado]:
     """Le pide al LLM (ej. Gemini) que puntúe qué candidatos son el MISMO problema.
 
@@ -165,7 +169,7 @@ def _evaluar_semantico(
     user = (
         f"RECLAMO NUEVO (a cargar) en la escuela «{reclamo.nombre_escuela}»:\n"
         f"categoria={reclamo.categoria or 'sin clasificar'}\n"
-        f"descripcion: {reclamo.descripcion}\n\n"
+        f"descripcion: {texto_para_ia(reclamo, db)}\n\n"
         f"RECLAMOS YA EXISTENTES en la misma escuela (candidatos):\n{lista}\n\n"
         "Todos los candidatos son de la MISMA escuela, así que estar en la misma escuela "
         "NO los hace duplicados. Lo que decide es si describen el MISMO problema concreto.\n\n"

@@ -17,7 +17,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 import models  # noqa: F401 - registra todos los modelos antes del create_all
-from core.database import Base, get_db
+from core.database import Base, asegurar_valores_estado_reclamo, get_db
 from core.dependencies import get_current_admin
 from main import app
 from models.contratista import Contratista
@@ -49,6 +49,7 @@ def engine():
     engine_test = create_engine(url_test)
     Base.metadata.drop_all(bind=engine_test)
     Base.metadata.create_all(bind=engine_test)
+    asegurar_valores_estado_reclamo(engine_test)
     yield engine_test
     engine_test.dispose()
 

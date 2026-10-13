@@ -5,8 +5,11 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from sqlalchemy.orm import Session
+
 from core.ai.factory import get_llm_provider
 from models.reclamo import PrioridadReclamo, Reclamo
+from services.ai.contexto_reclamo import texto_para_ia
 from services.ai.prompts import CATEGORIAS_VALIDAS, SYSTEM_CLASIFICACION, user_clasificacion
 
 logger = logging.getLogger(__name__)
@@ -47,9 +50,9 @@ def clasificar_texto(
     return _parse(raw, provider.name)
 
 
-def clasificar_reclamo(reclamo: Reclamo) -> ResultadoClasificacion:
+def clasificar_reclamo(reclamo: Reclamo, db: Session | None = None) -> ResultadoClasificacion:
     return clasificar_texto(
-        reclamo.descripcion,
+        texto_para_ia(reclamo, db),
         escuela=reclamo.nombre_escuela,
         ubicacion=reclamo.ubicacion,
     )

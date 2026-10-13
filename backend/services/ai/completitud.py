@@ -34,22 +34,95 @@ class ResultadoCompletitud:
     proveedor: str
 
 
+_UBICACIONES_VAGAS = {
+    "patio",
+    "aula",
+    "baño",
+    "bano",
+    "escuela",
+    "el colegio",
+    "ahi",
+    "ahí",
+    "aca",
+    "acá",
+    "adentro",
+}
+
+
+def evaluar_completitud_heuristica(
+    *,
+    escuela: str,
+    ubicacion: str,
+    descripcion: str,
+) -> ResultadoCompletitud:
+    """Preguntas mínimas si Gemini no está (429, red, etc.)."""
+    faltantes: list[PreguntaFaltante] = []
+    if len((escuela or "").strip()) < 3:
+        faltantes.append(
+            PreguntaFaltante(
+                campo="nombre_escuela",
+                pregunta="¿Cuál es el nombre de la escuela?",
+            )
+        )
+    ubi = (ubicacion or "").strip()
+    if len(ubi) < 8 or ubi.lower() in _UBICACIONES_VAGAS:
+        faltantes.append(
+            PreguntaFaltante(
+                campo="ubicacion",
+                pregunta="¿En qué parte de la escuela es exactamente (piso, aula, patio, sector)?",
+            )
+        )
+    desc = (descripcion or "").strip()
+    if len(desc) < 40:
+        faltantes.append(
+            PreguntaFaltante(
+                campo="descripcion",
+                pregunta="¿Podés contar un poco más: qué elemento falló, desde cuándo y si afecta un aula o toda la escuela?",
+            )
+        )
+    elif not any(
+        pista in desc.lower()
+        for pista in ("desde", "hace", "afect", "toda", "aula", "riesgo", "no anda", "no funciona")
+    ):
+        faltantes.append(
+            PreguntaFaltante(
+                campo="descripcion",
+                pregunta="¿Desde cuándo pasa y qué tanto afecta (un aula, un sector, toda la escuela)?",
+            )
+        )
+    faltantes = faltantes[:2]
+    return ResultadoCompletitud(
+        completo=len(faltantes) == 0,
+        faltantes=faltantes,
+        datos_extraidos={},
+        proveedor="heuristica",
+    )
+
+
 def evaluar_completitud(
     *,
     escuela: str,
     ubicacion: str,
     descripcion: str,
 ) -> ResultadoCompletitud:
-    provider = get_llm_provider()
-    raw = provider.complete_json(
-        system=SYSTEM_COMPLETITUD,
-        user=user_completitud(
+    try:
+        provider = get_llm_provider()
+        raw = provider.complete_json(
+            system=SYSTEM_COMPLETITUD,
+            user=user_completitud(
+                escuela=escuela,
+                ubicacion=ubicacion,
+                descripcion=descripcion,
+            ),
+            schema_hint=_SCHEMA,
+        )
+    except Exception:
+        logger.warning("Completitud LLM no disponible; se usan preguntas heurísticas")
+        return evaluar_completitud_heuristica(
             escuela=escuela,
             ubicacion=ubicacion,
             descripcion=descripcion,
-        ),
-        schema_hint=_SCHEMA,
-    )
+        )
     faltantes_raw = raw.get("faltantes") or []
     faltantes: list[PreguntaFaltante] = []
     for f in faltantes_raw:

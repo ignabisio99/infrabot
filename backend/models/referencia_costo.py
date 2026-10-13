@@ -1,8 +1,8 @@
 """Tabla de costos históricos.
 
-Puente actual: se alimenta con seed placeholder y con sync desde presupuestos
-del sistema (`POST /ai/referencias/sync`, fuente=`presupuesto:{id}`).
-Más adelante se reemplaza/alimenta con datos reales del Consejo Escolar.
+Se alimenta con `backend/data/referencias_costo.csv` (seed inserta las que faltan;
+`POST /ai/referencias/csv` inserta y actualiza) y con sync desde presupuestos
+(`POST /ai/referencias/sync`, fuente=`presupuesto:{id}`).
 """
 
 from datetime import date, datetime, timezone

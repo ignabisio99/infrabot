@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from models.contratista import Contratista
-from models.reclamo import Reclamo
+from models.reclamo import EstadoReclamo, Reclamo
 from models.visita import EstadoVisita, Visita
 
 
@@ -124,6 +124,9 @@ def estado_conversacion_pendiente(db: Session, telefono: str) -> dict | None:
         .all()
     )
     for visita in visitas_disp:
+        reclamo = db.get(Reclamo, visita.reclamo_id)
+        if reclamo and reclamo.estado == EstadoReclamo.EN_EJECUCION:
+            continue
         contratista = db.get(Contratista, visita.contratista_id)
         if contratista and _mismo_numero(contratista.telefono, telefono):
             return {"paso": "visita_disponibilidad", "visita_id": visita.id}

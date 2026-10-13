@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from core.ai import config as ai_config
 from core.database import get_db
-from core.dependencies import get_current_admin
+from core.dependencies import get_current_admin, get_current_user
 from models.presupuesto import Presupuesto
 from models.reclamo import Reclamo
 from models.recomendacion_ia import RecomendacionIA, TipoRecomendacionIA
@@ -29,7 +29,9 @@ from schemas.ai import (
     RecomendacionIAOut,
     ReferenciasSyncOut,
     SeguimientoOut,
+    TranscripcionOut,
 )
+from services.referencias_costo import sincronizar_desde_csv
 from services.ai import (
     agente,
     auditoria,
@@ -41,11 +43,48 @@ from services.ai import (
     inflacion,
     ocr_presupuesto,
     registro,
+    stt,
     sync_historicos,
     vision_reclamo,
 )
 
 router = APIRouter(prefix="/ai", tags=["ai"])
+
+
+@router.post("/transcribir", response_model=TranscripcionOut)
+def transcribir_audio(
+    archivo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _usuario: Usuario = Depends(get_current_user),
+):
+    mime = archivo.content_type or "audio/ogg"
+    if not mime.startswith("audio/"):
+        raise HTTPException(status_code=400, detail="El archivo tiene que ser un audio")
+    contenido = archivo.file.read()
+    if not contenido:
+        raise HTTPException(status_code=400, detail="El audio está vacío")
+
+    try:
+        texto = stt.transcribir_audio(contenido, mime)
+    except stt.TranscripcionError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    try:
+        registro.registrar(
+            db,
+            tipo=TipoRecomendacionIA.STT,
+            payload={"transcripcion": texto, "mime_type": mime},
+            proveedor=ai_config.ai_stt_provider(),
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    return TranscripcionOut(
+        texto=texto,
+        proveedor=ai_config.ai_stt_provider(),
+        mime_type=mime,
+    )
 
 
 def _auditoria_out(informe) -> AuditoriaOut:
@@ -60,6 +99,7 @@ def _auditoria_out(informe) -> AuditoriaOut:
         notas_tecnicas=informe.notas_tecnicas,
         proveedor_notas=informe.proveedor_notas,
         sin_estimacion=informe.sin_estimacion,
+        sin_precedentes=informe.sin_precedentes,
     )
 
 
@@ -74,7 +114,7 @@ def clasificar_reclamo(
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
 
-    resultado = clasificacion.clasificar_reclamo(reclamo)
+    resultado = clasificacion.clasificar_reclamo(reclamo, db)
     aplicada = False
     if aplicar:
         clasificacion.aplicar_clasificacion(reclamo, resultado)
@@ -256,6 +296,7 @@ def obtener_ultima_auditoria(
         notas_tecnicas=payload.get("notas_tecnicas") or "",
         proveedor_notas=evento.proveedor or "n/a",
         sin_estimacion=bool(payload.get("sin_estimacion")),
+        sin_precedentes=bool(payload.get("sin_precedentes")),
     )
 
 
@@ -293,6 +334,23 @@ def sincronizar_referencias(
         mensaje=(
             "Referencias actualizadas desde presupuestos "
             f"(+{resultado.creadas} / ~{resultado.actualizadas})."
+        ),
+    )
+
+
+@router.post("/referencias/csv", response_model=ReferenciasSyncOut)
+def sincronizar_referencias_csv(
+    db: Session = Depends(get_db),
+    _admin: Usuario = Depends(get_current_admin),
+):
+    resultado = sincronizar_desde_csv(db)
+    db.commit()
+    return ReferenciasSyncOut(
+        creadas=resultado.creadas,
+        actualizadas=resultado.actualizadas,
+        mensaje=(
+            f"Precios de referencia: {resultado.creadas} nuevas, "
+            f"{resultado.actualizadas} actualizadas."
         ),
     )
 
@@ -390,10 +448,12 @@ def ejecutar_seguimiento_contratistas(
     return SeguimientoOut(
         enviados=resultado.enviados,
         omitidos=resultado.omitidos,
+        escalados=resultado.escalados,
         umbral_horas=seguimiento_horas(),
         mensaje=(
             f"Recordatorios enviados: {resultado.enviados}. "
-            f"Omitidos: {resultado.omitidos}."
+            f"Omitidos: {resultado.omitidos}. "
+            f"Pendiente de intervención: {resultado.escalados}."
         ),
     )
 

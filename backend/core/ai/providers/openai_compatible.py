@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 # Reintentos ante errores transitorios del LLM (Gemini 503 por saturación, etc.).
 _MAX_REINTENTOS_LLM = 3
 _BACKOFF_BASE = 1.0  # segundos; crece 1s, 2s, 4s entre intentos.
-_STATUS_REINTENTABLES = frozenset({429, 500, 502, 503, 504})
+# 429 no se reintenta: gasta el cupo y el caller ya tiene heurística.
+_STATUS_REINTENTABLES = frozenset({500, 502, 503, 504})
 
 
 # Instrucción de formato que se agrega a TODOS los prompts JSON. Evita que el modelo
@@ -227,7 +228,9 @@ class OpenAICompatibleProvider:
     def _post_con_reintentos(
         self, url: str, headers: dict, payload: dict
     ) -> dict[str, Any]:
-        """POST al LLM reintentando ante errores transitorios (503/429/5xx/red).
+        """POST al LLM reintentando ante errores transitorios (503/5xx/red).
+
+        No se reintenta 429: en cuota Gemini cada retry empeora el límite.
 
         Gemini devuelve 503 cuando está saturado ("spikes are usually temporary");
         un par de reintentos con backoff lo resuelven casi siempre.

@@ -68,11 +68,26 @@ export async function sugerirContratistas(reclamoId) {
   return leerJson(response, 'No se pudieron obtener contratistas sugeridos.');
 }
 
+export async function transcribirAudio(archivo) {
+  const form = new FormData();
+  form.append('archivo', archivo);
+  const response = await fetchConAuth(`${API_URL}/ai/transcribir`, {
+    method: 'POST',
+    body: form,
+  });
+  return leerJson(response, 'No se pudo transcribir el audio.');
+}
+
 export async function orquestarReclamo(reclamoId) {
   const response = await fetchConAuth(`${API_URL}/ai/reclamos/${reclamoId}/orquestar`, {
     method: 'POST',
   });
   return leerJson(response, 'No se pudo ejecutar el pipeline de IA.');
+}
+
+export async function sincronizarReferenciasCsv() {
+  const response = await fetchConAuth(`${API_URL}/ai/referencias/csv`, { method: 'POST' });
+  return leerJson(response, 'No se pudieron actualizar los precios de referencia.');
 }
 
 export async function ejecutarSeguimiento() {

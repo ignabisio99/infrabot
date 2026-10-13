@@ -35,6 +35,7 @@ import {
 } from '@tabler/icons-react';
 import logo from '../assets/logo-infrabot.jpeg';
 import { Footer } from '../components/Footer';
+import { NotificationBell } from './NotificationBell';
 import { listarUsuariosPendientes } from '../api/usuarios';
 import { esAdministrador } from '../utils/auth';
 import classes from './AppLayout.module.css';
@@ -146,7 +147,9 @@ export function AppLayout() {
             {<img src={logo} alt="InfraBot UTN" height={56} />}
           </Group>
 
-          <Menu shadow="md" width={200}>
+          <Group gap="sm">
+            {esAdministrador() && <NotificationBell />}
+            <Menu shadow="md" width={200}>
             <Menu.Target>
               <UnstyledButton>
                 <Group gap="xs">
@@ -170,7 +173,8 @@ export function AppLayout() {
                 Cerrar sesión
               </Menu.Item>
             </Menu.Dropdown>
-          </Menu>
+            </Menu>
+          </Group>
         </Group>
       </AppShell.Header>
 

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from core.ai.factory import get_llm_provider
 from models.presupuesto import Presupuesto
-from services.ai.estimacion import ultima_estimacion
+from services.ai.estimacion import sirve_como_ancla_auditoria, ultima_estimacion
 from services.ai.prompts import SYSTEM_AUDITORIA_NOTAS, user_auditoria_notas
 from services.configuracion_auditoria import (
     UMBRAL_APROBAR_DEFAULT,
@@ -44,6 +44,7 @@ class InformeAuditoria:
     notas_tecnicas: str
     proveedor_notas: str
     sin_estimacion: bool
+    sin_precedentes: bool = False
 
 
 def auditar_presupuesto(db: Session, presupuesto: Presupuesto) -> InformeAuditoria:
@@ -57,45 +58,49 @@ def auditar_presupuesto(db: Session, presupuesto: Presupuesto) -> InformeAuditor
     ).quantize(Decimal("0.01"))
 
     estimacion = ultima_estimacion(db, presupuesto.reclamo_id)
-    if estimacion is None:
+    if estimacion is None or not sirve_como_ancla_auditoria(estimacion):
+        sin_precedentes = estimacion is not None
+        notas = (
+            "No hay precedentes históricos para anclar la estimación "
+            "(confianza 0 o total $0). No se compara el presupuesto contra esa cifra. "
+            "Revisar con criterio técnico."
+            if sin_precedentes
+            else (
+                "No hay estimación preliminar para este reclamo. "
+                "Se genera sola al dar de alta el reclamo; si falta, regenerala desde el detalle."
+            )
+        )
         return InformeAuditoria(
             presupuesto_id=presupuesto.id,
             reclamo_id=presupuesto.reclamo_id,
             total_presupuesto=total_presupuesto,
-            total_estimacion=None,
+            total_estimacion=(
+                Decimal(estimacion.total).quantize(Decimal("0.01")) if estimacion is not None else None
+            ),
             desvio_absoluto=None,
             desvio_porcentual=None,
             recomendacion=RecomendacionAuditoria.REVISAR,
-            notas_tecnicas=(
-                "No hay estimación preliminar para este reclamo. "
-                "Se genera sola al dar de alta el reclamo; si falta, regenerala desde el detalle."
-            ),
+            notas_tecnicas=notas,
             proveedor_notas="n/a",
-            sin_estimacion=True,
+            sin_estimacion=estimacion is None,
+            sin_precedentes=sin_precedentes,
         )
 
     total_est = Decimal(estimacion.total).quantize(Decimal("0.01"))
-    if total_est <= 0:
-        desvio_pct = Decimal("1.00")
-        desvio_abs = total_presupuesto
-    else:
-        desvio_abs = (total_presupuesto - total_est).quantize(Decimal("0.01"))
-        desvio_pct = (abs(desvio_abs) / total_est).quantize(Decimal("0.0001"))
-
     umbral_aprobar, umbral_revisar = obtener_umbrales(db)
+    recomendacion, desvio_abs, desvio_pct = _recomendacion_por_desvio(
+        total_presupuesto, total_est, umbral_aprobar, umbral_revisar
+    )
 
-    if desvio_pct < umbral_aprobar:
-        recomendacion = RecomendacionAuditoria.APROBAR
-    elif desvio_pct <= umbral_revisar:
-        recomendacion = RecomendacionAuditoria.REVISAR
+    if desvio_abs <= 0:
+        sentido = "El presupuesto es igual o más barato que la estimación: es favorable."
     else:
-        recomendacion = RecomendacionAuditoria.RECHAZAR
-
+        sentido = "El presupuesto es más caro que la estimación."
     resumen = (
         f"Presupuesto #{presupuesto.id}: ${total_presupuesto}. "
         f"Estimación #{estimacion.id}: ${total_est}. "
         f"Desvío: ${desvio_abs} ({float(desvio_pct) * 100:.2f}%). "
-        f"Recomendación calculada: {recomendacion.value}."
+        f"{sentido} Recomendación calculada: {recomendacion.value}."
     )
     notas, proveedor = _notas_tecnicas(resumen)
 
@@ -110,7 +115,26 @@ def auditar_presupuesto(db: Session, presupuesto: Presupuesto) -> InformeAuditor
         notas_tecnicas=notas,
         proveedor_notas=proveedor,
         sin_estimacion=False,
+        sin_precedentes=False,
     )
+
+
+def _recomendacion_por_desvio(
+    total_presupuesto: Decimal,
+    total_est: Decimal,
+    umbral_aprobar: Decimal,
+    umbral_revisar: Decimal,
+) -> tuple[RecomendacionAuditoria, Decimal, Decimal]:
+    """Solo penaliza si el presupuesto es más caro. Más barato o igual → APROBAR."""
+    desvio_abs = (total_presupuesto - total_est).quantize(Decimal("0.01"))
+    desvio_pct = (desvio_abs / total_est).quantize(Decimal("0.0001"))
+    if desvio_abs <= 0:
+        return RecomendacionAuditoria.APROBAR, desvio_abs, desvio_pct
+    if desvio_pct < umbral_aprobar:
+        return RecomendacionAuditoria.APROBAR, desvio_abs, desvio_pct
+    if desvio_pct <= umbral_revisar:
+        return RecomendacionAuditoria.REVISAR, desvio_abs, desvio_pct
+    return RecomendacionAuditoria.RECHAZAR, desvio_abs, desvio_pct
 
 
 def _notas_tecnicas(resumen: str) -> tuple[str, str]:
@@ -151,6 +175,7 @@ def persistir_informe(db: Session, informe: InformeAuditoria):
             else None,
             "notas_tecnicas": informe.notas_tecnicas,
             "sin_estimacion": informe.sin_estimacion,
+            "sin_precedentes": informe.sin_precedentes,
         },
         reclamo_id=informe.reclamo_id,
         presupuesto_id=informe.presupuesto_id,

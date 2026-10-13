@@ -10,6 +10,7 @@ from pathlib import Path
 
 import httpx
 
+from core.ai.config import ai_ssl_verify
 from core.storage import UPLOADS_DIR
 
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN", "")
@@ -32,7 +33,13 @@ def _headers() -> dict:
 
 
 def _enviar(payload: dict) -> dict:
-    response = httpx.post(GRAPH_API_URL, headers=_headers(), json=payload, timeout=10)
+    response = httpx.post(
+        GRAPH_API_URL,
+        headers=_headers(),
+        json=payload,
+        timeout=10,
+        verify=ai_ssl_verify(),
+    )
     if response.status_code != 200:
         print(f"[WHATSAPP] Error: {response.status_code} - {response.text}")
     return response.json()
@@ -128,7 +135,7 @@ def _descargar_binario(media_id: str) -> tuple[bytes, str]:
     # Paso 1: obtener la URL del archivo
     meta_url = f"https://graph.facebook.com/v21.0/{media_id}"
     try:
-        resp = httpx.get(meta_url, headers=headers, timeout=10)
+        resp = httpx.get(meta_url, headers=headers, timeout=10, verify=ai_ssl_verify())
         if resp.status_code != 200:
             print(f"[WHATSAPP] Error obteniendo media URL: {resp.status_code} - {resp.text}")
             return (b"", "")
@@ -144,7 +151,7 @@ def _descargar_binario(media_id: str) -> tuple[bytes, str]:
 
     # Paso 2: descargar el archivo
     try:
-        resp = httpx.get(download_url, headers=headers, timeout=30)
+        resp = httpx.get(download_url, headers=headers, timeout=30, verify=ai_ssl_verify())
         if resp.status_code != 200:
             print(f"[WHATSAPP] Error descargando media: {resp.status_code}")
             return (b"", "")

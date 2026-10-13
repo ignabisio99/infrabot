@@ -25,6 +25,7 @@ const ETIQUETA_ESTADO = {
   PENDIENTE_COORDINACION: 'Pendiente de coordinación',
   VISITA_COORDINADA: 'Visita coordinada',
   EN_EJECUCION: 'En ejecución',
+  PENDIENTE_INTERVENCION: 'Pendiente de intervención',
   FINALIZADO: 'Finalizado',
   DESIERTO: 'Desierto',
   RECHAZADO: 'Rechazado',

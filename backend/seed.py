@@ -4,6 +4,9 @@ Uso:
     docker compose exec backend python seed.py           # solo si las tablas están vacías
     docker compose exec backend python seed.py --reset    # recrea el schema y recarga todo
 
+Los costos históricos salen de `data/referencias_costo.csv` y solo se insertan
+si todavía no hay una fila con la misma categoría y descripción.
+
 `--reset` borra y recrea las tablas a partir de los modelos, así que también sirve para
 poner al día una base que quedó desfasada porque un modelo cambió. Deja un admin de
 desarrollo listo para entrar (ver ADMIN_EMAIL / ADMIN_PASSWORD).
@@ -11,7 +14,6 @@ desarrollo listo para entrar (ver ADMIN_EMAIL / ADMIN_PASSWORD).
 
 import logging
 import sys
-from datetime import date
 from decimal import Decimal
 
 import models  # noqa: F401 - registra TODOS los modelos en la metadata antes de create_all
@@ -22,6 +24,7 @@ from core.database import (
     asegurar_columna_detalle_tarea,
     asegurar_columna_tipo_item,
     asegurar_tipo_usuario_inspector,
+    asegurar_valor_analisis_agente,
     engine,
 )
 from models import (
@@ -37,13 +40,13 @@ from models import (
     Presupuesto,
     PrioridadReclamo,
     Reclamo,
-    ReferenciaCosto,
     TipoItemPresupuesto,
     TipoUsuario,
     Usuario,
 )
 from models.rol_mano_obra import asegurar_roles_iniciales
 from services import estados_presupuesto, estados_reclamo
+from services.referencias_costo import cargar_referencias_si_faltan
 
 # Usuario administrador para poder entrar a la app en un entorno recién creado.
 # El registro por la UI no sirve para esto: deja la cuenta sin confirmar y esperando
@@ -215,106 +218,6 @@ RECLAMOS = [
     ),
 ]
 
-
-# Costos de referencia placeholder (reemplazables por históricos reales del Consejo).
-REFERENCIAS_COSTO = [
-    dict(
-        categoria="Electricidad",
-        descripcion="Reparación de tablero eléctrico principal escolar",
-        monto_ars=180000,
-        fecha_referencia=date(2024, 6, 1),
-        unidad="trabajo",
-        fuente="seed_placeholder",
-    ),
-    dict(
-        categoria="Electricidad",
-        descripcion="Cambio de cables y tomas en aula",
-        monto_ars=95000,
-        fecha_referencia=date(2024, 3, 1),
-        unidad="aula",
-        fuente="seed_placeholder",
-    ),
-    dict(
-        categoria="Plomería",
-        descripcion="Reparación de pérdida de agua en baño escolar",
-        monto_ars=75000,
-        fecha_referencia=date(2024, 8, 1),
-        unidad="baño",
-        fuente="seed_placeholder",
-    ),
-    dict(
-        categoria="Plomería",
-        descripcion="Reemplazo de cañería PVC y grifería",
-        monto_ars=110000,
-        fecha_referencia=date(2024, 1, 1),
-        unidad="trabajo",
-        fuente="seed_placeholder",
-    ),
-    dict(
-        categoria="Techos",
-        descripcion="Reparación de filtraciones y chapas en techo SUM",
-        monto_ars=320000,
-        fecha_referencia=date(2024, 5, 1),
-        unidad="techo",
-        fuente="seed_placeholder",
-    ),
-    dict(
-        categoria="Techos",
-        descripcion="Sellado de goteras en aula",
-        monto_ars=85000,
-        fecha_referencia=date(2023, 11, 1),
-        unidad="aula",
-        fuente="seed_placeholder",
-    ),
-    dict(
-        categoria="Gas",
-        descripcion="Revisión y reparación de instalación de gas escolar",
-        monto_ars=150000,
-        fecha_referencia=date(2024, 4, 1),
-        unidad="trabajo",
-        fuente="seed_placeholder",
-    ),
-    dict(
-        categoria="Pintura",
-        descripcion="Pintura de aula estándar",
-        monto_ars=60000,
-        fecha_referencia=date(2024, 2, 1),
-        unidad="aula",
-        fuente="seed_placeholder",
-    ),
-    dict(
-        categoria="Pisos",
-        descripcion="Reposición de baldosas en pasillo",
-        monto_ars=140000,
-        fecha_referencia=date(2024, 7, 1),
-        unidad="pasillo",
-        fuente="seed_placeholder",
-    ),
-    dict(
-        categoria="Aberturas",
-        descripcion="Cambio de ventana de aula",
-        monto_ars=200000,
-        fecha_referencia=date(2024, 9, 1),
-        unidad="ventana",
-        fuente="seed_placeholder",
-    ),
-    dict(
-        categoria="Infraestructura",
-        descripcion="Reparación de grieta estructural en pared de patio",
-        monto_ars=250000,
-        fecha_referencia=date(2023, 12, 1),
-        unidad="trabajo",
-        fuente="seed_placeholder",
-    ),
-    dict(
-        categoria="Otro",
-        descripcion="Trabajo general de mantenimiento menor",
-        monto_ars=50000,
-        fecha_referencia=date(2024, 10, 1),
-        unidad="trabajo",
-        fuente="seed_placeholder",
-    ),
-]
 
 # Cache IPC de respaldo (valores ilustrativos; sync real vía /ai/inflacion/sync).
 INDICES_INFLACION = [
@@ -579,7 +482,9 @@ def seed(db):
     crear_reclamos(db, contratistas)
     _seed_reclamos_reporte(db)
 
-    db.add_all([ReferenciaCosto(**r) for r in REFERENCIAS_COSTO])
+    creadas_refs = cargar_referencias_si_faltan(db)
+    if creadas_refs:
+        logger.info("Referencias de costo desde CSV: %d nuevas.", creadas_refs)
     db.add_all([IndiceInflacion(**i) for i in INDICES_INFLACION])
     db.add(
         ConfiguracionAuditoria(
@@ -606,6 +511,7 @@ def main():
         asegurar_columna_tipo_item()
         asegurar_columna_detalle_tarea()
         asegurar_tipo_usuario_inspector()
+        asegurar_valor_analisis_agente()
 
     db = SessionLocal()
     try:
@@ -619,6 +525,11 @@ def main():
             logger.info("Inspector creado: %s / %s", INSPECTOR_EMAIL, INSPECTOR_PASSWORD)
 
         asegurar_roles_iniciales(db)
+
+        creadas_refs = cargar_referencias_si_faltan(db)
+        if creadas_refs:
+            db.commit()
+            logger.info("Referencias de costo desde CSV: %d nuevas.", creadas_refs)
 
         if not reiniciar and db.query(Reclamo).first() is not None:
             logger.info("Ya hay datos cargados. Usá --reset si querés borrar todo y recargar.")

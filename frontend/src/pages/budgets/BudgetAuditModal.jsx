@@ -82,6 +82,12 @@ export function BudgetAuditModal({ presupuesto, onClose }) {
               detalle.
             </Alert>
           )}
+          {informe.sin_precedentes && (
+            <Alert color="yellow" title="Sin precedentes históricos">
+              No hay ancla de costos similares. No se usa una estimación en $0 para rechazar el
+              presupuesto: hay que revisarlo con criterio técnico.
+            </Alert>
+          )}
 
           <Group gap="xs">
             <Text size="sm" fw={600}>
@@ -106,7 +112,9 @@ export function BudgetAuditModal({ presupuesto, onClose }) {
             {informe.desvio_absoluto != null
               ? formatoMoneda.format(Number(informe.desvio_absoluto))
               : '—'}
-            {desvioPct != null ? ` (${desvioPct.toFixed(1)}%)` : ''}
+            {desvioPct != null
+              ? ` (${desvioPct.toFixed(1)}%${desvioPct < 0 ? ' por debajo' : ''})`
+              : ''}
           </Text>
 
           <Text size="sm">{informe.notas_tecnicas}</Text>

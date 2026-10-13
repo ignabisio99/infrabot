@@ -10,6 +10,9 @@ Así las reglas viven en un solo lugar y cada cambio queda registrado en el hist
                           └─(nadie cotizó)────────────> DESIERTO ──> PENDIENTE_PRESUPUESTO
 
     EN_EVALUACION ─(se aprueba un presupuesto)*──> APROBADO ─(el bot pide disponibilidad)*─> PENDIENTE_COORDINACION ─(se confirma la fecha)*─> VISITA_COORDINADA ──> EN_EJECUCION ──> FINALIZADO
+                                                                                              └─(sin respuesta)*─> PENDIENTE_INTERVENCION ─(responde)*─> EN_EJECUCION
+                                                                                                                                                    ├─(elige oferta ya enviada)*─> APROBADO
+                                                                                                                                                    └─(convoca de nuevo)*─> PENDIENTE_PRESUPUESTO
                   └─(no queda ninguno vigente)*───> PENDIENTE_PRESUPUESTO
 
     CANCELADO: alcanzable desde cualquier estado no terminal.
@@ -71,17 +74,43 @@ TRANSICIONES: dict[EstadoReclamo, frozenset[EstadoReclamo]] = {
     ),
     # Tras aprobar, el bot arranca la coordinación de la visita con el contratista.
     EstadoReclamo.APROBADO: frozenset(
-        {EstadoReclamo.PENDIENTE_COORDINACION, EstadoReclamo.CANCELADO}
+        {
+            EstadoReclamo.PENDIENTE_COORDINACION,
+            EstadoReclamo.PENDIENTE_PRESUPUESTO,
+            EstadoReclamo.CANCELADO,
+        }
     ),
     # Mientras se negocian horarios entre contratista y escuela.
     EstadoReclamo.PENDIENTE_COORDINACION: frozenset(
-        {EstadoReclamo.VISITA_COORDINADA, EstadoReclamo.CANCELADO}
+        {
+            EstadoReclamo.VISITA_COORDINADA,
+            EstadoReclamo.PENDIENTE_PRESUPUESTO,
+            EstadoReclamo.CANCELADO,
+        }
     ),
     # Con la visita agendada, arranca la ejecución cuando el trabajo comienza.
     EstadoReclamo.VISITA_COORDINADA: frozenset(
-        {EstadoReclamo.EN_EJECUCION, EstadoReclamo.CANCELADO}
+        {
+            EstadoReclamo.EN_EJECUCION,
+            EstadoReclamo.PENDIENTE_PRESUPUESTO,
+            EstadoReclamo.CANCELADO,
+        }
     ),
-    EstadoReclamo.EN_EJECUCION: frozenset({EstadoReclamo.FINALIZADO, EstadoReclamo.CANCELADO}),
+    EstadoReclamo.EN_EJECUCION: frozenset(
+        {
+            EstadoReclamo.FINALIZADO,
+            EstadoReclamo.PENDIENTE_INTERVENCION,
+            EstadoReclamo.CANCELADO,
+        }
+    ),
+    EstadoReclamo.PENDIENTE_INTERVENCION: frozenset(
+        {
+            EstadoReclamo.EN_EJECUCION,
+            EstadoReclamo.APROBADO,
+            EstadoReclamo.PENDIENTE_PRESUPUESTO,
+            EstadoReclamo.CANCELADO,
+        }
+    ),
     # Se puede reabrir la convocatoria tras un llamado desierto.
     EstadoReclamo.DESIERTO: frozenset(
         {EstadoReclamo.PENDIENTE_PRESUPUESTO, EstadoReclamo.CANCELADO}
@@ -102,8 +131,17 @@ TRANSICIONES_SOLO_AUTOMATICAS: dict[EstadoReclamo, frozenset[EstadoReclamo]] = {
         {EstadoReclamo.PENDIENTE_PRESUPUESTO, EstadoReclamo.APROBADO}
     ),
     # La coordinación de la visita la maneja el bot, no una persona desde la UI.
-    EstadoReclamo.APROBADO: frozenset({EstadoReclamo.PENDIENTE_COORDINACION}),
-    EstadoReclamo.PENDIENTE_COORDINACION: frozenset({EstadoReclamo.VISITA_COORDINADA}),
+    EstadoReclamo.APROBADO: frozenset(
+        {EstadoReclamo.PENDIENTE_COORDINACION, EstadoReclamo.PENDIENTE_PRESUPUESTO}
+    ),
+    EstadoReclamo.PENDIENTE_COORDINACION: frozenset(
+        {EstadoReclamo.VISITA_COORDINADA, EstadoReclamo.PENDIENTE_PRESUPUESTO}
+    ),
+    EstadoReclamo.VISITA_COORDINADA: frozenset({EstadoReclamo.PENDIENTE_PRESUPUESTO}),
+    EstadoReclamo.EN_EJECUCION: frozenset({EstadoReclamo.PENDIENTE_INTERVENCION}),
+    EstadoReclamo.PENDIENTE_INTERVENCION: frozenset(
+        {EstadoReclamo.PENDIENTE_PRESUPUESTO, EstadoReclamo.APROBADO}
+    ),
 }
 
 # Los estados que se deducen de los presupuestos. Fuera de estos tres el reclamo no se
@@ -223,6 +261,13 @@ def cambiar_estado(
         motivo=(motivo or "").strip() or None,
     )
     db.add(evento)
+    if (
+        estado_anterior is EstadoReclamo.PENDIENTE_INTERVENCION
+        and nuevo_estado is EstadoReclamo.EN_EJECUCION
+    ):
+        from services.seguimiento import reiniciar_reloj_seguimiento
+
+        reiniciar_reloj_seguimiento(db, reclamo)
     return evento
 
 

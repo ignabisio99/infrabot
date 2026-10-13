@@ -173,12 +173,19 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
                 </Group>
               }
             >
+              {informe.sin_precedentes && (
+                <Text size="sm" mb={4}>
+                  Sin precedentes históricos: no se compara contra una estimación en $0.
+                </Text>
+              )}
               <Text size="sm">
                 Presupuesto {formatoMoneda.format(Number(informe.total_presupuesto))}
-                {informe.total_estimacion != null
+                {informe.total_estimacion != null && !informe.sin_precedentes
                   ? ` · Estimación ${formatoMoneda.format(Number(informe.total_estimacion))}`
                   : ''}
-                {desvioPct != null ? ` · Desvío ${desvioPct.toFixed(1)}%` : ''}
+                {desvioPct != null
+                  ? ` · Desvío ${desvioPct.toFixed(1)}%${desvioPct < 0 ? ' por debajo' : ''}`
+                  : ''}
               </Text>
               {informe.notas_tecnicas && (
                 <Text size="sm" mt={4}>

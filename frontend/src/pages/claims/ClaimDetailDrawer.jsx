@@ -1,17 +1,22 @@
 import { useEffect, useState } from 'react';
 import {
+  Alert,
   Badge,
   Button,
   Drawer,
   Group,
   Loader,
+  Modal,
   Paper,
+  Radio,
+  Stack,
   Tabs,
   Text,
   ThemeIcon,
   Timeline,
 } from '@mantine/core';
 import {
+  IconAlertTriangle,
   IconArrowRight,
   IconBan,
   IconBolt,
@@ -35,10 +40,16 @@ import {
   obtenerHistorialReclamo,
   obtenerReclamo,
   obtenerVisitaReclamo,
+  asignarOfertaExistente,
+  cambiarEstadoReclamo,
+  listarOfertasReutilizables,
+  reabrirConvocatoria,
 } from '../../api/reclamos';
+import { formatoMoneda } from '../../utils/formatters';
+import { avisarNotificacionesCambiaron } from '../../layout/NotificationBell';
 import { formatearIdReclamo } from '../../utils/ids';
 import { esAdministrador, esInspector } from '../../utils/auth';
-import { notifyError } from '../../utils/notifications';
+import { notifyError, notifySuccess } from '../../utils/notifications';
 import { BudgetRequestsList } from './BudgetRequestsList';
 import { ChangeStatusModal } from './ChangeStatusModal';
 import { ClaimCommentsThread } from './ClaimComments';
@@ -47,7 +58,12 @@ import { ClaimPhotosManager } from './ClaimPhotosManager';
 import { NotifyContractorsModal } from './NotifyContractorsModal';
 import { PriorityBadge } from './PriorityBadge';
 import { StatusBadge } from './StatusBadge';
-import { colorPorEstado, estadosFinales, etiquetaPorEstado, proximoPasoPorEstado } from './estados';
+import {
+  colorPorEstado,
+  estadosFinales,
+  etiquetaPorEstado,
+  proximoPasoPorEstado,
+} from './estados';
 
 const iconoPorEstado = {
   PENDIENTE_REVISION: IconClipboardList,
@@ -57,6 +73,7 @@ const iconoPorEstado = {
   PENDIENTE_COORDINACION: IconCalendarEvent,
   VISITA_COORDINADA: IconCalendarEvent,
   EN_EJECUCION: IconTruck,
+  PENDIENTE_INTERVENCION: IconAlertTriangle,
   FINALIZADO: IconChecks,
   DESIERTO: IconBan,
   RECHAZADO: IconBan,
@@ -130,6 +147,13 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
 
   const [notificarAbierto, setNotificarAbierto] = useState(false);
   const [cambiarEstadoAbierto, setCambiarEstadoAbierto] = useState(false);
+  const [confirmarReabrir, setConfirmarReabrir] = useState(false);
+  const [reabriendo, setReabriendo] = useState(false);
+  const [asignandoOferta, setAsignandoOferta] = useState(false);
+  const [volviendoEjecucion, setVolviendoEjecucion] = useState(false);
+  const [ofertasReutilizables, setOfertasReutilizables] = useState([]);
+  const [cargandoOfertas, setCargandoOfertas] = useState(false);
+  const [ofertaElegida, setOfertaElegida] = useState(null);
 
   const cargadoCoincide = ultimoCargado.id === reclamoId;
   const reclamo = cargadoCoincide ? ultimoCargado.reclamo : null;
@@ -143,12 +167,85 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
   const inspector = esInspector();
   const puedeCambiarEstado = esAdmin && (reclamo?.estados_posibles?.length ?? 0) > 0;
   const puedeNotificar = esAdmin && reclamo?.estado === 'PENDIENTE_PRESUPUESTO';
+  const pendienteIntervencion = reclamo?.estado === 'PENDIENTE_INTERVENCION';
+
+  const volverAEjecucion = async () => {
+    setVolviendoEjecucion(true);
+    try {
+      await cambiarEstadoReclamo(
+        reclamo.id,
+        'EN_EJECUCION',
+        'El administrador confirmó que el contratista sigue en obra',
+      );
+      notifySuccess('El reclamo volvió a ejecución.');
+      setRecarga((n) => n + 1);
+      onReclamoActualizado?.();
+      avisarNotificacionesCambiaron();
+    } catch (err) {
+      notifyError(err.message);
+    } finally {
+      setVolviendoEjecucion(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!confirmarReabrir || !reclamo?.id) return;
+    setCargandoOfertas(true);
+    setOfertaElegida(null);
+    listarOfertasReutilizables(reclamo.id)
+      .then(setOfertasReutilizables)
+      .catch((err) => {
+        notifyError(err.message);
+        setOfertasReutilizables([]);
+      })
+      .finally(() => setCargandoOfertas(false));
+  }, [confirmarReabrir, reclamo?.id]);
+
+  const cancelarPresupuestoYConvocar = async () => {
+    setReabriendo(true);
+    try {
+      await reabrirConvocatoria(reclamo.id);
+      notifySuccess(
+        'Se canceló el presupuesto. Avisamos a la escuela y al contratista: el reclamo volvió a presupuestos.',
+      );
+      setConfirmarReabrir(false);
+      setRecarga((n) => n + 1);
+      onReclamoActualizado?.();
+      avisarNotificacionesCambiaron();
+      setNotificarAbierto(true);
+    } catch (err) {
+      notifyError(err.message);
+    } finally {
+      setReabriendo(false);
+    }
+  };
+
+  const elegirOfertaExistente = async () => {
+    if (!ofertaElegida) return;
+    setAsignandoOferta(true);
+    try {
+      await asignarOfertaExistente(reclamo.id, Number(ofertaElegida));
+      notifySuccess(
+        'Se asignó otra oferta ya enviada. Avisamos a la escuela y se coordina una nueva visita.',
+      );
+      setConfirmarReabrir(false);
+      setRecarga((n) => n + 1);
+      onReclamoActualizado?.();
+      avisarNotificacionesCambiaron();
+    } catch (err) {
+      notifyError(err.message);
+    } finally {
+      setAsignandoOferta(false);
+    }
+  };
   // Una vez solicitado el presupuesto, el reclamo deja PENDIENTE_REVISION. A partir
   // de ahí tiene sentido ver a quién se le pidió y quién ya respondió.
   const mostrarSolicitudes = esAdmin && reclamo && reclamo.estado !== 'PENDIENTE_REVISION';
   const visitaYaCoordinada =
     visita?.estado === 'CONFIRMADA' ||
-    ['VISITA_COORDINADA', 'EN_EJECUCION', 'FINALIZADO'].includes(reclamo?.estado);
+    ['VISITA_COORDINADA', 'EN_EJECUCION', 'PENDIENTE_INTERVENCION', 'FINALIZADO'].includes(
+      reclamo?.estado,
+    );
 
   return (
     <Drawer
@@ -205,6 +302,37 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
                 </Text>
               </Text>
             </Group>
+          )}
+
+          {pendienteIntervencion && (
+            <Alert
+              color="orange"
+              variant="light"
+              icon={<IconAlertTriangle size={18} />}
+              mb="md"
+              title="Pendiente de intervención"
+            >
+              <Text size="sm" mb={esAdmin ? 'sm' : 0}>
+                El contratista no respondió los recordatorios de avance. Si hablaste con él y
+                sigue en obra, volvé a ejecución. Si no, podés elegir otra oferta que ya se
+                había enviado o convocar a otros contratistas.
+              </Text>
+              {esAdmin && (
+                <Group gap="sm">
+                  <Button
+                    variant="light"
+                    color="indigo"
+                    loading={volviendoEjecucion}
+                    onClick={volverAEjecucion}
+                  >
+                    Volver a ejecución
+                  </Button>
+                  <Button color="orange" onClick={() => setConfirmarReabrir(true)}>
+                    Cambiar contratista
+                  </Button>
+                </Group>
+              )}
+            </Alert>
           )}
 
           {proximoPaso && (
@@ -427,13 +555,70 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
             )}
           </Tabs>
 
-          {puedeNotificar && (
+          {esAdmin && (
             <NotifyContractorsModal
               reclamoId={reclamo.id}
               opened={notificarAbierto}
               onClose={() => setNotificarAbierto(false)}
             />
           )}
+
+          <Modal
+            opened={confirmarReabrir}
+            onClose={() => setConfirmarReabrir(false)}
+            title="Cambiar contratista"
+            centered
+          >
+            <Stack gap="md">
+              {cargandoOfertas && <Loader size="sm" />}
+              {!cargandoOfertas && ofertasReutilizables.length > 0 && (
+                <>
+                  <Text size="sm">
+                    Hay ofertas que ya se habían enviado y no se eligieron. Podés asignar una
+                    ahora: se cancela el presupuesto actual y se coordina una visita con ese
+                    contratista.
+                  </Text>
+                  <Radio.Group value={ofertaElegida} onChange={setOfertaElegida}>
+                    <Stack gap="xs">
+                      {ofertasReutilizables.map((oferta) => (
+                        <Radio
+                          key={oferta.presupuesto_id}
+                          value={String(oferta.presupuesto_id)}
+                          label={`${oferta.nombre_empresa} — ${formatoMoneda.format(oferta.monto)}`}
+                        />
+                      ))}
+                    </Stack>
+                  </Radio.Group>
+                  <Button
+                    color="teal"
+                    loading={asignandoOferta}
+                    disabled={!ofertaElegida}
+                    onClick={elegirOfertaExistente}
+                  >
+                    Asignar esta oferta
+                  </Button>
+                </>
+              )}
+              <Text size="sm" c={ofertasReutilizables.length > 0 ? 'dimmed' : undefined}>
+                {ofertasReutilizables.length > 0
+                  ? 'O cancelá el presupuesto aprobado y volvé a convocar a otros contratistas.'
+                  : 'Se rechaza el presupuesto aprobado, se cancela la visita y el reclamo vuelve a pendiente de presupuesto. Se avisa por WhatsApp a la escuela y al contratista.'}
+              </Text>
+              <Group justify="flex-end">
+                <Button variant="default" onClick={() => setConfirmarReabrir(false)}>
+                  Volver
+                </Button>
+                <Button
+                  color="orange"
+                  variant={ofertasReutilizables.length > 0 ? 'light' : 'filled'}
+                  loading={reabriendo}
+                  onClick={cancelarPresupuestoYConvocar}
+                >
+                  Convocar a otros
+                </Button>
+              </Group>
+            </Stack>
+          </Modal>
 
           <ChangeStatusModal
             reclamo={cambiarEstadoAbierto ? reclamo : null}

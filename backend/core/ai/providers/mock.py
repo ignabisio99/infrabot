@@ -77,6 +77,8 @@ class MockProvider:
             return _derivacion(user)
         if task == "duplicados_semanticos":
             return _duplicados_semanticos(user)
+        if task == "resumen_reclamo":
+            return _resumen_reclamo(user)
         if task == "extraccion_reclamo":
             return _extraccion_reclamo(user)
         if task == "vision_reclamo":
@@ -177,6 +179,8 @@ def _infer_task(system: str, user: str) -> str:
         return "derivacion"
     if "similitud_semantica" in blob or "candidatos:" in blob:
         return "duplicados_semanticos"
+    if "muletillas" in blob or "notas de la conversación" in blob or "resumen del reclamo" in blob:
+        return "resumen_reclamo"
     if "mensaje del usuario" in blob or "texto libre" in blob:
         return "extraccion_reclamo"
     if "clasific" in blob or "categoría" in blob or "categoria" in blob:
@@ -307,6 +311,21 @@ def _extraccion_reclamo(user: str) -> dict[str, Any]:
     }
 
 
+def _resumen_reclamo(user: str) -> dict[str, Any]:
+    cuerpo = user.split("Notas de la conversación:", 1)[-1].strip()
+    utiles = []
+    for linea in cuerpo.splitlines():
+        t = linea.strip()
+        if not t:
+            continue
+        bajo = t.lower()
+        if bajo in ("ok", "si", "sí", "dale", "listo") or "flakito" in bajo or "ya te dije" in bajo:
+            continue
+        if t not in utiles:
+            utiles.append(t)
+    return {"descripcion": " ".join(utiles) or cuerpo}
+
+
 def _clasificar(user: str, hint: dict[str, Any]) -> dict[str, Any]:
     texto = user.lower()
     categoria = "Otro"
@@ -345,25 +364,39 @@ def _estimar(user: str, hint: dict[str, Any]) -> dict[str, Any]:
     categoria = (cat_match.group(1).strip() if cat_match else "Otro")
     prioridad = (pri_match.group(1).strip().upper() if pri_match else "MEDIA")
 
-    base = {
-        "Electricidad": (80_000, 120_000, 15_000),
-        "Plomería": (60_000, 100_000, 10_000),
-        "Gas": (90_000, 140_000, 20_000),
-        "Techos": (150_000, 200_000, 25_000),
-        "Pintura": (40_000, 70_000, 8_000),
-        "Pisos": (100_000, 130_000, 15_000),
-        "Aberturas": (110_000, 90_000, 12_000),
-        "Infraestructura": (200_000, 250_000, 30_000),
-        "Otro": (50_000, 80_000, 10_000),
-    }.get(categoria, (50_000, 80_000, 10_000))
+    montos_hist = [
+        float(m) for m in re.findall(r"monto_ajustado[=:]?\s*([0-9]+(?:\.[0-9]+)?)", user)
+    ]
+    if montos_hist:
+        promedio = sum(montos_hist) / len(montos_hist)
+        factor = {"ALTA": 1.08, "MEDIA": 1.0, "BAJA": 0.94}.get(prioridad, 1.0)
+        total = round(promedio * factor, 2)
+        materiales = round(total * 0.40, 2)
+        mano_obra = round(total * 0.50, 2)
+        otros = round(total - materiales - mano_obra, 2)
+        confianza = 0.6 if categoria == "Otro" else 0.78
+        fuente = "mock_historicos"
+    else:
+        base = {
+            "Electricidad": (80_000, 120_000, 15_000),
+            "Plomería": (60_000, 100_000, 10_000),
+            "Gas": (90_000, 140_000, 20_000),
+            "Techos": (150_000, 200_000, 25_000),
+            "Pintura": (40_000, 70_000, 8_000),
+            "Pisos": (100_000, 130_000, 15_000),
+            "Aberturas": (110_000, 90_000, 12_000),
+            "Infraestructura": (200_000, 250_000, 30_000),
+            "Otro": (50_000, 80_000, 10_000),
+        }.get(categoria, (50_000, 80_000, 10_000))
 
-    factor = {"ALTA": 1.25, "MEDIA": 1.0, "BAJA": 0.85}.get(prioridad, 1.0)
-    materiales = round(base[0] * factor, 2)
-    mano_obra = round(base[1] * factor, 2)
-    otros = round(base[2] * factor, 2)
-    total = round(materiales + mano_obra + otros, 2)
+        factor = {"ALTA": 1.25, "MEDIA": 1.0, "BAJA": 0.85}.get(prioridad, 1.0)
+        materiales = round(base[0] * factor, 2)
+        mano_obra = round(base[1] * factor, 2)
+        otros = round(base[2] * factor, 2)
+        total = round(materiales + mano_obra + otros, 2)
+        confianza = 0.55 if categoria == "Otro" else 0.72
+        fuente = "mock_heuristicas"
 
-    confianza = 0.55 if categoria == "Otro" else 0.72
     if prioridad == "ALTA":
         confianza = max(0.4, confianza - 0.05)
 
@@ -373,8 +406,13 @@ def _estimar(user: str, hint: dict[str, Any]) -> dict[str, Any]:
         "otros": otros,
         "total": total,
         "confianza": confianza,
+        "justificacion": (
+            f"Estimación preliminar mock ({fuente}) para {categoria}/{prioridad}. "
+            f"Total ${total:,.0f}: materiales ${materiales:,.0f}, "
+            f"mano de obra ${mano_obra:,.0f} y otros ${otros:,.0f}."
+        ),
         "detalle": {
-            "fuente": "mock_heuristicas",
+            "fuente": fuente,
             "categoria_usada": categoria,
             "prioridad_usada": prioridad,
             "nota": "Estimación preliminar mock. Reemplazar por LLM con históricos reales.",

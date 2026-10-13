@@ -43,6 +43,10 @@ services:
       AI_DUPLICADOS_SEMANTICOS: ${AI_DUPLICADOS_SEMANTICOS:-false}
       AI_WHATSAPP: ${AI_WHATSAPP:-false}
       AI_STT_MODEL: ${AI_STT_MODEL:-whisper-1}
+      AI_STT_PROVIDER: ${AI_STT_PROVIDER:-local}
+      AI_STT_LOCAL_MODEL: ${AI_STT_LOCAL_MODEL:-small}
+      AI_STT_BASE_URL: ${AI_STT_BASE_URL:-}
+      AI_STT_MODEL_DIR: ${AI_STT_MODEL_DIR:-/models/faster-whisper}
       AI_GEMINI_NATIVE_URL: ${AI_GEMINI_NATIVE_URL:-https://generativelanguage.googleapis.com/v1beta}
       AI_STT_MOCK_TEXTO: ${AI_STT_MOCK_TEXTO:-}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
@@ -50,6 +54,7 @@ services:
       SEGUIMIENTO_INTERVALO_SEGUNDOS: ${SEGUIMIENTO_INTERVALO_SEGUNDOS:-900}
     volumes:
       - uploads_data:/app/uploads
+      - whisper_models:/models/faster-whisper
     depends_on:
       - db
       - redis
@@ -90,5 +95,6 @@ volumes:
   postgres_data:
   uploads_data:
   redis_data:
+  whisper_models:
   certbot_conf:
   certbot_www:

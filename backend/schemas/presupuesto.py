@@ -89,6 +89,18 @@ class DecisionPresupuesto(BaseModel):
     motivo: str | None = None
 
 
+class OfertaReutilizableOut(BaseModel):
+    presupuesto_id: int
+    contratista_id: int
+    nombre_empresa: str
+    monto: Decimal
+    estado: EstadoPresupuesto
+
+
+class AsignarOfertaExistenteIn(BaseModel):
+    presupuesto_id: int
+
+
 class HistorialEstadoPresupuestoOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

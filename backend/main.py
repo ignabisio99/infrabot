@@ -17,6 +17,7 @@ from api.contratistas import router as contratistas_router
 from api.dashboard import router as dashboard_router
 from api.reportes import router as reportes_router
 from api.listas_contratistas import router as listas_contratistas_router
+from api.notificaciones import router as notificaciones_router
 from api.presupuestos import router as presupuestos_router
 from api.reclamos import router as reclamos_router
 from api.roles_mano_obra import router as roles_mano_obra_router
@@ -30,6 +31,7 @@ from core.database import (
     asegurar_columna_tipo_item,
     asegurar_tipo_usuario_inspector,
     asegurar_valor_analisis_agente,
+    asegurar_valores_estado_reclamo,
     engine,
 )
 from core.storage import UPLOADS_DIR
@@ -77,6 +79,7 @@ async def lifespan(app: FastAPI):
     asegurar_columna_detalle_tarea()
     asegurar_tipo_usuario_inspector()
     asegurar_valor_analisis_agente()
+    asegurar_valores_estado_reclamo()
     db_roles = SessionLocal()
     try:
         from models.rol_mano_obra import asegurar_roles_iniciales
@@ -160,6 +163,7 @@ app.include_router(ai_router)
 app.include_router(configuracion_router)
 app.include_router(roles_mano_obra_router)
 app.include_router(reportes_router)
+app.include_router(notificaciones_router)
 
 @app.get("/")
 def read_root():

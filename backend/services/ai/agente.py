@@ -20,6 +20,7 @@ from core.ai.factory import get_llm_provider
 from models.reclamo import Reclamo
 from models.recomendacion_ia import TipoRecomendacionIA
 from services.ai import herramientas
+from services.ai.contexto_reclamo import texto_para_ia
 from services.ai.prompts import SYSTEM_AGENTE, user_agente
 from services.ai.registro import registrar
 
@@ -59,7 +60,7 @@ def analizar_reclamo(db: Session, reclamo: Reclamo) -> ResultadoAgente:
         user=user_agente(
             escuela=reclamo.nombre_escuela,
             ubicacion=reclamo.ubicacion,
-            descripcion=reclamo.descripcion,
+            descripcion=texto_para_ia(reclamo, db),
         ),
         tools=herramientas.DEFINICIONES_TOOLS,
         tool_ejecutores=ejecutores,

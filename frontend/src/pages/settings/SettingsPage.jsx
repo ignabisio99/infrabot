@@ -15,7 +15,7 @@ import {
   actualizarUmbralesAuditoria,
   obtenerUmbralesAuditoria,
 } from '../../api/configuracion';
-import { ejecutarSeguimiento } from '../../api/ai';
+import { ejecutarSeguimiento, sincronizarReferenciasCsv } from '../../api/ai';
 import {
   actualizarRolManoObra,
   crearRolManoObra,
@@ -31,6 +31,7 @@ export function SettingsPage() {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(null);
   const [enviandoSeguimiento, setEnviandoSeguimiento] = useState(false);
+  const [sincronizandoCsv, setSincronizandoCsv] = useState(false);
   const [roles, setRoles] = useState([]);
   const [nombresRoles, setNombresRoles] = useState({});
   const [nuevoRol, setNuevoRol] = useState('');
@@ -118,9 +119,9 @@ export function SettingsPage() {
           Seguimiento a contratistas
         </Title>
         <Text size="sm" c="dimmed">
-          Si un reclamo está en ejecución y pasaron 48 horas sin aviso, se pide un avance por
-          WhatsApp al contratista. El job corre en segundo plano; también se puede disparar
-          ahora.
+          Si un reclamo está en ejecución y pasa el umbral sin aviso, se pide un avance por
+          WhatsApp. A los 5 intentos sin respuesta pasa a Pendiente de intervención.
+          El job corre en segundo plano; también se puede disparar ahora.
         </Text>
         <Button
           variant="light"
@@ -139,6 +140,33 @@ export function SettingsPage() {
           }}
         >
           Enviar recordatorios ahora
+        </Button>
+
+        <Title order={4} mt="md">
+          Referencias de costo
+        </Title>
+        <Text size="sm" c="dimmed">
+          Trae precios de trabajos tipo (tablero, cañería, etc.) desde la lista histórica
+          del sistema: agrega ítems nuevos y actualiza monto, fecha o unidad si cambiaron.
+          No pisa costos que salieron de un presupuesto aprobado.
+        </Text>
+        <Button
+          variant="light"
+          loading={sincronizandoCsv}
+          w="fit-content"
+          onClick={async () => {
+            setSincronizandoCsv(true);
+            try {
+              const data = await sincronizarReferenciasCsv();
+              notifySuccess(data.mensaje);
+            } catch (err) {
+              notifyError(err.message);
+            } finally {
+              setSincronizandoCsv(false);
+            }
+          }}
+        >
+          Actualizar precios de referencia
         </Button>
 
         <Title order={4} mt="md">

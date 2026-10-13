@@ -31,6 +31,7 @@ from schemas.lista_contratistas import (
     SolicitarInformacionIn,
     SolicitudPresupuestoOut,
 )
+from schemas.presupuesto import AsignarOfertaExistenteIn, OfertaReutilizableOut
 from schemas.reclamo import (
     CambioEstadoReclamo,
     ComentarioReclamoIn,
@@ -40,8 +41,14 @@ from schemas.reclamo import (
     ReclamoCreate,
     ReclamoOut,
 )
-from services import estados_reclamo
+from services import estados_presupuesto, estados_reclamo
 from services.ai.automatico import post_alta_reclamo, post_fotos_reclamo
+from services.reabrir_convocatoria import (
+    ReaperturaInvalida,
+    asignar_oferta_existente,
+    listar_ofertas_reutilizables,
+    reabrir_por_inaccion,
+)
 
 logger = logging.getLogger(__name__)
 APP_URL = os.getenv("APP_URL", "http://localhost:3000")
@@ -147,6 +154,68 @@ def cambiar_estado_reclamo(
     except estados_reclamo.MotivoRequerido as error:
         raise HTTPException(status_code=422, detail=str(error))
 
+    db.commit()
+    db.refresh(reclamo)
+    return reclamo
+
+
+@router.post("/{reclamo_id}/reabrir-convocatoria", response_model=ReclamoOut)
+def reabrir_convocatoria(
+    reclamo_id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_admin),
+):
+    """Cancela el presupuesto aprobado y vuelve a PENDIENTE_PRESUPUESTO para convocar a otro."""
+    reclamo = _con_fotos(db.query(Reclamo)).filter(Reclamo.id == reclamo_id).first()
+    if reclamo is None:
+        raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    try:
+        reabrir_por_inaccion(db, reclamo, usuario_id=user.id)
+    except ReaperturaInvalida as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except (
+        estados_reclamo.TransicionInvalida,
+        estados_presupuesto.TransicionInvalida,
+        estados_presupuesto.MotivoRequerido,
+    ) as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    db.commit()
+    db.refresh(reclamo)
+    return reclamo
+
+
+@router.get("/{reclamo_id}/ofertas-reutilizables", response_model=list[OfertaReutilizableOut])
+def ofertas_reutilizables(
+    reclamo_id: int,
+    db: Session = Depends(get_db),
+    _admin: Usuario = Depends(get_current_admin),
+):
+    reclamo = db.get(Reclamo, reclamo_id)
+    if reclamo is None:
+        raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    return listar_ofertas_reutilizables(db, reclamo)
+
+
+@router.post("/{reclamo_id}/asignar-oferta-existente", response_model=ReclamoOut)
+def asignar_oferta_ya_enviada(
+    reclamo_id: int,
+    datos: AsignarOfertaExistenteIn,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_admin),
+):
+    reclamo = _con_fotos(db.query(Reclamo)).filter(Reclamo.id == reclamo_id).first()
+    if reclamo is None:
+        raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    try:
+        asignar_oferta_existente(db, reclamo, datos.presupuesto_id, usuario_id=user.id)
+    except ReaperturaInvalida as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except (
+        estados_reclamo.TransicionInvalida,
+        estados_presupuesto.TransicionInvalida,
+        estados_presupuesto.MotivoRequerido,
+    ) as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     db.commit()
     db.refresh(reclamo)
     return reclamo
@@ -526,6 +595,7 @@ def obtener_visita_reclamo(
     estados_coordinados = {
         EstadoReclamo.VISITA_COORDINADA,
         EstadoReclamo.EN_EJECUCION,
+        EstadoReclamo.PENDIENTE_INTERVENCION,
         EstadoReclamo.FINALIZADO,
     }
     if reclamo.estado in estados_coordinados:

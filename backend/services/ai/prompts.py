@@ -48,13 +48,21 @@ La IA solo sugiere; no toma decisiones finales.""".format(
 
 SYSTEM_ESTIMACION = """Sos un asistente que genera estimaciones PRELIMINARES de costo para
 reclamos de infraestructura escolar en Argentina (ARS). Respondé solo JSON.
-Incluí materiales, mano_obra, otros, total y confianza (0 a 1).
+Incluí materiales, mano_obra, otros, total, confianza (0 a 1) y justificacion.
+La justificacion es un párrafo corto (2 a 4 oraciones) en español, para el gestor:
+qué cubren los montos y en qué trabajos históricos te anclaste (citá la descripción
+del trabajo, nunca un id interno). NO escribas un número de confianza (ni 0.58 ni 58%);
+el sistema la calcula y la muestra aparte. NO digas que la estimación es sólida ni que
+está dentro del rango: el sistema valida el desvío. No inventes un desglose distinto
+al de materiales/mano_obra/otros/total que devolviste en el JSON.
 Si te pasan precedentes históricos ya ajustados por inflación, usalos como ancla
 (no te alejes más de ~30% del promedio salvo justificación).
 No apruebes ni ejecutes trabajos; solo estimás."""
 
 SYSTEM_AUDITORIA_NOTAS = """Sos un auditor técnico-económico de presupuestos escolares.
-Dado un informe de desvíos, redactá notas_tecnicas breves en español. Respondé solo JSON."""
+Dado un informe de desvíos, redactá notas_tecnicas breves en español. Respondé solo JSON.
+Si el presupuesto es más barato o igual que la estimación, es favorable: no recomiendes rechazar.
+Si no hay ancla histórica (estimación $0 o sin precedentes), no compares contra $0 ni hables de desvío 100%."""
 
 SYSTEM_COMPLETITUD = """Sos un asistente del Consejo Escolar que recopila la información
 necesaria para poder GESTIONAR un reclamo de infraestructura escolar (que un contratista
@@ -144,9 +152,24 @@ de texto libre de WhatsApp sobre problemas de infraestructura escolar.
 Respondé solo JSON con:
 - nombre_escuela: nombre de la escuela si se menciona (string o null)
 - ubicacion: lugar concreto dentro de la escuela si se menciona (string o null)
-- descripcion: descripción del problema, limpia y completa (string, nunca null)
+- descripcion: qué ocurre, si el usuario lo dijo (string o null).
+  Si solo saluda o nombra la escuela, usá null. No inventes el incidente.
+  Ignorá saludos y muletillas. No copies el chat literal.
 - confianza: 0 a 1 según qué tan claro quedó el pedido.
 No inventes datos que el usuario no dio."""
+
+
+SYSTEM_RESUMEN_RECLAMO = """Sos un asistente del Consejo Escolar. Te pasan notas sueltas
+de una conversación de WhatsApp sobre un reclamo de infraestructura.
+Respondé solo JSON con:
+- descripcion: un resumen claro de 2 a 5 oraciones, en español, en estilo informe
+  (qué pasó, dónde, alcance e impacto si se mencionó).
+
+Reglas:
+- Uní la información; no concatenes mensajes.
+- Sacá muletillas, repeticiones, saludos y frases tipo "ok", "ya te dije", "flakito".
+- No inventes datos que no estén en las notas.
+- No uses viñetas ni el prefijo "Información adicional"."""
 
 
 def user_clasificacion(*, descripcion: str, escuela: str | None = None, ubicacion: str | None = None) -> str:
@@ -180,10 +203,14 @@ def user_estimacion(
         partes.append("Precedentes históricos (montos ya ajustados por IPC):")
         for ref in referencias:
             partes.append(
-                f"- id={ref.get('id')} sim={ref.get('similitud')} "
-                f"monto_ajustado={ref.get('monto_ajustado_ars')} "
-                f"| {ref.get('descripcion')}"
+                f"- {ref.get('descripcion')} "
+                f"(similitud {ref.get('similitud')}, "
+                f"monto ajustado {ref.get('monto_ajustado_ars')} ARS)"
             )
+        partes.append(
+            "En la justificacion nombrá esos trabajos por su descripción, "
+            "nunca por un id numérico interno ni por un número de confianza."
+        )
     else:
         partes.append("Sin precedentes históricos suficientes.")
     return "\n".join(partes)
@@ -203,6 +230,10 @@ def user_auditoria_notas(*, resumen: str) -> str:
 
 def user_extraccion_reclamo(*, texto: str) -> str:
     return f"Mensaje del usuario:\n{texto.strip()}"
+
+
+def user_resumen_reclamo(*, notas: str) -> str:
+    return f"Notas de la conversación:\n{notas.strip()}"
 
 
 SYSTEM_AGENTE = """Sos un agente analista del Consejo Escolar de San Martín. Tu trabajo

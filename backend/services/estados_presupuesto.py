@@ -5,16 +5,11 @@ queda en el historial. El ciclo es corto y de un solo salto.
 
     RECIBIDO ─(se elige este)──────────> APROBADO
              ├─(no sirve la oferta)────> RECHAZADO
-             └─(se aprobó otro)*───────> NO_SELECCIONADO
+             └─(se aprobó otro)*───────> NO_SELECCIONADO ─(se elige esta)*─> APROBADO
 
-    (*) Sólo la dispara el sistema, desde `decidir`. Un gestor no marca "no
-    seleccionado": si una oferta no le sirve la rechaza, y explica por qué. Quedar sin
-    seleccionar es la consecuencia de haber elegido otra, no una opinión sobre ésta.
-
-Los tres estados de salida son terminales. Como el estado del reclamo se deduce de éstos
-(ver `estados_reclamo.sincronizar_por_presupuestos`), deshacer una aprobación implicaría
-mover el reclamo hacia atrás desde APROBADO, que la otra máquina no permite. Para salir
-de un error hay que cancelar el reclamo.
+    (*) Las dispara el sistema. Un gestor no marca "no seleccionado": si una oferta no
+    le sirve la rechaza. NO_SELECCIONADO puede volver a APROBADO si, tras una
+    intervención, se elige una oferta que ya se había enviado.
 """
 
 from sqlalchemy.orm import Session
@@ -42,13 +37,15 @@ TRANSICIONES: dict[EstadoPresupuesto, frozenset[EstadoPresupuesto]] = {
             EstadoPresupuesto.NO_SELECCIONADO,
         }
     ),
-    EstadoPresupuesto.APROBADO: frozenset(),
+    EstadoPresupuesto.APROBADO: frozenset({EstadoPresupuesto.RECHAZADO}),
     EstadoPresupuesto.RECHAZADO: frozenset(),
-    EstadoPresupuesto.NO_SELECCIONADO: frozenset(),
+    EstadoPresupuesto.NO_SELECCIONADO: frozenset({EstadoPresupuesto.APROBADO}),
 }
 
 TRANSICIONES_SOLO_AUTOMATICAS: dict[EstadoPresupuesto, frozenset[EstadoPresupuesto]] = {
     EstadoPresupuesto.RECIBIDO: frozenset({EstadoPresupuesto.NO_SELECCIONADO}),
+    EstadoPresupuesto.APROBADO: frozenset({EstadoPresupuesto.RECHAZADO}),
+    EstadoPresupuesto.NO_SELECCIONADO: frozenset({EstadoPresupuesto.APROBADO}),
 }
 
 

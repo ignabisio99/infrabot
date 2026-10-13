@@ -1,5 +1,11 @@
-import { TextInput, Textarea, Button, Stack, Select } from '@mantine/core';
+import { useState } from 'react';
+import { TextInput, Textarea, Button, Stack, Select, Group, Text } from '@mantine/core';
 import { useForm } from '@mantine/form';
+import { IconMicrophone } from '@tabler/icons-react';
+
+import { transcribirAudio } from '../../api/ai';
+import { useGrabarAudio } from '../../hooks/useGrabarAudio';
+import { notifyError, notifySuccess } from '../../utils/notifications';
 
 const valoresPorDefecto = {
   schoolName: '',
@@ -17,6 +23,8 @@ export function SchoolClaimForm({
   submitLabel = 'Enviar Reclamo',
   children,
 }) {
+  const [transcribiendo, setTranscribiendo] = useState(false);
+  const { grabando, empezar, detener } = useGrabarAudio();
   const form = useForm({
     initialValues,
     validate: {
@@ -27,6 +35,38 @@ export function SchoolClaimForm({
       description: (value) => (value.length < 10 ? 'Describa el problema en detalle' : null),
     },
   });
+
+  const aplicarTranscripcion = async (archivo) => {
+    if (!archivo) return;
+    setTranscribiendo(true);
+    try {
+      const resultado = await transcribirAudio(archivo);
+      const actual = (form.values.description || '').trim();
+      form.setFieldValue(
+        'description',
+        actual ? `${actual}\n${resultado.texto}` : resultado.texto,
+      );
+      notifySuccess('Audio transcrito. Revisá el texto antes de enviar.');
+    } catch (error) {
+      notifyError(error?.message || 'No se pudo transcribir el audio.');
+    } finally {
+      setTranscribiendo(false);
+    }
+  };
+
+  const grabarYTranscribir = async () => {
+    if (submitting || transcribiendo) return;
+    try {
+      if (!grabando) {
+        await empezar();
+        return;
+      }
+      const archivo = await detener();
+      await aplicarTranscripcion(archivo);
+    } catch (error) {
+      notifyError(error?.message || 'No se pudo grabar el audio.');
+    }
+  };
 
   const handleSubmit = (values) => {
     onSubmit({
@@ -75,14 +115,35 @@ export function SchoolClaimForm({
           {...form.getInputProps('category')}
         />
 
-        <Textarea
-          label="Descripción"
-          placeholder="Describa detalladamente la situación o problema detectado..."
-          minRows={4}
-          autosize
-          key={form.key('description')}
-          {...form.getInputProps('description')}
-        />
+        <div>
+          <Textarea
+            label="Descripción"
+            placeholder="Describa detalladamente la situación o problema detectado..."
+            minRows={4}
+            autosize
+            key={form.key('description')}
+            {...form.getInputProps('description')}
+          />
+          <Group mt={6} gap="xs">
+            <Button
+              type="button"
+              size="xs"
+              variant={grabando ? 'filled' : 'light'}
+              color={grabando ? 'red' : 'teal'}
+              leftSection={<IconMicrophone size={14} />}
+              loading={transcribiendo}
+              disabled={submitting}
+              onClick={grabarYTranscribir}
+            >
+              {grabando ? 'Detener y transcribir' : 'Grabar audio'}
+            </Button>
+            <Text size="xs" c="dimmed">
+              {grabando
+                ? 'Grabando… hacé clic de nuevo para transcribir.'
+                : 'Usa el micrófono. El audio no se guarda, solo el texto.'}
+            </Text>
+          </Group>
+        </div>
 
         <Textarea
           label="Observaciones"

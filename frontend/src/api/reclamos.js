@@ -90,6 +90,42 @@ export async function subirFotoReclamo(reclamoId, archivo) {
   return response.json();
 }
 
+export async function reabrirConvocatoria(reclamoId) {
+  const response = await fetchConAuth(`${API_URL}/reclamos/${reclamoId}/reabrir-convocatoria`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(
+      extraerMensajeError(error?.detail, 'No se pudo cancelar el presupuesto y volver a convocar.'),
+    );
+  }
+  return response.json();
+}
+
+export async function listarOfertasReutilizables(reclamoId) {
+  const response = await fetchConAuth(`${API_URL}/reclamos/${reclamoId}/ofertas-reutilizables`);
+  if (!response.ok) {
+    throw new Error('No se pudieron cargar las ofertas ya enviadas.');
+  }
+  return response.json();
+}
+
+export async function asignarOfertaExistente(reclamoId, presupuestoId) {
+  const response = await fetchConAuth(`${API_URL}/reclamos/${reclamoId}/asignar-oferta-existente`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ presupuesto_id: presupuestoId }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(
+      extraerMensajeError(error?.detail, 'No se pudo asignar esa oferta.'),
+    );
+  }
+  return response.json();
+}
+
 export async function eliminarFotoReclamo(reclamoId, fotoId) {
   const response = await fetchConAuth(`${API_URL}/reclamos/${reclamoId}/fotos/${fotoId}`, {
     method: 'DELETE',

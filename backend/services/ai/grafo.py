@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from models.reclamo import Reclamo
 from models.recomendacion_ia import TipoRecomendacionIA
 from services.ai import clasificacion, duplicados, estimacion, registro
+from services.ai.contexto_reclamo import texto_para_ia
 from services.ai.derivacion import UMBRAL_CONFIANZA_DERIVACION, evaluar_derivacion
 
 logger = logging.getLogger(__name__)
@@ -31,14 +32,14 @@ class EstadoPipeline(TypedDict, total=False):
     error: str | None
 
 
-def _puede_avanzar_tras_ia(reclamo: Reclamo, state: EstadoPipeline) -> bool:
+def _puede_avanzar_tras_ia(db: Session, reclamo: Reclamo, state: EstadoPipeline) -> bool:
     """Sólo deja atrás PENDIENTE_REVISION si la clasificación fue del LLM y no hay que derivar."""
     if state.get("proveedor") == "fallback":
         return False
     if (state.get("confianza") or 0) < UMBRAL_CONFIANZA_DERIVACION:
         return False
     der = evaluar_derivacion(
-        descripcion=reclamo.descripcion,
+        descripcion=texto_para_ia(reclamo, db),
         categoria=state.get("categoria") or reclamo.categoria,
         confianza=state.get("confianza"),
     )
@@ -115,7 +116,7 @@ def _compilar(db: Session):
         resultado = _clasificar_con_agente(db, reclamo)
         if resultado is None:
             try:
-                resultado = clasificacion.clasificar_reclamo(reclamo)
+                resultado = clasificacion.clasificar_reclamo(reclamo, db)
                 clasificacion.aplicar_clasificacion(reclamo, resultado)
             except Exception:
                 logger.exception(
@@ -189,7 +190,7 @@ def _compilar(db: Session):
         reclamo = db.get(Reclamo, state["reclamo_id"])
         # No se salta PENDIENTE_REVISION si la IA no clasificó de verdad
         # (LLM caído, confianza baja) o si el caso pide operador.
-        transicionar = _puede_avanzar_tras_ia(reclamo, state)
+        transicionar = _puede_avanzar_tras_ia(db, reclamo, state)
         try:
             est = estimacion.generar_estimacion(db, reclamo, transicionar=transicionar)
         except Exception:

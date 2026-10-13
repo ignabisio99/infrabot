@@ -9,6 +9,7 @@ export const ESTADOS = [
   'PENDIENTE_COORDINACION',
   'VISITA_COORDINADA',
   'EN_EJECUCION',
+  'PENDIENTE_INTERVENCION',
   'FINALIZADO',
   'DESIERTO',
   'RECHAZADO',
@@ -23,6 +24,7 @@ export const etiquetaPorEstado = {
   PENDIENTE_COORDINACION: 'Pendiente de coordinación',
   VISITA_COORDINADA: 'Visita coordinada',
   EN_EJECUCION: 'En ejecución',
+  PENDIENTE_INTERVENCION: 'Pendiente de intervención',
   FINALIZADO: 'Finalizado',
   DESIERTO: 'Desierto',
   RECHAZADO: 'Rechazado',
@@ -37,6 +39,7 @@ export const colorPorEstado = {
   PENDIENTE_COORDINACION: 'grape',
   VISITA_COORDINADA: 'cyan',
   EN_EJECUCION: 'indigo',
+  PENDIENTE_INTERVENCION: 'orange',
   FINALIZADO: 'green',
   DESIERTO: 'yellow',
   RECHAZADO: 'red',
@@ -100,6 +103,11 @@ export const proximoPasoPorEstado = {
   EN_EJECUCION: {
     titulo: 'Obra en curso',
     descripcion: 'Verificar el avance y dar por finalizado el trabajo cuando esté listo.',
+  },
+  PENDIENTE_INTERVENCION: {
+    titulo: 'Hace falta intervenir',
+    descripcion:
+      'El contratista no respondió. Podés volver a ejecución, elegir otra oferta ya enviada o convocar a otros contratistas.',
   },
   FINALIZADO: {
     titulo: 'Reclamo finalizado',
