@@ -77,6 +77,11 @@ class PresupuestoOut(BaseModel):
     estado: EstadoPresupuesto
     # Qué decisiones habilitar en la UI para este presupuesto, según su estado actual.
     estados_posibles: list[EstadoPresupuesto]
+    # Número de envío de este contratista para el reclamo (1 = primero).
+    intento: int
+    editable: bool
+    reenviable: bool
+    motivo_rechazo: str | None
 
     @computed_field
     @property

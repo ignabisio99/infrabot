@@ -37,4 +37,9 @@ class MiSolicitudOut(BaseModel):
     estado_reclamo: str
     fecha_solicitud: datetime
     presupuesto_cargado: bool
+    # Del último envío: tras un rechazo el contratista puede cargar otro.
     presupuesto_id: int | None = None
+    presupuesto_estado: str | None = None
+    intentos: int = 0
+    puede_editar: bool = False
+    puede_reenviar: bool = False

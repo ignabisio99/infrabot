@@ -12,6 +12,7 @@ from models.solicitud_presupuesto import SolicitudPresupuesto
 from models.usuario import Usuario
 from schemas.contratista import ContratistaCreate, ContratistaOut, MiSolicitudOut
 from schemas.presupuesto import PresupuestoOut
+from services import estados_presupuesto
 
 router = APIRouter(prefix="/contratistas", tags=["contratistas"])
 
@@ -77,17 +78,21 @@ def listar_mis_solicitudes(db: Session = Depends(get_db), usuario: Usuario = Dep
     )
 
     # Presupuestos que este contratista cargó, indexados por reclamo
+    # Ordenados por id para que, si hubo reenvíos tras un rechazo, quede el último.
     presupuestos = (
-        db.query(Presupuesto).filter(Presupuesto.contratista_id == ficha.id).all()
+        db.query(Presupuesto)
+        .filter(Presupuesto.contratista_id == ficha.id)
+        .order_by(Presupuesto.id)
+        .all()
     )
-    presupuesto_por_reclamo = {p.reclamo_id: p.id for p in presupuestos}
+    presupuesto_por_reclamo = {p.reclamo_id: p for p in presupuestos}
 
     resultado = []
     for s in solicitudes:
         reclamo = db.get(Reclamo, s.reclamo_id)
         if reclamo is None:
             continue
-        presupuesto_id = presupuesto_por_reclamo.get(s.reclamo_id)
+        presupuesto = presupuesto_por_reclamo.get(s.reclamo_id)
         resultado.append(
             MiSolicitudOut(
                 reclamo_id=reclamo.id,
@@ -97,8 +102,12 @@ def listar_mis_solicitudes(db: Session = Depends(get_db), usuario: Usuario = Dep
                 prioridad=reclamo.prioridad.value,
                 estado_reclamo=reclamo.estado.value,
                 fecha_solicitud=s.fecha_solicitud,
-                presupuesto_cargado=presupuesto_id is not None,
-                presupuesto_id=presupuesto_id,
+                presupuesto_cargado=presupuesto is not None,
+                presupuesto_id=presupuesto.id if presupuesto else None,
+                presupuesto_estado=presupuesto.estado.value if presupuesto else None,
+                intentos=presupuesto.intento if presupuesto else 0,
+                puede_editar=presupuesto is not None and presupuesto.editable,
+                puede_reenviar=presupuesto is not None and presupuesto.reenviable,
             )
         )
     return resultado
@@ -121,6 +130,18 @@ def listar_mis_presupuestos(db: Session = Depends(get_db), usuario: Usuario = De
         .order_by(Presupuesto.fecha.desc())
         .all()
     )
+
+
+@router.get("/mi-presupuesto/{reclamo_id}", response_model=PresupuestoOut | None)
+def obtener_mi_presupuesto(reclamo_id: int, db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_user)):
+    """El último envío del contratista logueado para el reclamo: es el único que puede
+    editar (si sigue en evaluación) o tomar de base para reenviar (si se lo rechazaron)."""
+    ficha = _ficha_del_usuario(db, usuario)
+    reclamo = db.get(Reclamo, reclamo_id)
+    if reclamo is None:
+        raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    ofertas = estados_presupuesto.ofertas_del_contratista(reclamo, ficha.id)
+    return ofertas[-1] if ofertas else None
 
 
 @router.post("", response_model=ContratistaOut, status_code=201)

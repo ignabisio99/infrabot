@@ -16,6 +16,7 @@ import { IconMapPin } from '@tabler/icons-react';
 
 import { listarMisSolicitudes } from '../../api/contratistas';
 import { formatearIdReclamo } from '../../utils/ids';
+import { BudgetStatusBadge } from '../budgets/BudgetStatusBadge';
 
 const ETIQUETA_ESTADO = {
   PENDIENTE_REVISION: 'En revisión',
@@ -80,9 +81,14 @@ export function MySolicitudesPage() {
                 </Badge>
               </Group>
               {s.presupuesto_cargado ? (
-                <Badge color="teal" variant="light">
-                  Presupuesto enviado
-                </Badge>
+                <Group gap={6}>
+                  {s.intentos > 1 && (
+                    <Badge color="gray" variant="outline" tt="none">
+                      Intento {s.intentos}
+                    </Badge>
+                  )}
+                  <BudgetStatusBadge estado={s.presupuesto_estado} variant="light" />
+                </Group>
               ) : (
                 <Badge color="orange" variant="light">
                   Pendiente de cargar
@@ -102,6 +108,16 @@ export function MySolicitudesPage() {
                 onClick={() => navigate(`/portal/reclamos/${s.reclamo_id}/presupuestar`)}
               >
                 Cargar presupuesto
+              </Button>
+            )}
+            {(s.puede_editar || s.puede_reenviar) && (
+              <Button
+                size="xs"
+                variant={s.puede_reenviar ? 'filled' : 'light'}
+                color={s.puede_reenviar ? 'orange' : undefined}
+                onClick={() => navigate(`/portal/reclamos/${s.reclamo_id}/presupuestar`)}
+              >
+                {s.puede_reenviar ? 'Corregir y reenviar' : 'Editar presupuesto'}
               </Button>
             )}
           </Card>

@@ -3,11 +3,14 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
+from api.reclamos import _email_del_contratista
 from core.database import get_db
 from core.dependencies import get_current_admin, get_current_contratista, get_current_user
+from core.email import APP_URL, enviar_rechazo_presupuesto
+from core.whatsapp_client import enviar_mensaje
 from models.contratista import Contratista
 from models.historial_estado_presupuesto import HistorialEstadoPresupuesto
-from models.presupuesto import ItemPresupuesto, Presupuesto
+from models.presupuesto import EstadoPresupuesto, ItemPresupuesto, Presupuesto
 from models.reclamo import Reclamo
 from models.usuario import Usuario
 from schemas.presupuesto import (
@@ -75,6 +78,46 @@ def _validar_sin_decidir(presupuesto: Presupuesto, accion: str) -> None:
         )
 
 
+def _validar_sin_oferta_vigente(reclamo: Reclamo, contratista_id: int) -> None:
+    """Uno por contratista en evaluación: para cambiar la oferta se edita la que está en
+    pie. Después de un rechazo sí se carga otro, que cuenta como un nuevo intento."""
+    ofertas = estados_presupuesto.ofertas_del_contratista(reclamo, contratista_id)
+    if any(estados_presupuesto.esta_vigente(p) for p in ofertas):
+        raise HTTPException(
+            status_code=409,
+            detail="Ya hay un presupuesto de este contratista en evaluación para el reclamo: editalo en vez de cargar otro",
+        )
+
+
+def _avisar_rechazo(db: Session, presupuesto: Presupuesto) -> None:
+    """Sin el aviso, el contratista no se entera de que puede corregir y reenviar.
+
+    El link va siempre: si después el reclamo deja de recibir ofertas, el portal ya no
+    ofrece el reenvío."""
+    reclamo = presupuesto.reclamo
+    contratista = presupuesto.contratista
+    motivo = estados_presupuesto.motivo_rechazo(presupuesto)
+    link = f"{APP_URL}/portal/reclamos/{reclamo.id}/presupuestar"
+
+    mensaje = (
+        f"❌ Su presupuesto para el reclamo #{reclamo.id} ({reclamo.nombre_escuela}) fue rechazado.\n\n"
+        f"Motivo: {motivo}\n\n"
+        f"Puede corregirlo y volver a enviarlo desde:\n{link}"
+    )
+
+    try:
+        enviar_mensaje(contratista.telefono, mensaje)
+    except Exception:
+        logger.exception("No se pudo avisar por WhatsApp el rechazo del presupuesto %s", presupuesto.id)
+
+    email = _email_del_contratista(db, contratista)
+    if email:
+        try:
+            enviar_rechazo_presupuesto(email, reclamo.id, reclamo.nombre_escuela, motivo, link)
+        except Exception:
+            logger.exception("No se pudo avisar por email el rechazo del presupuesto %s", presupuesto.id)
+
+
 def _validar_contratista(contratista_id: int, db: Session) -> None:
     if db.get(Contratista, contratista_id) is None:
         raise HTTPException(status_code=404, detail="Contratista no encontrado")
@@ -88,9 +131,12 @@ def crear_presupuesto(datos: PresupuestoCreate, db: Session = Depends(get_db), u
         datos.contratista_id if user.es_admin else _ficha_del_contratista(db, user).id
     )
     _validar_contratista(contratista_id, db)
+    _validar_sin_oferta_vigente(reclamo, contratista_id)
 
     nuevo_presupuesto = Presupuesto(
-        reclamo_id=datos.reclamo_id,
+        # Por la relación y no por id: así entra en `reclamo.presupuestos`, que ya se
+        # cargó al validar y que después lee la sincronización del reclamo.
+        reclamo=reclamo,
         contratista_id=contratista_id,
         detalle_tarea=datos.detalle_tarea,
         observaciones=datos.observaciones,
@@ -144,9 +190,11 @@ def actualizar_presupuesto(
     _exigir_acceso(db, presupuesto, user)
     _validar_sin_decidir(presupuesto, "editar")
     _obtener_reclamo_cotizable(presupuesto.reclamo_id, db)
-    _validar_contratista(datos.contratista_id, db)
+    # Igual que al crear: el contratista no puede pasarle su oferta a otra empresa.
+    contratista_id = datos.contratista_id if user.es_admin else presupuesto.contratista_id
+    _validar_contratista(contratista_id, db)
 
-    presupuesto.contratista_id = datos.contratista_id
+    presupuesto.contratista_id = contratista_id
     presupuesto.detalle_tarea = datos.detalle_tarea
     presupuesto.observaciones = datos.observaciones
     presupuesto.items = [ItemPresupuesto(**item.model_dump()) for item in datos.items]
@@ -207,6 +255,8 @@ def decidir_presupuesto(
 
     db.commit()
     db.refresh(presupuesto)
+    if datos.estado is EstadoPresupuesto.RECHAZADO:
+        _avisar_rechazo(db, presupuesto)
     return presupuesto
 
 

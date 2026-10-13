@@ -21,14 +21,19 @@ import { IconCircleCheck, IconInfoCircle, IconMapPin } from '@tabler/icons-react
 
 import { API_URL } from '../../api/apiClient';
 import { obtenerReclamo } from '../../api/reclamos';
-import { obtenerMiFicha, solicitarInformacionReclamo } from '../../api/contratistas';
-import { crearPresupuesto } from '../../api/presupuestos';
+import {
+  obtenerMiFicha,
+  obtenerMiPresupuesto,
+  solicitarInformacionReclamo,
+} from '../../api/contratistas';
+import { actualizarPresupuesto, crearPresupuesto } from '../../api/presupuestos';
 import { formatearIdReclamo } from '../../utils/ids';
 import { formatoMoneda } from '../../utils/formatters';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 import {
   LABOR_VACIA,
   MATERIAL_VACIO,
+  partirItems,
   serializarItems,
   totalLineas,
   validarLineasPresupuesto,
@@ -78,6 +83,9 @@ function MediaGaleria({ fotos }) {
 export function PresupuestarReclamoPage() {
   const { id } = useParams();
   const reclamoId = Number(id);
+  // Se parte del último envío del contratista, si hay: en evaluación se edita, y
+  // rechazado se corrige y se envía como un intento nuevo.
+  const [presupuestoBase, setPresupuestoBase] = useState(null);
 
   const [reclamo, setReclamo] = useState(null);
   const [miFicha, setMiFicha] = useState(null);
@@ -101,14 +109,29 @@ export function PresupuestarReclamoPage() {
   });
 
   useEffect(() => {
-    Promise.all([obtenerReclamo(reclamoId), obtenerMiFicha()])
-      .then(([reclamoData, fichaData]) => {
+    Promise.all([obtenerReclamo(reclamoId), obtenerMiFicha(), obtenerMiPresupuesto(reclamoId)])
+      .then(([reclamoData, fichaData, base]) => {
         setReclamo(reclamoData);
         setMiFicha(fichaData);
+        if (!base) return;
+        if (!base.editable && !base.reenviable) {
+          setErrorCarga('Este presupuesto ya no se puede modificar.');
+          return;
+        }
+        setPresupuestoBase(base);
+        form.setValues({
+          ...partirItems(base.items),
+          taskDetail: base.detalle_tarea ?? '',
+          notes: base.observaciones ?? '',
+        });
       })
       .catch((err) => setErrorCarga(err.message))
       .finally(() => setCargando(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `form` cambia en cada render
   }, [reclamoId]);
+
+  const editando = presupuestoBase?.editable ?? false;
+  const reenviando = presupuestoBase?.reenviable ?? false;
 
   const total = totalLineas(form.values.materials, form.values.labor);
 
@@ -120,13 +143,17 @@ export function PresupuestarReclamoPage() {
 
     setEnviando(true);
     try {
-      await crearPresupuesto({
-        reclamo_id: reclamoId,
+      const payload = {
         contratista_id: miFicha.id,
         detalle_tarea: values.taskDetail.trim() === '' ? null : values.taskDetail,
         observaciones: values.notes.trim() === '' ? null : values.notes,
         items: serializarItems(values.materials, values.labor),
-      });
+      };
+      if (editando) {
+        await actualizarPresupuesto(presupuestoBase.id, payload);
+      } else {
+        await crearPresupuesto({ ...payload, reclamo_id: reclamoId });
+      }
       form.reset();
       setEnviado(true);
     } catch (error) {
@@ -178,11 +205,12 @@ export function PresupuestarReclamoPage() {
         <Stack align="center" gap="md">
           <IconCircleCheck size={72} color="var(--mantine-color-teal-6)" />
           <Title order={2} ta="center">
-            ¡Gracias por cargar tu presupuesto!
+            {editando ? '¡Presupuesto actualizado!' : '¡Gracias por cargar tu presupuesto!'}
           </Title>
           <Text ta="center" c="dimmed" size="lg">
-            Tu presupuesto para el reclamo {formatearIdReclamo(reclamo.id)} quedó registrado y está
-            pendiente de evaluación y aprobación. Muy pronto nos vamos a contactar con vos.
+            Tu presupuesto para el reclamo {formatearIdReclamo(reclamo.id)} quedó{' '}
+            {editando ? 'actualizado' : 'registrado'} y está pendiente de evaluación y aprobación.
+            Muy pronto nos vamos a contactar con vos.
           </Text>
         </Stack>
       </Container>
@@ -247,7 +275,26 @@ export function PresupuestarReclamoPage() {
           </Card>
         )}
 
-        <Divider label="Cargar presupuesto" labelPosition="center" />
+        <Divider
+          label={
+            editando
+              ? 'Editar presupuesto'
+              : reenviando
+                ? 'Corregir presupuesto'
+                : 'Cargar presupuesto'
+          }
+          labelPosition="center"
+        />
+
+        {reenviando && (
+          <Alert color="red" title="Tu presupuesto anterior fue rechazado">
+            <Text size="sm">Motivo: {presupuestoBase.motivo_rechazo ?? '—'}</Text>
+            <Text size="sm" mt={4}>
+              Partimos de lo que habías cargado: corregilo y se va a enviar como un presupuesto
+              nuevo (intento {presupuestoBase.intento + 1}).
+            </Text>
+          </Alert>
+        )}
 
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack>
@@ -278,7 +325,7 @@ export function PresupuestarReclamoPage() {
             </Group>
 
             <Button type="submit" mt="sm" loading={enviando}>
-              Enviar presupuesto
+              {editando ? 'Guardar cambios' : 'Enviar presupuesto'}
             </Button>
           </Stack>
         </form>

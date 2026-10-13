@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from models.historial_estado_presupuesto import HistorialEstadoPresupuesto
 from models.historial_estado_reclamo import OrigenCambioEstado
 from models.presupuesto import EstadoPresupuesto, Presupuesto
-from models.reclamo import EstadoReclamo
+from models.reclamo import EstadoReclamo, Reclamo
 from services import estados_reclamo
 
 ESTADO_INICIAL = EstadoPresupuesto.RECIBIDO
@@ -86,6 +86,46 @@ def hay_evaluacion_abierta(presupuesto: Presupuesto) -> bool:
     """No alcanza con que el presupuesto siga RECIBIDO: si el reclamo se canceló o ya
     eligió otra oferta, sobre ésta no se decide más."""
     return presupuesto.reclamo.estado is EstadoReclamo.EN_EVALUACION
+
+
+def ofertas_del_contratista(reclamo: Reclamo, contratista_id: int) -> list[Presupuesto]:
+    """Los envíos de un contratista para un reclamo, del primero al último.
+
+    Un rechazo no se reabre: el contratista corrige cargando un presupuesto nuevo, así lo
+    rechazado queda en el expediente tal como se juzgó. Cada envío es un intento.
+    """
+    return sorted(
+        (p for p in reclamo.presupuestos if p.contratista_id == contratista_id),
+        key=lambda p: p.id,
+    )
+
+
+def admite_edicion(presupuesto: Presupuesto) -> bool:
+    return esta_vigente(presupuesto) and estados_reclamo.admite_presupuesto(
+        presupuesto.reclamo.estado
+    )
+
+
+def admite_reenvio(presupuesto: Presupuesto) -> bool:
+    """Sólo el último envío rechazado, y mientras el reclamo siga juntando ofertas."""
+    if presupuesto.estado is not EstadoPresupuesto.RECHAZADO:
+        return False
+    if not estados_reclamo.admite_presupuesto(presupuesto.reclamo.estado):
+        return False
+    return ofertas_del_contratista(presupuesto.reclamo, presupuesto.contratista_id)[-1] is presupuesto
+
+
+def motivo_rechazo(presupuesto: Presupuesto) -> str | None:
+    if presupuesto.estado is not EstadoPresupuesto.RECHAZADO:
+        return None
+    return next(
+        (
+            evento.motivo
+            for evento in reversed(presupuesto.historial_estados)
+            if evento.estado_nuevo is EstadoPresupuesto.RECHAZADO
+        ),
+        None,
+    )
 
 
 def registrar_estado_inicial(

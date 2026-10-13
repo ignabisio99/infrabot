@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Alert, Container, Loader, Table, Text, Title } from '@mantine/core';
+import { useNavigate } from 'react-router-dom';
+import { Alert, Badge, Button, Container, Group, Loader, Table, Text, Title } from '@mantine/core';
 
 import { listarMisPresupuestos } from '../../api/contratistas';
 import { formatearIdReclamo } from '../../utils/ids';
@@ -8,6 +9,7 @@ import { BudgetItemsModal } from '../budgets/BudgetItemsModal';
 import { BudgetStatusBadge } from '../budgets/BudgetStatusBadge';
 
 export function MyPresupuestosPage() {
+  const navigate = useNavigate();
   const [presupuestos, setPresupuestos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
@@ -49,6 +51,7 @@ export function MyPresupuestosPage() {
                 <Table.Th>Monto</Table.Th>
                 <Table.Th>Estado</Table.Th>
                 <Table.Th>Ítems</Table.Th>
+                <Table.Th />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -63,9 +66,28 @@ export function MyPresupuestosPage() {
                   <Table.Td>{new Date(p.fecha).toLocaleDateString('es-AR')}</Table.Td>
                   <Table.Td>{formatoMoneda.format(Number(p.monto))}</Table.Td>
                   <Table.Td>
-                    <BudgetStatusBadge estado={p.estado} />
+                    <Group gap={4}>
+                      <BudgetStatusBadge estado={p.estado} />
+                      {p.intento > 1 && (
+                        <Badge color="gray" variant="outline" tt="none">
+                          Intento {p.intento}
+                        </Badge>
+                      )}
+                    </Group>
                   </Table.Td>
                   <Table.Td>{p.items.length}</Table.Td>
+                  <Table.Td onClick={(e) => e.stopPropagation()}>
+                    {(p.editable || p.reenviable) && (
+                      <Button
+                        size="xs"
+                        variant={p.reenviable ? 'filled' : 'light'}
+                        color={p.reenviable ? 'orange' : undefined}
+                        onClick={() => navigate(`/portal/reclamos/${p.reclamo.id}/presupuestar`)}
+                      >
+                        {p.reenviable ? 'Corregir y reenviar' : 'Editar'}
+                      </Button>
+                    )}
+                  </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>

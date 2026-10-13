@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ActionIcon,
   Alert,
+  Badge,
   Button,
   Container,
   Group,
@@ -89,7 +90,14 @@ export function BudgetsListPage() {
                   </Table.Td>
                   <Table.Td>{formatearIdReclamo(presupuesto.reclamo.id)}</Table.Td>
                   <Table.Td>{presupuesto.reclamo.nombre_escuela}</Table.Td>
-                  <Table.Td>{presupuesto.contratista.nombre_empresa}</Table.Td>
+                  <Table.Td>
+                    {presupuesto.contratista.nombre_empresa}
+                    {presupuesto.intento > 1 && (
+                      <Badge ml={6} size="xs" color="gray" variant="outline" tt="none">
+                        Intento {presupuesto.intento}
+                      </Badge>
+                    )}
+                  </Table.Td>
                   <Table.Td>{formatoMoneda.format(Number(presupuesto.monto))}</Table.Td>
                   <Table.Td>
                     <BudgetStatusBadge estado={presupuesto.estado} />

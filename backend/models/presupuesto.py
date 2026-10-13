@@ -84,6 +84,30 @@ class Presupuesto(Base):
         permitidos = transiciones_posibles(self.estado)
         return [estado for estado in EstadoPresupuesto if estado in permitidos]
 
+    @property
+    def intento(self) -> int:
+        from services.estados_presupuesto import ofertas_del_contratista
+
+        return ofertas_del_contratista(self.reclamo, self.contratista_id).index(self) + 1
+
+    @property
+    def editable(self) -> bool:
+        from services.estados_presupuesto import admite_edicion
+
+        return admite_edicion(self)
+
+    @property
+    def reenviable(self) -> bool:
+        from services.estados_presupuesto import admite_reenvio
+
+        return admite_reenvio(self)
+
+    @property
+    def motivo_rechazo(self) -> str | None:
+        from services.estados_presupuesto import motivo_rechazo
+
+        return motivo_rechazo(self)
+
 
 class ItemPresupuesto(Base):
     __tablename__ = "item_presupuesto"

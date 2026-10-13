@@ -413,9 +413,10 @@ def notificar_contratistas(
         # Notificación adicional por email. Sirve tanto para registro normal como
         # Google SSO: en ambos el email queda guardado en el Usuario.
         email_contratista = _email_del_contratista(db, c)
+        ok_email = False
         if email_contratista:
             try:
-                enviar_solicitud_presupuesto(
+                ok_email = enviar_solicitud_presupuesto(
                     email_contratista,
                     reclamo_id,
                     reclamo.nombre_escuela,
@@ -425,6 +426,9 @@ def notificar_contratistas(
             except Exception as e:  # noqa: BLE001 - el email es complementario
                 print(f"[EMAIL] No se pudo enviar solicitud de presupuesto: {e}")
 
+        # Con que le llegue por un canal ya está convocado: si no, el contratista tiene
+        # la invitación en el mail pero el reclamo no le aparece en el portal.
+        ok = ok or ok_email
         if ok:
             enviados += 1
             # Registrar la solicitud (idempotente: no duplicar si ya existía)
@@ -480,15 +484,19 @@ def listar_solicitudes_presupuesto(
     )
 
     # Presupuestos ya cargados para este reclamo, indexados por contratista
+    # Ordenados por id para que, si hubo reenvíos tras un rechazo, quede el último.
     presupuestos = (
-        db.query(Presupuesto).filter(Presupuesto.reclamo_id == reclamo_id).all()
+        db.query(Presupuesto)
+        .filter(Presupuesto.reclamo_id == reclamo_id)
+        .order_by(Presupuesto.id)
+        .all()
     )
-    presupuesto_por_contratista = {p.contratista_id: p.id for p in presupuestos}
+    presupuesto_por_contratista = {p.contratista_id: p for p in presupuestos}
 
     resultado = []
     for s in solicitudes:
         c = s.contratista
-        presupuesto_id = presupuesto_por_contratista.get(s.contratista_id)
+        presupuesto = presupuesto_por_contratista.get(s.contratista_id)
         resultado.append(
             SolicitudPresupuestoOut(
                 contratista_id=s.contratista_id,
@@ -496,8 +504,10 @@ def listar_solicitudes_presupuesto(
                 especialidad=c.especialidad if c else "—",
                 telefono=c.telefono if c else "—",
                 fecha_solicitud=s.fecha_solicitud,
-                presupuesto_cargado=presupuesto_id is not None,
-                presupuesto_id=presupuesto_id,
+                presupuesto_cargado=presupuesto is not None,
+                presupuesto_id=presupuesto.id if presupuesto else None,
+                presupuesto_estado=presupuesto.estado.value if presupuesto else None,
+                intentos=presupuesto.intento if presupuesto else 0,
             )
         )
     return resultado

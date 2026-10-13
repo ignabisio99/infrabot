@@ -68,3 +68,13 @@ export async function listarMisPresupuestos() {
   }
   return response.json();
 }
+
+/** Último presupuesto del contratista logueado para el reclamo, o null si no cargó ninguno. */
+export async function obtenerMiPresupuesto(reclamoId) {
+  const response = await fetchConAuth(`${API_URL}/contratistas/mi-presupuesto/${reclamoId}`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(extraerMensajeError(error?.detail, 'No se pudo cargar tu presupuesto.'));
+  }
+  return response.json();
+}
