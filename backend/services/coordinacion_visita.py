@@ -316,3 +316,186 @@ def _parsear_fecha(texto: str) -> datetime | None:
         return fecha_local.astimezone(timezone.utc)
     except ValueError:
         return None
+
+
+# --- CU-05 paso 3: el contratista avisa por WhatsApp que arranca la obra ---------------
+#
+# Tras VISITA_COORDINADA el flujo se frenaba: nadie llevaba el reclamo a EN_EJECUCION.
+# Acá se identifica al contratista por su teléfono (el del presupuesto del reclamo) y,
+# cuando avisa que empezó, se dispara la transición VISITA_COORDINADA -> EN_EJECUCION.
+# La transición ya es válida en la máquina de estados (origen AUTOMATICO), así que no
+# hace falta tocar estados_reclamo.
+
+
+def contratista_de_reclamo_coordinado(db: Session, telefono: str):
+    """Reclamo en VISITA_COORDINADA cuyo contratista coincide con el teléfono.
+
+    Devuelve (reclamo, contratista) o None. Identifica al contratista por el presupuesto
+    más reciente del reclamo, igual que avance_contratista.reclamo_en_ejecucion_de.
+    """
+    from sqlalchemy.orm import joinedload
+
+    from models.presupuesto import Presupuesto
+
+    reclamos = (
+        db.query(Reclamo)
+        .filter(Reclamo.estado == EstadoReclamo.VISITA_COORDINADA)
+        .order_by(Reclamo.id.desc())
+        .all()
+    )
+    for reclamo in reclamos:
+        presupuesto = (
+            db.query(Presupuesto)
+            .options(joinedload(Presupuesto.contratista))
+            .filter(Presupuesto.reclamo_id == reclamo.id)
+            .order_by(Presupuesto.fecha.desc())
+            .first()
+        )
+        contratista = presupuesto.contratista if presupuesto else None
+        if contratista and _mismo_numero(contratista.telefono, telefono):
+            return reclamo, contratista
+    return None
+
+
+def registrar_inicio_obra(db: Session, reclamo: Reclamo, contratista) -> bool:
+    """El contratista avisó que empezó: VISITA_COORDINADA -> EN_EJECUCION.
+
+    Deja un comentario de sistema y avisa a la escuela (telefono_creador). Devuelve True
+    si cambió el estado; False si el reclamo no estaba en VISITA_COORDINADA.
+    """
+    from models.comentario_reclamo import ComentarioReclamo
+    from models.historial_estado_reclamo import OrigenCambioEstado
+    from services import estados_reclamo
+
+    if reclamo.estado != EstadoReclamo.VISITA_COORDINADA:
+        return False
+
+    empresa = (getattr(contratista, "nombre_empresa", None) or "El contratista").strip()
+    estados_reclamo.cambiar_estado(
+        db,
+        reclamo,
+        EstadoReclamo.EN_EJECUCION,
+        motivo="El contratista avisó por WhatsApp que inició la obra",
+        origen=OrigenCambioEstado.AUTOMATICO,
+    )
+    db.add(
+        ComentarioReclamo(
+            reclamo_id=reclamo.id,
+            usuario_id=getattr(contratista, "usuario_id", None),
+            texto=f"[WhatsApp — {empresa}]\nEl contratista informó que comenzó el trabajo.",
+        )
+    )
+    db.commit()
+
+    # Avisar a la escuela que el trabajo arrancó (best-effort).
+    if reclamo.telefono_creador:
+        _enviar(
+            reclamo.telefono_creador,
+            f"🛠️ *Reclamo #{reclamo.id} — el trabajo comenzó*\n\n"
+            f"🏫 {reclamo.nombre_escuela}\n"
+            f"📍 {reclamo.ubicacion}\n\n"
+            f"{empresa} informó que inició la obra. Cuando el problema esté resuelto, "
+            "te vamos a pedir por este chat que lo confirmes.",
+        )
+    return True
+
+
+# --- CU-05 pieza 1: preguntar al contratista si empezó, en el horario pactado ----------
+#
+# El scheduler de recordatorios detecta que llegó la fecha_visita y llama acá. Se pregunta
+# una sola vez (marca Visita.pregunta_inicio_enviada). Si el contratista responde que no
+# pudo, se reprograma la visita reutilizando el flujo de coordinación.
+
+
+def _enviar_botones(to: str, body: str, botones: list[dict]) -> None:
+    """Envía botones interactivos sin romper el flujo si falla."""
+    from core.whatsapp_client import enviar_botones
+
+    try:
+        enviar_botones(to, body, botones)
+    except Exception as e:  # noqa: BLE001
+        print(f"[VISITA] No se pudieron enviar botones a {to}: {e}")
+
+
+def enviar_pregunta_inicio(db: Session, visita: Visita) -> bool:
+    """Pregunta al contratista si pudo empezar. Deja el estado conversacional listo.
+
+    Devuelve True si se envió la pregunta; False si no hay a quién preguntarle.
+    """
+    from services import cu05_botones
+    from core.whatsapp_handler import registrar_estado_conversacion
+
+    reclamo = db.get(Reclamo, visita.reclamo_id)
+    contratista = db.get(Contratista, visita.contratista_id)
+    if reclamo is None or contratista is None or not contratista.telefono:
+        return False
+
+    registrar_estado_conversacion(
+        contratista.telefono,
+        {"paso": "cu05_inicio", "visita_id": visita.id, "reclamo_id": reclamo.id},
+    )
+    _enviar_botones(
+        contratista.telefono,
+        f"🛠️ *Reclamo #{reclamo.id} — {reclamo.nombre_escuela}*\n\n"
+        f"Hoy era la visita de trabajo acordada ({visita.horario_confirmado}).\n"
+        "¿Pudiste empezar el trabajo?",
+        [
+            {"id": cu05_botones.INICIO_SI, "title": "Sí, empecé"},
+            {"id": cu05_botones.INICIO_NO, "title": "No pude"},
+        ],
+    )
+    return True
+
+
+def reprogramar_visita(db: Session, visita: Visita) -> bool:
+    """El contratista no pudo empezar: se vuelve a coordinar la visita.
+
+    Reusa el flujo de disponibilidad: la visita vuelve a ESPERANDO_DISPONIBILIDAD, el
+    reclamo a PENDIENTE_COORDINACION, y se le vuelve a pedir disponibilidad al contratista.
+    """
+    from models.historial_estado_reclamo import OrigenCambioEstado
+    from services import estados_reclamo
+    from core.whatsapp_handler import registrar_estado_conversacion
+
+    reclamo = db.get(Reclamo, visita.reclamo_id)
+    contratista = db.get(Contratista, visita.contratista_id)
+    if reclamo is None or contratista is None:
+        return False
+
+    # Volver a dejar la visita pidiendo disponibilidad y limpiar lo coordinado.
+    visita.estado = EstadoVisita.ESPERANDO_DISPONIBILIDAD
+    visita.disponibilidades = None
+    visita.horario_confirmado = None
+    visita.fecha_visita = None
+    visita.recordatorio_dia_antes_enviado = None
+    visita.recordatorio_mismo_dia_enviado = None
+    visita.pregunta_inicio_enviada = None
+
+    if reclamo.estado == EstadoReclamo.VISITA_COORDINADA:
+        try:
+            estados_reclamo.cambiar_estado(
+                db,
+                reclamo,
+                EstadoReclamo.PENDIENTE_COORDINACION,
+                motivo="El contratista no pudo iniciar: se reprograma la visita",
+                origen=OrigenCambioEstado.AUTOMATICO,
+            )
+        except estados_reclamo.TransicionInvalida as e:
+            print(f"[VISITA] No se pudo reprogramar el reclamo #{reclamo.id}: {e}")
+            return False
+    db.commit()
+
+    registrar_estado_conversacion(
+        contratista.telefono,
+        {"paso": "visita_disponibilidad", "visita_id": visita.id},
+    )
+    _enviar(
+        contratista.telefono,
+        f"📅 *Reprogramemos la visita del reclamo #{reclamo.id}*\n\n"
+        f"🏫 {reclamo.nombre_escuela}\n"
+        f"📍 {reclamo.ubicacion}\n\n"
+        "Indicá tu nueva disponibilidad en formato *DD/MM HH:MM* "
+        "(podés mandar varias separadas por coma).\n"
+        "Cuando termines, escribí *listo*.",
+    )
+    return True

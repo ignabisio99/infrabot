@@ -11,6 +11,7 @@ Así las reglas viven en un solo lugar y cada cambio queda registrado en el hist
 
     EN_EVALUACION ─(se aprueba un presupuesto)*──> APROBADO ─(el bot pide disponibilidad)*─> PENDIENTE_COORDINACION ─(se confirma la fecha)*─> VISITA_COORDINADA ──> EN_EJECUCION ──> FINALIZADO
                                                                                               └─(sin respuesta)*─> PENDIENTE_INTERVENCION ─(responde)*─> EN_EJECUCION
+                                                                                                                   EN_EJECUCION ─(el contratista no responde los avances)*─> DESIERTO ──> PENDIENTE_PRESUPUESTO
                                                                                                                                                     ├─(elige oferta ya enviada)*─> APROBADO
                                                                                                                                                     └─(convoca de nuevo)*─> PENDIENTE_PRESUPUESTO
                   └─(no queda ninguno vigente)*───> PENDIENTE_PRESUPUESTO
@@ -92,6 +93,9 @@ TRANSICIONES: dict[EstadoReclamo, frozenset[EstadoReclamo]] = {
     EstadoReclamo.VISITA_COORDINADA: frozenset(
         {
             EstadoReclamo.EN_EJECUCION,
+            # Si el contratista no pudo empezar en la fecha pactada, se reprograma la
+            # visita volviendo a coordinar (lo dispara el sistema, ver coordinacion_visita).
+            EstadoReclamo.PENDIENTE_COORDINACION,
             EstadoReclamo.PENDIENTE_PRESUPUESTO,
             EstadoReclamo.CANCELADO,
         }
@@ -100,6 +104,9 @@ TRANSICIONES: dict[EstadoReclamo, frozenset[EstadoReclamo]] = {
         {
             EstadoReclamo.FINALIZADO,
             EstadoReclamo.PENDIENTE_INTERVENCION,
+            # El contratista dejó de responder las preguntas de avance: queda desierto
+            # para poder reconvocar. Lo dispara el sistema (ver seguimiento).
+            EstadoReclamo.DESIERTO,
             EstadoReclamo.CANCELADO,
         }
     ),
@@ -137,8 +144,12 @@ TRANSICIONES_SOLO_AUTOMATICAS: dict[EstadoReclamo, frozenset[EstadoReclamo]] = {
     EstadoReclamo.PENDIENTE_COORDINACION: frozenset(
         {EstadoReclamo.VISITA_COORDINADA, EstadoReclamo.PENDIENTE_PRESUPUESTO}
     ),
-    EstadoReclamo.VISITA_COORDINADA: frozenset({EstadoReclamo.PENDIENTE_PRESUPUESTO}),
-    EstadoReclamo.EN_EJECUCION: frozenset({EstadoReclamo.PENDIENTE_INTERVENCION}),
+    EstadoReclamo.VISITA_COORDINADA: frozenset(
+        {EstadoReclamo.PENDIENTE_PRESUPUESTO, EstadoReclamo.PENDIENTE_COORDINACION}
+    ),
+    EstadoReclamo.EN_EJECUCION: frozenset(
+        {EstadoReclamo.PENDIENTE_INTERVENCION, EstadoReclamo.DESIERTO}
+    ),
     EstadoReclamo.PENDIENTE_INTERVENCION: frozenset(
         {EstadoReclamo.PENDIENTE_PRESUPUESTO, EstadoReclamo.APROBADO}
     ),

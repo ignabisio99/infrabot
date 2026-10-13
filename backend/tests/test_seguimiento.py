@@ -1,3 +1,10 @@
+"""Seguimiento de avance del contratista (CU-05 pieza 2).
+
+El bot pregunta "¿terminaste?" con botones. Sin respuesta tras SEGUIMIENTO_MAX_INTENTOS,
+el reclamo pasa a DESIERTO (reconvocar). La herramienta de admin forzar_intervencion
+sigue yendo a PENDIENTE_INTERVENCION.
+"""
+
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
@@ -21,9 +28,9 @@ def _reclamo_en_obra(db, crear_reclamo, crear_presupuesto_aprobado, crear_contra
     return reclamo
 
 
-@patch("services.seguimiento.enviar_mensaje")
-def test_al_quinto_intento_escala_y_no_sigue(
-    mock_enviar,
+@patch("core.whatsapp_client.enviar_botones")
+def test_al_quinto_intento_escala_a_desierto_y_no_sigue(
+    mock_botones,
     db,
     crear_reclamo,
     crear_presupuesto_aprobado,
@@ -33,7 +40,7 @@ def test_al_quinto_intento_escala_y_no_sigue(
     monkeypatch.setenv("SEGUIMIENTO_HORAS", "0")
     monkeypatch.setenv("SEGUIMIENTO_MAX_INTENTOS", "5")
     reclamo = _reclamo_en_obra(db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista)
-    mock_enviar.return_value = {}
+    mock_botones.return_value = {}
 
     for n in range(5):
         r = ejecutar_seguimiento(db)
@@ -43,19 +50,15 @@ def test_al_quinto_intento_escala_y_no_sigue(
         else:
             assert r.escalados == 1
 
-    assert reclamo.estado == EstadoReclamo.PENDIENTE_INTERVENCION
-    assert MARCA_INTERVENCION not in (reclamo.observaciones or "")
-    from services.notificaciones import contar_pendiente_intervencion
-
-    assert contar_pendiente_intervencion(db) == 1
+    assert reclamo.estado == EstadoReclamo.DESIERTO
     sexto = ejecutar_seguimiento(db)
     assert sexto.enviados == 0
-    assert mock_enviar.call_count == 5
+    assert mock_botones.call_count == 5
 
 
-@patch("services.seguimiento.enviar_mensaje")
+@patch("core.whatsapp_client.enviar_botones")
 def test_una_respuesta_reinicia_los_intentos(
-    mock_enviar,
+    mock_botones,
     db,
     crear_reclamo,
     crear_presupuesto_aprobado,
@@ -66,7 +69,7 @@ def test_una_respuesta_reinicia_los_intentos(
 
     monkeypatch.setenv("SEGUIMIENTO_HORAS", "0")
     reclamo = _reclamo_en_obra(db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista)
-    mock_enviar.return_value = {}
+    mock_botones.return_value = {}
     ejecutar_seguimiento(db)
     ejecutar_seguimiento(db)
     fila = db.query(RecordatorioContratista).filter_by(reclamo_id=reclamo.id).one()
@@ -75,38 +78,65 @@ def test_una_respuesta_reinicia_los_intentos(
     registrar_avance_texto(db, reclamo, None, "Avance 10%")
     db.refresh(fila)
     assert fila.cantidad_envios == 0
-    # El reloj se reinició ahora: sin umbral 0 no mandaría... SEGUIMIENTO_HORAS=0 sí vence.
     tercero = ejecutar_seguimiento(db)
     assert tercero.enviados == 1
     db.refresh(fila)
     assert fila.cantidad_envios == 1
 
 
-@patch("services.seguimiento.enviar_mensaje")
-def test_respuesta_despues_de_escalar_quita_la_marca(
-    mock_enviar,
+@patch("core.whatsapp_client.enviar_botones")
+def test_tiempo_estimado_difiere_la_proxima_pregunta(
+    mock_botones,
     db,
     crear_reclamo,
     crear_presupuesto_aprobado,
     crear_contratista,
     monkeypatch,
 ):
-    from services.avance_contratista import registrar_avance_texto
+    """Si el contratista da un estimado, no se le vuelve a preguntar hasta que se cumpla."""
+    from services.seguimiento import registrar_tiempo_estimado
 
     monkeypatch.setenv("SEGUIMIENTO_HORAS", "0")
-    monkeypatch.setenv("SEGUIMIENTO_MAX_INTENTOS", "2")
     reclamo = _reclamo_en_obra(db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista)
-    mock_enviar.return_value = {}
-    ejecutar_seguimiento(db)
-    ejecutar_seguimiento(db)
-    assert reclamo.estado == EstadoReclamo.PENDIENTE_INTERVENCION
+    mock_botones.return_value = {}
 
-    registrar_avance_texto(db, reclamo, None, "Perdón, avance 30%")
-    db.refresh(reclamo)
-    assert reclamo.estado == EstadoReclamo.EN_EJECUCION
-    textos = [c.texto for c in reclamo.comentarios]
-    assert any("vuelve a ejecución" in t for t in textos)
-    assert all("[CU-05]" not in t for t in textos)
+    ejecutar_seguimiento(db)  # primera pregunta
+    horas = registrar_tiempo_estimado(db, reclamo, "2 días")
+    assert horas == 48
+
+    # Aunque el umbral sea 0, no vuelve a preguntar porque proxima_pregunta está en el futuro.
+    r = ejecutar_seguimiento(db)
+    assert r.enviados == 0
+
+    # Si la próxima pregunta ya venció, sí vuelve a preguntar.
+    fila = db.query(RecordatorioContratista).filter_by(reclamo_id=reclamo.id).one()
+    fila.proxima_pregunta = datetime.now(timezone.utc) - timedelta(hours=1)
+    db.flush()
+    r2 = ejecutar_seguimiento(db)
+    assert r2.enviados == 1
+
+
+@patch("core.whatsapp_client.enviar_botones")
+def test_consulto_escuela_frena_las_preguntas_al_contratista(
+    mock_botones,
+    db,
+    crear_reclamo,
+    crear_presupuesto_aprobado,
+    crear_contratista,
+    monkeypatch,
+):
+    from services.seguimiento import preguntar_a_escuela_si_resuelto
+
+    monkeypatch.setenv("SEGUIMIENTO_HORAS", "0")
+    reclamo = _reclamo_en_obra(db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista)
+    reclamo.telefono_creador = "5491199998888"
+    db.flush()
+    mock_botones.return_value = {}
+
+    preguntar_a_escuela_si_resuelto(db, reclamo)
+    # Mientras se espera a la escuela, no se molesta al contratista.
+    r = ejecutar_seguimiento(db)
+    assert r.enviados == 0
 
 
 def test_quita_marca_vieja_con_prefijo_cu(db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista):

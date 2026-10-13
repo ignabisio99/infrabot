@@ -77,6 +77,17 @@ def revisar_recordatorios(db) -> None:
         faltante = fecha - ahora
         horas = faltante.total_seconds() / 3600
 
+        # CU-05 pieza 1: llegó la hora pactada → preguntarle al contratista si empezó.
+        # Se pregunta una sola vez (marca pregunta_inicio_enviada). El reclamo todavía
+        # está en VISITA_COORDINADA; según la respuesta pasa a EN_EJECUCION o se reprograma.
+        if horas <= 0 and visita.pregunta_inicio_enviada is None:
+            from services.coordinacion_visita import enviar_pregunta_inicio
+
+            if enviar_pregunta_inicio(db, visita):
+                visita.pregunta_inicio_enviada = ahora
+                db.commit()
+            continue
+
         # Recordatorio "mismo día": entre 0 y 12 horas antes de la visita.
         if 0 <= horas <= 12 and visita.recordatorio_mismo_dia_enviado is None:
             _avisar_a_ambos(db, visita, "⏰ *Recordatorio: la visita es hoy*")

@@ -44,6 +44,9 @@ class Visita(Base):
     # Marcas para no repetir recordatorios.
     recordatorio_dia_antes_enviado = Column(DateTime(timezone=True), nullable=True)
     recordatorio_mismo_dia_enviado = Column(DateTime(timezone=True), nullable=True)
+    # Cuándo se le preguntó al contratista si pudo empezar (en el horario pactado). Se
+    # pregunta una sola vez; si responde "no pude" se reprograma la visita.
+    pregunta_inicio_enviada = Column(DateTime(timezone=True), nullable=True)
 
     fecha_creacion = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
