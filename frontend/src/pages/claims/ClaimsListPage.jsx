@@ -17,7 +17,7 @@ import {
   Title,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
-import { IconAlertTriangle, IconExchange, IconEye } from '@tabler/icons-react';
+import { IconExchange, IconEye } from '@tabler/icons-react';
 
 import { RowActionsMenu } from '../../components/RowActionsMenu';
 import { eliminarReclamo, listarReclamos } from '../../api/reclamos';
@@ -36,12 +36,6 @@ const opcionesPrioridad = [
   { value: 'BAJA', label: 'Baja' },
   { value: 'MEDIA', label: 'Media' },
   { value: 'ALTA', label: 'Alta' },
-];
-
-const opcionesRevision = [
-  { value: '', label: 'Todas' },
-  { value: 'si', label: 'Requiere revisión' },
-  { value: 'no', label: 'Sin marca de revisión' },
 ];
 
 const POR_PAGINA = 10;
@@ -88,7 +82,6 @@ export function ClaimsListPage() {
 
   const [prioridadFiltro, setPrioridadFiltro] = useState('');
   const [estadosFiltro, setEstadosFiltro] = useState(() => estadosDeParams(searchParams));
-  const [revisionFiltro, setRevisionFiltro] = useState('');
   const [rangoFechas, setRangoFechas] = useState([null, null]);
   const [busquedaId, setBusquedaId] = useState(() => busquedaDeParams(searchParams));
   const [pagina, setPagina] = useState(1);
@@ -108,7 +101,6 @@ export function ClaimsListPage() {
     setEstadosFiltro(estadosDeParams(searchParams));
     setBusquedaId(busquedaDeParams(searchParams));
     setPrioridadFiltro('');
-    setRevisionFiltro('');
     setRangoFechas([null, null]);
   }
 
@@ -137,9 +129,6 @@ export function ClaimsListPage() {
       // Sin estados elegidos no se filtra: ninguno tildado es "todos".
       if (estadosFiltro.length > 0 && !estadosFiltro.includes(reclamo.estado)) return false;
 
-      if (revisionFiltro === 'si' && !reclamo.requiere_revision) return false;
-      if (revisionFiltro === 'no' && reclamo.requiere_revision) return false;
-
       if (!idCoincideConBusqueda(reclamo.id, busquedaId)) return false;
 
       const fecha = new Date(reclamo.fecha_creacion);
@@ -154,12 +143,11 @@ export function ClaimsListPage() {
 
       return true;
     });
-  }, [reclamos, prioridadFiltro, estadosFiltro, revisionFiltro, rangoFechas, busquedaId]);
+  }, [reclamos, prioridadFiltro, estadosFiltro, rangoFechas, busquedaId]);
 
   const hayFiltrosActivos =
     prioridadFiltro !== '' ||
     estadosFiltro.length > 0 ||
-    revisionFiltro !== '' ||
     rangoFechas[0] !== null ||
     rangoFechas[1] !== null ||
     busquedaId !== '';
@@ -167,12 +155,11 @@ export function ClaimsListPage() {
   const limpiarFiltros = () => {
     setPrioridadFiltro('');
     setEstadosFiltro([]);
-    setRevisionFiltro('');
     setRangoFechas([null, null]);
     setBusquedaId('');
   };
 
-  const filtroActual = `${prioridadFiltro}|${estadosFiltro}|${revisionFiltro}|${rangoFechas[0]}|${rangoFechas[1]}|${busquedaId}`;
+  const filtroActual = `${prioridadFiltro}|${estadosFiltro}|${rangoFechas[0]}|${rangoFechas[1]}|${busquedaId}`;
   const [filtroPrevio, setFiltroPrevio] = useState(filtroActual);
   if (filtroActual !== filtroPrevio) {
     setFiltroPrevio(filtroActual);
@@ -233,13 +220,6 @@ export function ClaimsListPage() {
             w={160}
           />
           <StatusFilterPopover value={estadosFiltro} onChange={setEstadosFiltro} />
-          <Select
-            label="Revisión IA"
-            data={opcionesRevision}
-            value={revisionFiltro}
-            onChange={(value) => setRevisionFiltro(value ?? '')}
-            w={210}
-          />
           <DatePickerInput
             type="range"
             allowSingleDateInRange
@@ -315,17 +295,6 @@ export function ClaimsListPage() {
                   <Table.Td>
                     <Group gap={6} wrap="nowrap">
                       <StatusBadge estado={reclamo.estado} variant="light" />
-                      {reclamo.requiere_revision && (
-                        <Badge
-                          size="xs"
-                          color="orange"
-                          variant="light"
-                          tt="none"
-                          leftSection={<IconAlertTriangle size={10} />}
-                        >
-                          Revisión
-                        </Badge>
-                      )}
                     </Group>
                   </Table.Td>
                   <Table.Td>{reclamo.categoria}</Table.Td>

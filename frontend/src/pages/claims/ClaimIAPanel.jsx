@@ -242,7 +242,6 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
       {pipeline && (
         <Text size="sm" c="dimmed">
           Último recálculo: {(pipeline.pasos || []).join(' → ')}
-          {pipeline.requiere_revision ? ' · Requiere revisión' : ''}
         </Text>
       )}
 
@@ -342,11 +341,6 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
                   {Math.round(estimacion.confianza * 100)}% confianza
                 </Badge>
               )}
-              {estimacion.requiere_revision && (
-                <Badge size="xs" color="orange">
-                  Requiere revisión
-                </Badge>
-              )}
             </Group>
             {estimacion.justificacion && (
               <Text size="sm">{estimacion.justificacion}</Text>
@@ -401,12 +395,6 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
       <Button size="xs" variant="light" loading={orquestando} onClick={orquestar}>
         Regenerar todo el análisis
       </Button>
-
-      {reclamo.requiere_revision && (
-        <Alert color="orange" title="Derivado a operador">
-          Este reclamo quedó marcado para revisión humana.
-        </Alert>
-      )}
     </Stack>
   );
 }

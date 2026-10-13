@@ -10,8 +10,6 @@ from sqlalchemy.orm import Session
 from models.reclamo import Reclamo
 from models.recomendacion_ia import TipoRecomendacionIA
 from services.ai import clasificacion, duplicados, estimacion, registro
-from services.ai.contexto_reclamo import texto_para_ia
-from services.ai.derivacion import UMBRAL_CONFIANZA_DERIVACION, evaluar_derivacion
 
 logger = logging.getLogger(__name__)
 
@@ -33,17 +31,13 @@ class EstadoPipeline(TypedDict, total=False):
 
 
 def _puede_avanzar_tras_ia(db: Session, reclamo: Reclamo, state: EstadoPipeline) -> bool:
-    """Sólo deja atrás PENDIENTE_REVISION si la clasificación fue del LLM y no hay que derivar."""
-    if state.get("proveedor") == "fallback":
-        return False
-    if (state.get("confianza") or 0) < UMBRAL_CONFIANZA_DERIVACION:
-        return False
-    der = evaluar_derivacion(
-        descripcion=texto_para_ia(reclamo, db),
-        categoria=state.get("categoria") or reclamo.categoria,
-        confianza=state.get("confianza"),
-    )
-    return not der.derivar
+    """Siempre avanza: generado el estimativo, el reclamo pasa a PENDIENTE_PRESUPUESTO.
+
+    Antes se frenaba en PENDIENTE_REVISION si la clasificación venía de fallback, con
+    confianza baja o si el caso se derivaba a operador. Por decisión de producto el flujo
+    ahora siempre avanza y la selección de presupuestos queda en manos de los admins.
+    """
+    return True
 
 
 def ejecutar_pipeline(db: Session, reclamo: Reclamo) -> EstadoPipeline:

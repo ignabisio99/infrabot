@@ -266,11 +266,6 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
                 </Text>
                 <PriorityBadge prioridad={reclamo.prioridad} size="xs" />
                 <StatusBadge estado={reclamo.estado} size="xs" variant="light" />
-                {reclamo.requiere_revision && (
-                  <Badge size="xs" color="orange" variant="light" tt="none">
-                    Revisión
-                  </Badge>
-                )}
               </Group>
               <Text fw={700} size="lg" lh={1.15}>
                 {reclamo.nombre_escuela}
