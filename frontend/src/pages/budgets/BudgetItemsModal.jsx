@@ -12,7 +12,7 @@ import {
   Text,
 } from '@mantine/core';
 
-import { IconGavel } from '@tabler/icons-react';
+import { IconCheck, IconGavel } from '@tabler/icons-react';
 
 import { auditarPresupuesto, obtenerAuditoria } from '../../api/ai';
 import { formatearIdReclamo } from '../../utils/ids';
@@ -75,12 +75,16 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
   const [recalculando, setRecalculando] = useState(false);
   const [decidirAbierto, setDecidirAbierto] = useState(false);
   const esAdmin = esAdministrador();
-  const cargando = esAdmin && presupuesto !== null && cargadoPara !== presupuesto.id;
+  const aprobado = presupuesto?.estado === 'APROBADO';
+  // La auditoría solo se carga para admins y mientras el presupuesto no esté aprobado
+  const mostrarAuditoria = esAdmin && !aprobado;
+  const cargando = mostrarAuditoria && presupuesto !== null && cargadoPara !== presupuesto.id;
   const puedeDecidir = esAdmin && (presupuesto?.estados_posibles?.length ?? 0) > 0;
 
   useEffect(() => {
     // La auditoría es una evaluación interna del organismo: el contratista no la ve.
-    if (!presupuesto || !esAdmin) return;
+    // Tampoco tiene sentido mostrarla una vez que el presupuesto fue aprobado.
+    if (!presupuesto || !mostrarAuditoria) return;
     let vigente = true;
     obtenerAuditoria(presupuesto.id)
       .then((data) => {
@@ -97,7 +101,7 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
       setInforme(null);
       setCargadoPara(null);
     };
-  }, [presupuesto, esAdmin]);
+  }, [presupuesto, mostrarAuditoria]);
 
   const recalcular = async () => {
     if (!presupuesto) return;
@@ -120,11 +124,22 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
       opened={presupuesto !== null}
       onClose={onClose}
       title={
-        presupuesto
-          ? `Ítems del presupuesto — ${formatearIdReclamo(presupuesto.reclamo.id)}${
-              presupuesto.intento > 1 ? ` · intento ${presupuesto.intento}` : ''
-            }`
-          : ''
+        presupuesto ? (
+          <Group gap="xs" wrap="nowrap">
+            <Text fw={600}>
+              {`Ítems del presupuesto — ${formatearIdReclamo(presupuesto.reclamo.id)}${
+                presupuesto.intento > 1 ? ` · intento ${presupuesto.intento}` : ''
+              }`}
+            </Text>
+            {aprobado && (
+              <Badge color="green" variant="filled" leftSection={<IconCheck size={12} />}>
+                Aprobado
+              </Badge>
+            )}
+          </Group>
+        ) : (
+          ''
+        )
       }
       size="min(1100px, 92vw)"
     >
@@ -171,7 +186,7 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
 
           {cargando && <Loader size="sm" mb="sm" />}
 
-          {!cargando && informe && (
+          {mostrarAuditoria && !cargando && informe && (
             <Alert
               mb="sm"
               color={colorPorRecomendacion[informe.recomendacion] || 'gray'}
@@ -206,7 +221,7 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
             </Alert>
           )}
 
-          {esAdmin && !cargando && !informe && (
+          {mostrarAuditoria && !cargando && !informe && (
             <Alert color="yellow" mb="sm" title="Sin auditoría guardada">
               Al guardar el presupuesto se audita solo. Podés recalcular ahora.
             </Alert>
@@ -221,7 +236,7 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
               )}
             </Text>
             <Group>
-              {esAdmin && (
+              {mostrarAuditoria && (
                 <Button variant="subtle" size="xs" loading={recalculando} onClick={recalcular}>
                   Recalcular auditoría
                 </Button>
