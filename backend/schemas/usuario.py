@@ -8,22 +8,45 @@ from core.telefonos import normalizar_telefono_ar
 
 
 class UsuarioRegister(BaseModel):
-    nombre: str = Field(min_length=2)
+    nombre: str
     email: EmailStr
-    password: str = Field(min_length=8)
-    telefono: str = Field(min_length=6)
-    direccion: str = Field(min_length=5)
+    password: str
+    telefono: str
+    direccion: str
     tipo: TipoUsuario
     nombre_empresa: str | None = None
     especialidad: str | None = None
 
+    @field_validator("nombre")
+    @classmethod
+    def validar_nombre(cls, v):
+        if len(v.strip()) < 2:
+            raise ValueError("El nombre debe tener al menos 2 caracteres")
+        return v
+
     @field_validator("password")
     @classmethod
     def validar_password(cls, v):
+        if len(v) < 8:
+            raise ValueError("La contraseña debe tener al menos 8 caracteres")
         if not re.search(r"[A-Z]", v):
             raise ValueError("La contraseña debe tener al menos una mayúscula")
         if not re.search(r"[!@#$%^&*()\-_+=\[\]{};':\"\\|,.<>/?]", v):
             raise ValueError("La contraseña debe tener al menos un símbolo especial")
+        return v
+
+    @field_validator("telefono")
+    @classmethod
+    def normalizar_telefono(cls, v):
+        if len(v.strip()) < 6:
+            raise ValueError("El teléfono debe tener al menos 6 dígitos")
+        return normalizar_telefono_ar(v)
+
+    @field_validator("direccion")
+    @classmethod
+    def validar_direccion(cls, v):
+        if len(v.strip()) < 5:
+            raise ValueError("La dirección debe tener al menos 5 caracteres")
         return v
 
     @field_validator("nombre_empresa")
@@ -39,11 +62,6 @@ class UsuarioRegister(BaseModel):
         if info.data.get("tipo") == TipoUsuario.CONTRATISTA and (not v or len(v.strip()) < 2):
             raise ValueError("Los contratistas deben especificar su especialidad")
         return v
-
-    @field_validator("telefono")
-    @classmethod
-    def normalizar_telefono(cls, v):
-        return normalizar_telefono_ar(v)
 
 
 class UsuarioLogin(BaseModel):
@@ -52,11 +70,25 @@ class UsuarioLogin(BaseModel):
 
 
 class CompletarPerfil(BaseModel):
-    telefono: str = Field(min_length=6)
-    direccion: str = Field(min_length=5)
+    telefono: str
+    direccion: str
     tipo: TipoUsuario
     nombre_empresa: str | None = None
     especialidad: str | None = None
+
+    @field_validator("telefono")
+    @classmethod
+    def normalizar_telefono(cls, v):
+        if len(v.strip()) < 6:
+            raise ValueError("El teléfono debe tener al menos 6 dígitos")
+        return normalizar_telefono_ar(v)
+
+    @field_validator("direccion")
+    @classmethod
+    def validar_direccion(cls, v):
+        if len(v.strip()) < 5:
+            raise ValueError("La dirección debe tener al menos 5 caracteres")
+        return v
 
     @field_validator("nombre_empresa")
     @classmethod
@@ -72,23 +104,34 @@ class CompletarPerfil(BaseModel):
             raise ValueError("Los contratistas deben especificar su especialidad")
         return v
 
-    @field_validator("telefono")
-    @classmethod
-    def normalizar_telefono(cls, v):
-        return normalizar_telefono_ar(v)
-
 
 class UsuarioUpdate(BaseModel):
-    nombre: str = Field(min_length=2)
-    telefono: str = Field(min_length=6)
-    direccion: str = Field(min_length=5)
+    nombre: str
+    telefono: str
+    direccion: str
     nombre_empresa: str | None = None
     especialidad: str | None = None
 
+    @field_validator("nombre")
+    @classmethod
+    def validar_nombre(cls, v):
+        if len(v.strip()) < 2:
+            raise ValueError("El nombre debe tener al menos 2 caracteres")
+        return v
+
     @field_validator("telefono")
     @classmethod
     def normalizar_telefono(cls, v):
+        if len(v.strip()) < 6:
+            raise ValueError("El teléfono debe tener al menos 6 dígitos")
         return normalizar_telefono_ar(v)
+
+    @field_validator("direccion")
+    @classmethod
+    def validar_direccion(cls, v):
+        if len(v.strip()) < 5:
+            raise ValueError("La dirección debe tener al menos 5 caracteres")
+        return v
 
 
 class UsuarioOut(BaseModel):

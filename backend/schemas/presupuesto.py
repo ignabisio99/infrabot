@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 from models.historial_estado_reclamo import OrigenCambioEstado
 from models.presupuesto import EstadoPresupuesto, TipoItemPresupuesto
@@ -9,10 +9,40 @@ from models.presupuesto import EstadoPresupuesto, TipoItemPresupuesto
 
 class ItemPresupuestoCreate(BaseModel):
     tipo: TipoItemPresupuesto = TipoItemPresupuesto.MATERIAL
-    descripcion: str = Field(min_length=1)
-    cantidad: Decimal = Field(gt=0)
-    unidad: str = Field(default="unidad", min_length=1, max_length=20)
-    costo_unitario: Decimal = Field(ge=0)
+    descripcion: str
+    cantidad: Decimal
+    unidad: str = "unidad"
+    costo_unitario: Decimal
+
+    @field_validator("descripcion")
+    @classmethod
+    def validar_descripcion(cls, v):
+        if len(v.strip()) < 1:
+            raise ValueError("La descripción del ítem no puede estar vacía")
+        return v
+
+    @field_validator("cantidad")
+    @classmethod
+    def validar_cantidad(cls, v):
+        if v <= 0:
+            raise ValueError("La cantidad debe ser mayor a 0")
+        return v
+
+    @field_validator("costo_unitario")
+    @classmethod
+    def validar_costo(cls, v):
+        if v < 0:
+            raise ValueError("El costo unitario no puede ser negativo")
+        return v
+
+    @field_validator("unidad")
+    @classmethod
+    def validar_unidad(cls, v):
+        if len(v.strip()) < 1:
+            raise ValueError("La unidad no puede estar vacía")
+        if len(v) > 20:
+            raise ValueError("La unidad no puede superar los 20 caracteres")
+        return v
 
 
 class ItemPresupuestoOut(ItemPresupuestoCreate):
@@ -30,7 +60,14 @@ class PresupuestoBase(BaseModel):
     contratista_id: int
     detalle_tarea: str | None = None
     observaciones: str | None = None
-    items: list[ItemPresupuestoCreate] = Field(min_length=1)
+    items: list[ItemPresupuestoCreate]
+
+    @field_validator("items")
+    @classmethod
+    def validar_items(cls, v):
+        if len(v) < 1:
+            raise ValueError("El presupuesto debe tener al menos un ítem")
+        return v
 
 
 class PresupuestoCreate(PresupuestoBase):

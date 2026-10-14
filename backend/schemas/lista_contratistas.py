@@ -1,13 +1,27 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from schemas.contratista import ContratistaOut
 
 
 class ListaContratistasCreate(BaseModel):
-    nombre: str = Field(min_length=2)
-    contratista_ids: list[int] = Field(min_length=1)
+    nombre: str
+    contratista_ids: list[int]
+
+    @field_validator("nombre")
+    @classmethod
+    def validar_nombre(cls, v):
+        if len(v.strip()) < 2:
+            raise ValueError("El nombre de la lista debe tener al menos 2 caracteres")
+        return v
+
+    @field_validator("contratista_ids")
+    @classmethod
+    def validar_contratistas(cls, v):
+        if len(v) < 1:
+            raise ValueError("La lista debe tener al menos un contratista")
+        return v
 
 
 class ListaContratistasOut(BaseModel):
@@ -58,4 +72,13 @@ class SolicitudPresupuestoOut(BaseModel):
 
 class SolicitarInformacionIn(BaseModel):
     """Pedido de información adicional de un contratista al creador del reclamo."""
-    mensaje: str = Field(min_length=5, max_length=1000)
+    mensaje: str
+
+    @field_validator("mensaje")
+    @classmethod
+    def validar_mensaje(cls, v):
+        if len(v.strip()) < 5:
+            raise ValueError("El mensaje debe tener al menos 5 caracteres")
+        if len(v) > 1000:
+            raise ValueError("El mensaje no puede superar los 1000 caracteres")
+        return v
