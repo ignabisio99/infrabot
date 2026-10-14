@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validat
 
 from models.historial_estado_reclamo import OrigenCambioEstado
 from models.presupuesto import EstadoPresupuesto, TipoItemPresupuesto
+from models.reclamo import EstadoReclamo
 
 
 class ItemPresupuestoCreate(BaseModel):
@@ -90,6 +91,7 @@ class ReclamoResumen(BaseModel):
 
     id: int
     nombre_escuela: str
+    estado: EstadoReclamo
 
 
 class ContratistaResumen(BaseModel):
@@ -114,11 +116,35 @@ class PresupuestoOut(BaseModel):
     estado: EstadoPresupuesto
     # Qué decisiones habilitar en la UI para este presupuesto, según su estado actual.
     estados_posibles: list[EstadoPresupuesto]
-    # Número de envío de este contratista para el reclamo (1 = primero).
-    intento: int
+    # 1 = como se envió; suma uno cada vez que el contratista lo modifica.
+    version: int
     editable: bool
-    reenviable: bool
-    motivo_rechazo: str | None
+    # Por qué se rechazó o qué ajustes se pidieron.
+    motivo_estado: str | None
+
+    @computed_field
+    @property
+    def monto(self) -> Decimal:
+        return sum((item.subtotal for item in self.items), Decimal("0"))
+
+
+class ItemVersionOut(ItemPresupuestoCreate):
+    @computed_field
+    @property
+    def subtotal(self) -> Decimal:
+        return self.cantidad * self.costo_unitario
+
+
+class VersionPresupuestoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    numero: int
+    detalle_tarea: str | None
+    observaciones: str | None
+    items: list[ItemVersionOut]
+    fecha_envio: datetime
+    fecha_reemplazo: datetime
+    ajustes_solicitados: str | None
 
     @computed_field
     @property

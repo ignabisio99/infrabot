@@ -65,9 +65,9 @@ export function BudgetRequestsList({ reclamoId }) {
                   </Text>
                 </div>
                 <Group gap="xs" wrap="nowrap">
-                  {cargado && s.intentos > 1 && (
+                  {cargado && s.version > 1 && (
                     <Badge color="gray" variant="outline" tt="none">
-                      {s.intentos} intentos
+                      Versión {s.version}
                     </Badge>
                   )}
                   {cargado ? (

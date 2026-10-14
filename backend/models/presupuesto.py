@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import JSON, Column, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import relationship
 
 from core.database import Base
@@ -9,6 +9,9 @@ from core.database import Base
 
 class EstadoPresupuesto(str, enum.Enum):
     RECIBIDO = "RECIBIDO"
+    # La oferta sigue en carrera, pero el organismo pidió corregirla. El contratista
+    # manda una versión nueva y vuelve a RECIBIDO.
+    AJUSTES_SOLICITADOS = "AJUSTES_SOLICITADOS"
     APROBADO = "APROBADO"
     RECHAZADO = "RECHAZADO"
     # Perdió contra otro presupuesto del mismo reclamo. Va aparte de RECHAZADO porque no
@@ -63,6 +66,12 @@ class Presupuesto(Base):
         cascade="all, delete-orphan",
         order_by="HistorialEstadoPresupuesto.fecha",
     )
+    versiones_anteriores = relationship(
+        "VersionPresupuesto",
+        back_populates="presupuesto",
+        cascade="all, delete-orphan",
+        order_by="VersionPresupuesto.numero",
+    )
 
     @property
     def estados_posibles(self) -> list[EstadoPresupuesto]:
@@ -85,10 +94,8 @@ class Presupuesto(Base):
         return [estado for estado in EstadoPresupuesto if estado in permitidos]
 
     @property
-    def intento(self) -> int:
-        from services.estados_presupuesto import ofertas_del_contratista
-
-        return ofertas_del_contratista(self.reclamo, self.contratista_id).index(self) + 1
+    def version(self) -> int:
+        return len(self.versiones_anteriores) + 1
 
     @property
     def editable(self) -> bool:
@@ -97,16 +104,10 @@ class Presupuesto(Base):
         return admite_edicion(self)
 
     @property
-    def reenviable(self) -> bool:
-        from services.estados_presupuesto import admite_reenvio
+    def motivo_estado(self) -> str | None:
+        from services.estados_presupuesto import motivo_estado
 
-        return admite_reenvio(self)
-
-    @property
-    def motivo_rechazo(self) -> str | None:
-        from services.estados_presupuesto import motivo_rechazo
-
-        return motivo_rechazo(self)
+        return motivo_estado(self)
 
 
 class ItemPresupuesto(Base):
@@ -128,3 +129,28 @@ class ItemPresupuesto(Base):
     costo_unitario = Column(Numeric(12, 2), nullable=False)
 
     presupuesto = relationship("Presupuesto", back_populates="items")
+
+
+class VersionPresupuesto(Base):
+    """Lo que tenía un presupuesto antes de que el contratista lo modificara.
+
+    El presupuesto guarda siempre la versión vigente; acá quedan las anteriores tal como
+    se enviaron, para que se vea qué cambió entre una y otra.
+    """
+
+    __tablename__ = "version_presupuesto"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    presupuesto_id = Column(
+        Integer, ForeignKey("presupuesto.id", ondelete="CASCADE"), nullable=False
+    )
+    numero = Column(Integer, nullable=False)
+    detalle_tarea = Column(Text, nullable=True)
+    observaciones = Column(Text, nullable=True)
+    items = Column(JSON, nullable=False)
+    fecha_envio = Column(DateTime(timezone=True), nullable=False)
+    fecha_reemplazo = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    # El pedido que motivó la versión siguiente; nulo si el contratista la cambió por su cuenta.
+    ajustes_solicitados = Column(Text, nullable=True)
+
+    presupuesto = relationship("Presupuesto", back_populates="versiones_anteriores")

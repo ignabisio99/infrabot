@@ -3,13 +3,11 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
-from api.reclamos import _email_del_contratista
 from core.database import get_db
 from core.dependencies import get_current_admin, get_current_contratista, get_current_user
-from core.email import APP_URL, enviar_rechazo_presupuesto
-from core.whatsapp_client import enviar_mensaje
 from models.contratista import Contratista
 from models.historial_estado_presupuesto import HistorialEstadoPresupuesto
+from models.historial_estado_reclamo import OrigenCambioEstado
 from models.presupuesto import EstadoPresupuesto, ItemPresupuesto, Presupuesto
 from models.reclamo import Reclamo
 from models.usuario import Usuario
@@ -19,8 +17,9 @@ from schemas.presupuesto import (
     PresupuestoCreate,
     PresupuestoOut,
     PresupuestoUpdate,
+    VersionPresupuestoOut,
 )
-from services import estados_presupuesto, estados_reclamo
+from services import avisos_presupuesto, estados_presupuesto, estados_reclamo
 from services.ai.automatico import post_presupuesto
 
 logger = logging.getLogger(__name__)
@@ -78,44 +77,16 @@ def _validar_sin_decidir(presupuesto: Presupuesto, accion: str) -> None:
         )
 
 
-def _validar_sin_oferta_vigente(reclamo: Reclamo, contratista_id: int) -> None:
-    """Uno por contratista en evaluación: para cambiar la oferta se edita la que está en
-    pie. Después de un rechazo sí se carga otro, que cuenta como un nuevo intento."""
+def _validar_puede_ofertar(reclamo: Reclamo, contratista_id: int) -> None:
+    """Una oferta en evaluación por contratista: ésa se edita. Si se la rechazaron o quedó
+    sin seleccionar, puede cargar otra."""
     ofertas = estados_presupuesto.ofertas_del_contratista(reclamo, contratista_id)
-    if any(estados_presupuesto.esta_vigente(p) for p in ofertas):
+    estados = {p.estado for p in ofertas}
+    if estados & estados_presupuesto.ESTADOS_VIGENTES:
         raise HTTPException(
             status_code=409,
             detail="Ya hay un presupuesto de este contratista en evaluación para el reclamo: editalo en vez de cargar otro",
         )
-
-
-def _avisar_rechazo(db: Session, presupuesto: Presupuesto) -> None:
-    """Sin el aviso, el contratista no se entera de que puede corregir y reenviar.
-
-    El link va siempre: si después el reclamo deja de recibir ofertas, el portal ya no
-    ofrece el reenvío."""
-    reclamo = presupuesto.reclamo
-    contratista = presupuesto.contratista
-    motivo = estados_presupuesto.motivo_rechazo(presupuesto)
-    link = f"{APP_URL}/portal/reclamos/{reclamo.id}/presupuestar"
-
-    mensaje = (
-        f"❌ Su presupuesto para el reclamo #{reclamo.id} ({reclamo.nombre_escuela}) fue rechazado.\n\n"
-        f"Motivo: {motivo}\n\n"
-        f"Puede corregirlo y volver a enviarlo desde:\n{link}"
-    )
-
-    try:
-        enviar_mensaje(contratista.telefono, mensaje)
-    except Exception:
-        logger.exception("No se pudo avisar por WhatsApp el rechazo del presupuesto %s", presupuesto.id)
-
-    email = _email_del_contratista(db, contratista)
-    if email:
-        try:
-            enviar_rechazo_presupuesto(email, reclamo.id, reclamo.nombre_escuela, motivo, link)
-        except Exception:
-            logger.exception("No se pudo avisar por email el rechazo del presupuesto %s", presupuesto.id)
 
 
 def _validar_contratista(contratista_id: int, db: Session) -> None:
@@ -131,7 +102,7 @@ def crear_presupuesto(datos: PresupuestoCreate, db: Session = Depends(get_db), u
         datos.contratista_id if user.es_admin else _ficha_del_contratista(db, user).id
     )
     _validar_contratista(contratista_id, db)
-    _validar_sin_oferta_vigente(reclamo, contratista_id)
+    _validar_puede_ofertar(reclamo, contratista_id)
 
     nuevo_presupuesto = Presupuesto(
         # Por la relación y no por id: así entra en `reclamo.presupuestos`, que ya se
@@ -194,10 +165,34 @@ def actualizar_presupuesto(
     contratista_id = datos.contratista_id if user.es_admin else presupuesto.contratista_id
     _validar_contratista(contratista_id, db)
 
+    items = [item.model_dump() for item in datos.items]
+    if estados_presupuesto.sin_cambios(
+        presupuesto, datos.detalle_tarea, datos.observaciones, items
+    ):
+        # Una versión idéntica a la anterior no aporta nada al historial, y como
+        # respuesta a un pedido de ajustes no corrige nada.
+        if presupuesto.estado is EstadoPresupuesto.AJUSTES_SOLICITADOS:
+            raise HTTPException(
+                status_code=422,
+                detail="No hiciste cambios: corregí lo que te pidieron antes de enviar la versión nueva",
+            )
+        return _con_relaciones(db.query(Presupuesto)).filter(Presupuesto.id == presupuesto.id).first()
+
+    estados_presupuesto.archivar_version(db, presupuesto)
+    if presupuesto.estado is EstadoPresupuesto.AJUSTES_SOLICITADOS:
+        estados_presupuesto.cambiar_estado(
+            db,
+            presupuesto,
+            EstadoPresupuesto.RECIBIDO,
+            motivo=f"Se envió la versión {presupuesto.version}",
+            usuario_id=user.id,
+            origen=OrigenCambioEstado.AUTOMATICO,
+        )
+
     presupuesto.contratista_id = contratista_id
     presupuesto.detalle_tarea = datos.detalle_tarea
     presupuesto.observaciones = datos.observaciones
-    presupuesto.items = [ItemPresupuesto(**item.model_dump()) for item in datos.items]
+    presupuesto.items = [ItemPresupuesto(**item) for item in items]
 
     db.commit()
     db.refresh(presupuesto)
@@ -241,6 +236,13 @@ def decidir_presupuesto(
     if presupuesto is None:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
 
+    # Las que siguen en carrera: si se aprueba éste, quedan sin seleccionar y hay que avisarles.
+    hermanos_vigentes = [
+        p
+        for p in presupuesto.reclamo.presupuestos
+        if p.id != presupuesto.id and estados_presupuesto.esta_vigente(p)
+    ]
+
     try:
         estados_presupuesto.decidir(
             db, presupuesto, datos.estado, motivo=datos.motivo, usuario_id=user.id
@@ -255,8 +257,11 @@ def decidir_presupuesto(
 
     db.commit()
     db.refresh(presupuesto)
-    if datos.estado is EstadoPresupuesto.RECHAZADO:
-        _avisar_rechazo(db, presupuesto)
+    if datos.estado in estados_presupuesto.ESTADOS_CON_MOTIVO_OBLIGATORIO:
+        avisos_presupuesto.avisar_decision(db, presupuesto)
+    for hermano in hermanos_vigentes:
+        if hermano.estado is EstadoPresupuesto.NO_SELECCIONADO:
+            avisos_presupuesto.avisar_decision(db, hermano)
     return presupuesto
 
 
@@ -274,3 +279,15 @@ def listar_historial_presupuesto(
         .order_by(HistorialEstadoPresupuesto.fecha, HistorialEstadoPresupuesto.id)
         .all()
     )
+
+
+@router.get("/{presupuesto_id}/versiones", response_model=list[VersionPresupuestoOut])
+def listar_versiones_presupuesto(
+    presupuesto_id: int, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)
+):
+    """Las versiones anteriores, de la primera a la última. La vigente es el presupuesto."""
+    presupuesto = db.get(Presupuesto, presupuesto_id)
+    if presupuesto is None:
+        raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
+    _exigir_acceso(db, presupuesto, user)
+    return presupuesto.versiones_anteriores

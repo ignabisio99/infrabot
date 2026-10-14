@@ -37,3 +37,13 @@ export async function obtenerHistorialPresupuesto(presupuestoId) {
 
   return response.json();
 }
+
+export async function obtenerVersionesPresupuesto(presupuestoId) {
+  const response = await fetchConAuth(`${API_URL}/presupuestos/${presupuestoId}/versiones`);
+
+  if (!response.ok) {
+    throw new Error('No se pudieron obtener las versiones anteriores del presupuesto.');
+  }
+
+  return response.json();
+}

@@ -33,6 +33,7 @@ from core.database import (
     asegurar_columnas_seguimiento,
     asegurar_tipo_usuario_inspector,
     asegurar_valor_analisis_agente,
+    asegurar_valores_estado_presupuesto,
     asegurar_valores_estado_reclamo,
     engine,
 )
@@ -83,6 +84,7 @@ async def lifespan(app: FastAPI):
     asegurar_tipo_usuario_inspector()
     asegurar_valor_analisis_agente()
     asegurar_valores_estado_reclamo()
+    asegurar_valores_estado_presupuesto()
     db_roles = SessionLocal()
     try:
         from models.rol_mano_obra import asegurar_roles_iniciales

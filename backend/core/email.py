@@ -132,12 +132,12 @@ def enviar_rechazo_presupuesto(
         <div style="background:#f4f6fb; border-radius:8px; padding:16px; margin:16px 0;">
             <p style="margin:4px 0;"><strong>Motivo:</strong> {motivo or "—"}</p>
         </div>
-        <p>Podés corregirlo y volver a enviarlo desde el portal:</p>
+        <p>Mientras la convocatoria siga abierta, podés enviar una nueva oferta desde el portal:</p>
         <div style="text-align: center; margin: 30px 0;">
             <a href="{link}"
                style="background-color: #1fa7b3; color: white; padding: 12px 30px;
                       text-decoration: none; border-radius: 6px; font-weight: bold;">
-                Corregir presupuesto
+                Enviar una nueva oferta
             </a>
         </div>
         <p style="color: #666; font-size: 13px;">
@@ -147,3 +147,74 @@ def enviar_rechazo_presupuesto(
     </div>
     """
     return enviar_email(destinatario, f"Presupuesto rechazado - Reclamo #{reclamo_id}", html)
+
+
+def enviar_ajustes_presupuesto(
+    destinatario: str,
+    reclamo_id: int,
+    nombre_escuela: str,
+    ajustes: str | None,
+    link: str,
+) -> bool:
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #132a4d;">Ajustes solicitados</h2>
+        <p>Te pidieron ajustes en tu presupuesto para el <strong>reclamo #{reclamo_id}</strong> ({nombre_escuela}).</p>
+        <div style="background:#f4f6fb; border-radius:8px; padding:16px; margin:16px 0;">
+            <p style="margin:4px 0;"><strong>Qué corregir:</strong> {ajustes or "—"}</p>
+        </div>
+        <p>Podés enviar la versión corregida desde el portal:</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{link}"
+               style="background-color: #1fa7b3; color: white; padding: 12px 30px;
+                      text-decoration: none; border-radius: 6px; font-weight: bold;">
+                Ajustar presupuesto
+            </a>
+        </div>
+        <p style="color: #666; font-size: 13px;">
+            Si el botón no funciona, copiá y pegá este enlace en tu navegador:<br>
+            <a href="{link}">{link}</a>
+        </p>
+    </div>
+    """
+    return enviar_email(destinatario, f"Ajustes solicitados - Reclamo #{reclamo_id}", html)
+
+
+def enviar_no_seleccionado_presupuesto(
+    destinatario: str,
+    reclamo_id: int,
+    nombre_escuela: str,
+) -> bool:
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #132a4d;">Presupuesto no seleccionado</h2>
+        <p>Para el <strong>reclamo #{reclamo_id}</strong> ({nombre_escuela}) se eligió otra oferta,
+        así que tu presupuesto no fue seleccionado.</p>
+        <p style="color: #666; font-size: 13px;">
+            Gracias por tu participación. Si hiciera falta, podés volver a ser convocado.
+        </p>
+    </div>
+    """
+    return enviar_email(
+        destinatario, f"Presupuesto no seleccionado - Reclamo #{reclamo_id}", html
+    )
+
+
+def enviar_reclamo_cancelado_presupuesto(
+    destinatario: str,
+    reclamo_id: int,
+    nombre_escuela: str,
+    motivo: str | None,
+) -> bool:
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #132a4d;">Reclamo cancelado</h2>
+        <p>El <strong>reclamo #{reclamo_id}</strong> ({nombre_escuela}) se canceló, así que tu
+        presupuesto ya no se va a evaluar.</p>
+        <div style="background:#f4f6fb; border-radius:8px; padding:16px; margin:16px 0;">
+            <p style="margin:4px 0;"><strong>Motivo:</strong> {motivo or "—"}</p>
+        </div>
+        <p style="color: #666; font-size: 13px;">Gracias por tu participación.</p>
+    </div>
+    """
+    return enviar_email(destinatario, f"Reclamo cancelado - Reclamo #{reclamo_id}", html)

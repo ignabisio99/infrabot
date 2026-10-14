@@ -80,17 +80,45 @@ function MediaGaleria({ fotos }) {
   );
 }
 
+// Por qué una oferta del contratista ya no admite cambios.
+function motivoCierre(reclamo, presupuesto) {
+  if (reclamo.estado === 'CANCELADO') {
+    return {
+      titulo: 'El reclamo se canceló',
+      texto: 'Tu presupuesto ya no se va a evaluar.',
+    };
+  }
+  if (presupuesto.estado === 'RECHAZADO') {
+    return {
+      titulo: 'Tu presupuesto fue rechazado',
+      texto: `Motivo: ${presupuesto.motivo_estado ?? '—'}. El reclamo ${formatearIdReclamo(reclamo.id)} ya no recibe presupuestos.`,
+    };
+  }
+  if (presupuesto.estado === 'NO_SELECCIONADO') {
+    return {
+      titulo: 'Tu presupuesto no fue seleccionado',
+      texto: 'Se eligió otra oferta para este reclamo.',
+    };
+  }
+  return {
+    titulo: 'Tu presupuesto ya no se puede modificar',
+    texto: `El reclamo ${formatearIdReclamo(reclamo.id)} ya no recibe presupuestos.`,
+  };
+}
+
 export function PresupuestarReclamoPage() {
   const { id } = useParams();
   const reclamoId = Number(id);
-  // Se parte del último envío del contratista, si hay: en evaluación se edita, y
-  // rechazado se corrige y se envía como un intento nuevo.
+  // Si el contratista ya ofertó, se edita esa oferta; cada envío archiva la versión anterior.
   const [presupuestoBase, setPresupuestoBase] = useState(null);
+  // La última oferta, si se la rechazaron: se carga una nueva y se muestra por qué.
+  const [rechazado, setRechazado] = useState(null);
 
   const [reclamo, setReclamo] = useState(null);
   const [miFicha, setMiFicha] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState(null);
+  const [cerrado, setCerrado] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
 
@@ -114,8 +142,14 @@ export function PresupuestarReclamoPage() {
         setReclamo(reclamoData);
         setMiFicha(fichaData);
         if (!base) return;
-        if (!base.editable && !base.reenviable) {
-          setErrorCarga('Este presupuesto ya no se puede modificar.');
+        if (!base.editable) {
+          // Una oferta rechazada o sin seleccionar no impide cargar otra mientras la
+          // convocatoria siga abierta.
+          if (!reclamoData.admite_presupuesto) {
+            setCerrado(motivoCierre(reclamoData, base));
+          } else if (base.estado === 'RECHAZADO') {
+            setRechazado(base);
+          }
           return;
         }
         setPresupuestoBase(base);
@@ -130,8 +164,8 @@ export function PresupuestarReclamoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `form` cambia en cada render
   }, [reclamoId]);
 
-  const editando = presupuestoBase?.editable ?? false;
-  const reenviando = presupuestoBase?.reenviable ?? false;
+  const editando = presupuestoBase !== null;
+  const ajustando = presupuestoBase?.estado === 'AJUSTES_SOLICITADOS';
 
   const total = totalLineas(form.values.materials, form.values.labor);
 
@@ -199,13 +233,27 @@ export function PresupuestarReclamoPage() {
     );
   }
 
+  if (cerrado) {
+    return (
+      <Container size="md" py="xl">
+        <Alert color="gray" title={cerrado.titulo}>
+          {cerrado.texto}
+        </Alert>
+      </Container>
+    );
+  }
+
   if (enviado) {
     return (
       <Container size="sm" py={80}>
         <Stack align="center" gap="md">
           <IconCircleCheck size={72} color="var(--mantine-color-teal-6)" />
           <Title order={2} ta="center">
-            {editando ? '¡Presupuesto actualizado!' : '¡Gracias por cargar tu presupuesto!'}
+            {ajustando
+              ? '¡Ajustes enviados!'
+              : editando
+                ? '¡Presupuesto actualizado!'
+                : '¡Gracias por cargar tu presupuesto!'}
           </Title>
           <Text ta="center" c="dimmed" size="lg">
             Tu presupuesto para el reclamo {formatearIdReclamo(reclamo.id)} quedó{' '}
@@ -277,23 +325,35 @@ export function PresupuestarReclamoPage() {
 
         <Divider
           label={
-            editando
-              ? 'Editar presupuesto'
-              : reenviando
-                ? 'Corregir presupuesto'
+            ajustando
+              ? 'Ajustar presupuesto'
+              : editando
+                ? 'Editar presupuesto'
                 : 'Cargar presupuesto'
           }
           labelPosition="center"
         />
 
-        {reenviando && (
+        {rechazado && (
           <Alert color="red" title="Tu presupuesto anterior fue rechazado">
-            <Text size="sm">Motivo: {presupuestoBase.motivo_rechazo ?? '—'}</Text>
+            <Text size="sm">Motivo: {rechazado.motivo_estado ?? '—'}</Text>
             <Text size="sm" mt={4}>
-              Partimos de lo que habías cargado: corregilo y se va a enviar como un presupuesto
-              nuevo (intento {presupuestoBase.intento + 1}).
+              Podés enviar una nueva oferta: se evalúa desde cero.
             </Text>
           </Alert>
+        )}
+
+        {ajustando && (
+          <Alert color="orange" title="Te pidieron ajustes">
+            <Text size="sm">{presupuestoBase.motivo_estado ?? '—'}</Text>
+          </Alert>
+        )}
+
+        {editando && (
+          <Text size="sm" c="dimmed">
+            Al guardar se envía la versión {presupuestoBase.version + 1}; la actual queda archivada
+            y el organismo puede ver las dos.
+          </Text>
         )}
 
         <form onSubmit={form.onSubmit(handleSubmit)}>
@@ -325,7 +385,7 @@ export function PresupuestarReclamoPage() {
             </Group>
 
             <Button type="submit" mt="sm" loading={enviando}>
-              {editando ? 'Guardar cambios' : 'Enviar presupuesto'}
+              {ajustando ? 'Enviar ajustes' : editando ? 'Guardar cambios' : 'Enviar presupuesto'}
             </Button>
           </Stack>
         </form>

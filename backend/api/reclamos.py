@@ -41,7 +41,7 @@ from schemas.reclamo import (
     ReclamoCreate,
     ReclamoOut,
 )
-from services import estados_presupuesto, estados_reclamo
+from services import avisos_presupuesto, estados_presupuesto, estados_reclamo
 from services.ai.automatico import post_alta_reclamo, post_fotos_reclamo
 from services.reabrir_convocatoria import (
     ReaperturaInvalida,
@@ -145,6 +145,10 @@ def cambiar_estado_reclamo(
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
 
+    # Las ofertas en carrera se quedan sin evaluación: sin el aviso, el contratista
+    # seguiría esperando una decisión o corrigiendo algo que ya no sirve.
+    vigentes = [p for p in reclamo.presupuestos if estados_presupuesto.esta_vigente(p)]
+
     try:
         estados_reclamo.cambiar_estado(
             db, reclamo, datos.estado, motivo=datos.motivo, usuario_id=user.id
@@ -156,6 +160,9 @@ def cambiar_estado_reclamo(
 
     db.commit()
     db.refresh(reclamo)
+    if reclamo.estado is EstadoReclamo.CANCELADO:
+        for presupuesto in vigentes:
+            avisos_presupuesto.avisar_reclamo_cancelado(db, presupuesto, datos.motivo)
     return reclamo
 
 
@@ -484,7 +491,7 @@ def listar_solicitudes_presupuesto(
     )
 
     # Presupuestos ya cargados para este reclamo, indexados por contratista
-    # Ordenados por id para que, si hubo reenvíos tras un rechazo, quede el último.
+    # Ordenados por id para que, si cargó más de uno, quede el último.
     presupuestos = (
         db.query(Presupuesto)
         .filter(Presupuesto.reclamo_id == reclamo_id)
@@ -507,7 +514,7 @@ def listar_solicitudes_presupuesto(
                 presupuesto_cargado=presupuesto is not None,
                 presupuesto_id=presupuesto.id if presupuesto else None,
                 presupuesto_estado=presupuesto.estado.value if presupuesto else None,
-                intentos=presupuesto.intento if presupuesto else 0,
+                version=presupuesto.version if presupuesto else 0,
             )
         )
     return resultado

@@ -78,7 +78,7 @@ def listar_mis_solicitudes(db: Session = Depends(get_db), usuario: Usuario = Dep
     )
 
     # Presupuestos que este contratista cargó, indexados por reclamo
-    # Ordenados por id para que, si hubo reenvíos tras un rechazo, quede el último.
+    # Ordenados por id para que, si cargó más de uno, quede el último.
     presupuestos = (
         db.query(Presupuesto)
         .filter(Presupuesto.contratista_id == ficha.id)
@@ -105,9 +105,9 @@ def listar_mis_solicitudes(db: Session = Depends(get_db), usuario: Usuario = Dep
                 presupuesto_cargado=presupuesto is not None,
                 presupuesto_id=presupuesto.id if presupuesto else None,
                 presupuesto_estado=presupuesto.estado.value if presupuesto else None,
-                intentos=presupuesto.intento if presupuesto else 0,
+                version=presupuesto.version if presupuesto else 0,
                 puede_editar=presupuesto is not None and presupuesto.editable,
-                puede_reenviar=presupuesto is not None and presupuesto.reenviable,
+                puede_ofertar=estados_presupuesto.puede_ofertar(reclamo, ficha.id),
             )
         )
     return resultado
@@ -134,8 +134,8 @@ def listar_mis_presupuestos(db: Session = Depends(get_db), usuario: Usuario = De
 
 @router.get("/mi-presupuesto/{reclamo_id}", response_model=PresupuestoOut | None)
 def obtener_mi_presupuesto(reclamo_id: int, db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_user)):
-    """El último envío del contratista logueado para el reclamo: es el único que puede
-    editar (si sigue en evaluación) o tomar de base para reenviar (si se lo rechazaron)."""
+    """La última oferta del contratista logueado para el reclamo, que es la que puede
+    editar o ajustar."""
     ficha = _ficha_del_usuario(db, usuario)
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:

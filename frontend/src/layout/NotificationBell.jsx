@@ -5,8 +5,11 @@ import { useNavigate } from 'react-router-dom';
 
 import { conteoNotificaciones } from '../api/notificaciones';
 
-export const EVENTO_NOTIFICACIONES = 'infrabot-notificaciones';
+const EVENTO_NOTIFICACIONES = 'infrabot-notificaciones';
 
+// Lo usan ClaimDetailDrawer y DecideBudgetModal; pasarlo a su propio módulo implica tocar
+// ClaimDetailDrawer, que tiene errores de lint propios.
+// eslint-disable-next-line react-refresh/only-export-components
 export function avisarNotificacionesCambiaron() {
   window.dispatchEvent(new Event(EVENTO_NOTIFICACIONES));
 }
@@ -16,11 +19,13 @@ export function NotificationBell() {
   const [abierto, setAbierto] = useState(false);
   const [noLeidas, setNoLeidas] = useState(0);
   const [mensaje, setMensaje] = useState('No hay reclamos en estado pendiente de intervención.');
+  const [versiones, setVersiones] = useState(0);
 
   const refrescarConteo = useCallback(() => {
     conteoNotificaciones()
       .then((data) => {
         setNoLeidas(data.no_leidas || 0);
+        setVersiones(data.versiones_por_decidir || 0);
         if (data.mensaje) setMensaje(data.mensaje);
       })
       .catch(() => setNoLeidas(0));
@@ -40,19 +45,15 @@ export function NotificationBell() {
     if (abierto) refrescarConteo();
   }, [abierto, refrescarConteo]);
 
-  const verLista = () => {
+  const intervenciones = noLeidas - versiones;
+
+  const ir = (ruta) => {
     setAbierto(false);
-    navigate('/reclamos?estado=PENDIENTE_INTERVENCION');
+    navigate(ruta);
   };
 
   return (
-    <Menu
-      shadow="md"
-      width={360}
-      position="bottom-end"
-      opened={abierto}
-      onChange={setAbierto}
-    >
+    <Menu shadow="md" width={360} position="bottom-end" opened={abierto} onChange={setAbierto}>
       <Menu.Target>
         <Indicator
           inline
@@ -71,10 +72,38 @@ export function NotificationBell() {
         <Text size="sm" px="sm" py="xs">
           {mensaje}
         </Text>
-        {noLeidas > 0 && (
-          <Button fullWidth size="xs" mx="xs" mb="xs" w="calc(100% - 16px)" onClick={verLista}>
+        {intervenciones > 0 && (
+          <Button
+            fullWidth
+            size="xs"
+            mx="xs"
+            mb="xs"
+            w="calc(100% - 16px)"
+            onClick={() => ir('/reclamos?estado=PENDIENTE_INTERVENCION')}
+          >
             Ver reclamos
           </Button>
+        )}
+        {versiones > 0 && (
+          <>
+            <Menu.Divider />
+            <Menu.Label>Presupuestos corregidos</Menu.Label>
+            <Text size="sm" px="sm" py="xs">
+              {versiones === 1
+                ? 'Un contratista envió la versión corregida que le pediste y espera tu decisión.'
+                : `${versiones} contratistas enviaron la versión corregida que les pediste y esperan tu decisión.`}
+            </Text>
+            <Button
+              fullWidth
+              size="xs"
+              mx="xs"
+              mb="xs"
+              w="calc(100% - 16px)"
+              onClick={() => ir('/presupuestos')}
+            >
+              Ver presupuestos
+            </Button>
+          </>
         )}
       </Menu.Dropdown>
     </Menu>

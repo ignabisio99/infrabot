@@ -104,6 +104,17 @@ def asegurar_valores_estado_reclamo(bind=engine):
             )
 
 
+def asegurar_valores_estado_presupuesto(bind=engine):
+    """Agrega valores nuevos al enum `estado_presupuesto` si la base se creó antes."""
+    from models.presupuesto import EstadoPresupuesto
+
+    with bind.begin() as conn:
+        for valor in EstadoPresupuesto:
+            conn.execute(
+                text(f"ALTER TYPE estado_presupuesto ADD VALUE IF NOT EXISTS '{valor.value}'")
+            )
+
+
 def asegurar_tipo_usuario_inspector(bind=engine):
     """Agrega INSPECTOR al enum `tipo_usuario` si la base se creó antes de ese valor.
 

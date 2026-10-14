@@ -7,6 +7,7 @@ import { formatearIdReclamo } from '../../utils/ids';
 import { formatoMoneda } from '../../utils/formatters';
 import { BudgetItemsModal } from '../budgets/BudgetItemsModal';
 import { BudgetStatusBadge } from '../budgets/BudgetStatusBadge';
+import { estaVigente } from '../budgets/estados';
 
 export function MyPresupuestosPage() {
   const navigate = useNavigate();
@@ -67,24 +68,32 @@ export function MyPresupuestosPage() {
                   <Table.Td>{formatoMoneda.format(Number(p.monto))}</Table.Td>
                   <Table.Td>
                     <Group gap={4}>
-                      <BudgetStatusBadge estado={p.estado} />
-                      {p.intento > 1 && (
+                      {p.reclamo.estado === 'CANCELADO' && estaVigente(p) ? (
+                        // Quedó en carrera cuando se canceló el reclamo: su estado ya no
+                        // describe nada que el contratista pueda hacer.
+                        <Badge color="gray" tt="none">
+                          Reclamo cancelado
+                        </Badge>
+                      ) : (
+                        <BudgetStatusBadge estado={p.estado} />
+                      )}
+                      {p.version > 1 && (
                         <Badge color="gray" variant="outline" tt="none">
-                          Intento {p.intento}
+                          Versión {p.version}
                         </Badge>
                       )}
                     </Group>
                   </Table.Td>
                   <Table.Td>{p.items.length}</Table.Td>
                   <Table.Td onClick={(e) => e.stopPropagation()}>
-                    {(p.editable || p.reenviable) && (
+                    {p.editable && (
                       <Button
                         size="xs"
-                        variant={p.reenviable ? 'filled' : 'light'}
-                        color={p.reenviable ? 'orange' : undefined}
+                        variant={p.estado === 'AJUSTES_SOLICITADOS' ? 'filled' : 'light'}
+                        color={p.estado === 'AJUSTES_SOLICITADOS' ? 'orange' : undefined}
                         onClick={() => navigate(`/portal/reclamos/${p.reclamo.id}/presupuestar`)}
                       >
-                        {p.reenviable ? 'Corregir y reenviar' : 'Editar'}
+                        {p.estado === 'AJUSTES_SOLICITADOS' ? 'Ajustar' : 'Editar'}
                       </Button>
                     )}
                   </Table.Td>

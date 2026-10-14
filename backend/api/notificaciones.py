@@ -13,6 +13,7 @@ router = APIRouter(prefix="/notificaciones", tags=["notificaciones"])
 class ConteoOut(BaseModel):
     no_leidas: int
     mensaje: str
+    versiones_por_decidir: int
 
 
 def _mensaje(n: int) -> str:
@@ -29,4 +30,5 @@ def conteo(
     _admin: Usuario = Depends(get_current_admin),
 ):
     n = svc.contar_pendiente_intervencion(db)
-    return ConteoOut(no_leidas=n, mensaje=_mensaje(n))
+    versiones = svc.contar_versiones_por_decidir(db)
+    return ConteoOut(no_leidas=n + versiones, mensaje=_mensaje(n), versiones_por_decidir=versiones)

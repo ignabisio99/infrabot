@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  Accordion,
   Alert,
   Badge,
   Button,
@@ -15,6 +16,7 @@ import {
 import { IconCheck, IconGavel } from '@tabler/icons-react';
 
 import { auditarPresupuesto, obtenerAuditoria } from '../../api/ai';
+import { obtenerVersionesPresupuesto } from '../../api/presupuestos';
 import { formatearIdReclamo } from '../../utils/ids';
 import { formatoMoneda, formatoNumero } from '../../utils/formatters';
 import { notifyError } from '../../utils/notifications';
@@ -52,8 +54,8 @@ function GrupoItems({ titulo, items }) {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {items.map((item) => (
-              <Table.Tr key={item.id}>
+            {items.map((item, index) => (
+              <Table.Tr key={item.id ?? index}>
                 <Table.Td>{item.descripcion}</Table.Td>
                 <Table.Td>
                   {formatoNumero.format(Number(item.cantidad))} {item.unidad ?? ''}
@@ -65,6 +67,69 @@ function GrupoItems({ titulo, items }) {
           </Table.Tbody>
         </Table>
       </ScrollArea.Autosize>
+    </>
+  );
+}
+
+function VersionesAnteriores({ presupuestoId }) {
+  const [versiones, setVersiones] = useState(null);
+
+  useEffect(() => {
+    let vigente = true;
+    obtenerVersionesPresupuesto(presupuestoId)
+      .then((data) => {
+        if (vigente) setVersiones(data);
+      })
+      .catch((err) => notifyError(err.message));
+    return () => {
+      vigente = false;
+    };
+  }, [presupuestoId]);
+
+  if (!versiones) return <Loader size="sm" mb="md" />;
+
+  return (
+    <>
+      <Text size="sm" fw={600} mb={4}>
+        Versiones anteriores
+      </Text>
+      <Accordion variant="contained" mb="md">
+        {[...versiones].reverse().map((version) => (
+          <Accordion.Item key={version.numero} value={String(version.numero)}>
+            <Accordion.Control>
+              <Group gap="xs">
+                <Text size="sm" fw={500}>
+                  Versión {version.numero}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  {new Date(version.fecha_envio).toLocaleString('es-AR')} ·{' '}
+                  {formatoMoneda.format(Number(version.monto))}
+                </Text>
+              </Group>
+            </Accordion.Control>
+            <Accordion.Panel>
+              {version.ajustes_solicitados && (
+                <Alert color="orange" mb="sm" title="Ajustes que se pidieron sobre esta versión">
+                  {version.ajustes_solicitados}
+                </Alert>
+              )}
+              {version.detalle_tarea && (
+                <Text size="sm" c="dimmed" mb="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                  {version.detalle_tarea}
+                </Text>
+              )}
+              <GrupoItems
+                titulo="Materiales"
+                items={version.items.filter((i) => i.tipo !== 'MANO_OBRA')}
+              />
+              <GrupoItems
+                titulo="Mano de obra"
+                items={version.items.filter((i) => i.tipo === 'MANO_OBRA')}
+              />
+            </Accordion.Panel>
+          </Accordion.Item>
+        ))}
+      </Accordion>
     </>
   );
 }
@@ -128,7 +193,7 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
           <Group gap="xs" wrap="nowrap">
             <Text fw={600}>
               {`Ítems del presupuesto — ${formatearIdReclamo(presupuesto.reclamo.id)}${
-                presupuesto.intento > 1 ? ` · intento ${presupuesto.intento}` : ''
+                presupuesto.version > 1 ? ` · versión ${presupuesto.version}` : ''
               }`}
             </Text>
             {aprobado && (
@@ -156,9 +221,15 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
             </Alert>
           )}
 
-          {presupuesto.motivo_rechazo && (
-            <Alert color="red" mb="md" title="Motivo del rechazo">
-              {presupuesto.motivo_rechazo}
+          {presupuesto.motivo_estado && (
+            <Alert
+              color={presupuesto.estado === 'RECHAZADO' ? 'red' : 'orange'}
+              mb="md"
+              title={
+                presupuesto.estado === 'RECHAZADO' ? 'Motivo del rechazo' : 'Ajustes solicitados'
+              }
+            >
+              {presupuesto.motivo_estado}
             </Alert>
           )}
 
@@ -192,6 +263,8 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
             titulo="Mano de obra"
             items={presupuesto.items.filter((i) => i.tipo === 'MANO_OBRA')}
           />
+
+          {presupuesto.version > 1 && <VersionesAnteriores presupuestoId={presupuesto.id} />}
 
           <Divider mb="sm" />
 
@@ -259,7 +332,7 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
                   leftSection={<IconGavel size={14} />}
                   onClick={() => setDecidirAbierto(true)}
                 >
-                  Aprobar / Rechazar
+                  Decidir
                 </Button>
               )}
               <Text fw={700} size="lg">
