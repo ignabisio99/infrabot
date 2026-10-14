@@ -233,7 +233,7 @@ def obtener_ultima_estimacion(
 def auditar_presupuesto(
     presupuesto_id: int,
     db: Session = Depends(get_db),
-    _admin: Usuario = Depends(get_current_admin),
+    usuario: Usuario = Depends(get_current_user),
 ):
     presupuesto = (
         db.query(Presupuesto)
@@ -243,6 +243,13 @@ def auditar_presupuesto(
     )
     if presupuesto is None:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
+
+    # Un contratista solo puede auditar sus propios presupuestos.
+    if not usuario.es_admin:
+        from models.contratista import Contratista
+        ficha = db.query(Contratista).filter(Contratista.usuario_id == usuario.id).first()
+        if ficha is None or presupuesto.contratista_id != ficha.id:
+            raise HTTPException(status_code=403, detail="No tenés acceso a este presupuesto")
 
     informe = auditoria.auditar_presupuesto(db, presupuesto)
     auditoria.persistir_informe(db, informe)
@@ -254,11 +261,18 @@ def auditar_presupuesto(
 def obtener_ultima_auditoria(
     presupuesto_id: int,
     db: Session = Depends(get_db),
-    _admin: Usuario = Depends(get_current_admin),
+    usuario: Usuario = Depends(get_current_user),
 ):
     presupuesto = db.get(Presupuesto, presupuesto_id)
     if presupuesto is None:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
+
+    # Un contratista solo puede ver la auditoría de sus propios presupuestos.
+    if not usuario.es_admin:
+        from models.contratista import Contratista
+        ficha = db.query(Contratista).filter(Contratista.usuario_id == usuario.id).first()
+        if ficha is None or presupuesto.contratista_id != ficha.id:
+            raise HTTPException(status_code=403, detail="No tenés acceso a este presupuesto")
 
     evento = (
         db.query(RecomendacionIA)
