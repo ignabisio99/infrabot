@@ -145,6 +145,17 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
     >
       {presupuesto && (
         <>
+          {aprobado && (
+            <Alert
+              color="green"
+              mb="md"
+              title="Presupuesto aprobado"
+              icon={<IconCheck size={16} />}
+            >
+              Este presupuesto ya fue aprobado y adjudicado.
+            </Alert>
+          )}
+
           {presupuesto.motivo_rechazo && (
             <Alert color="red" mb="md" title="Motivo del rechazo">
               {presupuesto.motivo_rechazo}

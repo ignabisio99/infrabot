@@ -70,7 +70,7 @@ export function BudgetsListPage() {
                 <Table.Th>Escuela</Table.Th>
                 <Table.Th>Contratista</Table.Th>
                 <Table.Th>Monto</Table.Th>
-                <Table.Th>Estado</Table.Th>
+                <Table.Th miw={130}>Estado</Table.Th>
                 <Table.Th>Fecha</Table.Th>
                 <Table.Th>Observaciones</Table.Th>
                 <Table.Th />
@@ -99,7 +99,7 @@ export function BudgetsListPage() {
                     )}
                   </Table.Td>
                   <Table.Td>{formatoMoneda.format(Number(presupuesto.monto))}</Table.Td>
-                  <Table.Td>
+                  <Table.Td miw={130}>
                     <BudgetStatusBadge estado={presupuesto.estado} />
                   </Table.Td>
                   <Table.Td>{new Date(presupuesto.fecha).toLocaleString('es-AR')}</Table.Td>
@@ -114,15 +114,17 @@ export function BudgetsListPage() {
                   </Table.Td>
                   <Table.Td onClick={(e) => e.stopPropagation()}>
                     <Group gap="xs" wrap="nowrap" justify="flex-end">
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color="gray"
-                        leftSection={<IconShieldCheck size={14} />}
-                        onClick={() => setPresupuestoAAuditar(presupuesto)}
-                      >
-                        Auditoría
-                      </Button>
+                      {presupuesto.estado !== 'APROBADO' && (
+                        <Button
+                          size="xs"
+                          variant="light"
+                          color="gray"
+                          leftSection={<IconShieldCheck size={14} />}
+                          onClick={() => setPresupuestoAAuditar(presupuesto)}
+                        >
+                          Auditoría
+                        </Button>
+                      )}
                       <Button
                         size="xs"
                         color="teal"

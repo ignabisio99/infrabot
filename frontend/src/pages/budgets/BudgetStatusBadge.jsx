@@ -6,7 +6,7 @@ import { colorPorEstado, etiquetaPorEstado } from './estados';
 // frases ("No seleccionado") y en mayúscula sostenida cuestan de leer.
 export function BudgetStatusBadge({ estado, ...props }) {
   return (
-    <Badge color={colorPorEstado[estado]} tt="none" {...props}>
+    <Badge color={colorPorEstado[estado]} tt="none" style={{ whiteSpace: 'nowrap' }} {...props}>
       {etiquetaPorEstado[estado] ?? estado}
     </Badge>
   );
