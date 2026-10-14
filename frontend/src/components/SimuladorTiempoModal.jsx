@@ -22,16 +22,10 @@ import {
 import {
   IconArrowRight,
   IconCalendarEvent,
-  IconCalendarTime,
   IconCheck,
   IconClock,
-  IconClockFastForward,
-  IconClockPlay,
-  IconInfoCircle,
   IconMessageDots,
-  IconPlayerPlay,
   IconRefresh,
-  IconRotateClockwise2,
   IconTools,
 } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
@@ -119,7 +113,7 @@ export function SimuladorTiempoModal({ opened, onClose, onTiempoActualizado }) {
       title={
         <Group gap="xs">
           <ThemeIcon color="teal" variant="light" size="lg" radius="md">
-            <IconClockFastForward size={20} />
+            <IconClock size={20} />
           </ThemeIcon>
           <div>
             <Group gap="xs">
@@ -187,7 +181,7 @@ export function SimuladorTiempoModal({ opened, onClose, onTiempoActualizado }) {
                   color="red"
                   variant="light"
                   size="xs"
-                  leftSection={<IconRotateClockwise2 size={14} />}
+                  leftSection={<IconRefresh size={14} />}
                   onClick={handleReset}
                   loading={cargando}
                 >
@@ -228,7 +222,7 @@ export function SimuladorTiempoModal({ opened, onClose, onTiempoActualizado }) {
               variant="filled"
               color="teal"
               size="xs"
-              leftSection={<IconClockPlay size={14} />}
+              leftSection={<IconClock size={14} />}
               onClick={() => handleAvanzar({ dias: 1 })}
               loading={cargando}
             >
@@ -238,7 +232,7 @@ export function SimuladorTiempoModal({ opened, onClose, onTiempoActualizado }) {
               variant="filled"
               color="teal"
               size="xs"
-              leftSection={<IconClockPlay size={14} />}
+              leftSection={<IconClock size={14} />}
               onClick={() => handleAvanzar({ dias: 2 })}
               loading={cargando}
             >
@@ -248,7 +242,7 @@ export function SimuladorTiempoModal({ opened, onClose, onTiempoActualizado }) {
               variant="light"
               color="blue"
               size="xs"
-              leftSection={<IconClockPlay size={14} />}
+              leftSection={<IconClock size={14} />}
               onClick={() => handleAvanzar({ dias: 7 })}
               loading={cargando}
             >
@@ -258,7 +252,7 @@ export function SimuladorTiempoModal({ opened, onClose, onTiempoActualizado }) {
               variant="gradient"
               gradient={{ from: 'teal', to: 'cyan', deg: 90 }}
               size="xs"
-              leftSection={<IconCalendarTime size={14} />}
+              leftSection={<IconCalendarEvent size={14} />}
               onClick={() => handleAvanzar({ hasta_proxima_visita: true })}
               loading={cargando}
             >

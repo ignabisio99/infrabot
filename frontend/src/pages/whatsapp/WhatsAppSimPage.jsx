@@ -13,14 +13,11 @@ import {
   Title,
 } from '@mantine/core';
 import {
-  IconCalendarTime,
   IconClock,
-  IconClockPlay,
   IconInbox,
   IconMicrophone,
   IconPaperclip,
   IconRefresh,
-  IconRotateClockwise2,
   IconSend,
   IconSettings,
 } from '@tabler/icons-react';
@@ -433,7 +430,7 @@ export function WhatsAppSimPage() {
                 size="compact-xs"
                 variant="subtle"
                 color="red"
-                leftSection={<IconRotateClockwise2 size={12} />}
+                leftSection={<IconRefresh size={12} />}
                 onClick={handleResetTiempo}
                 loading={avanzandoReloj}
               >

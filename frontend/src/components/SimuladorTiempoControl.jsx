@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Badge, Button, Group, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconClock, IconClockPlay } from '@tabler/icons-react';
+import { IconClock } from '@tabler/icons-react';
 
 import { obtenerEstadoSimulador } from '../api/simuladorTiempo';
 import { SimuladorTiempoModal } from './SimuladorTiempoModal';
@@ -34,7 +34,7 @@ export function SimuladorTiempoControl() {
               variant="filled"
               color="orange"
               size="md"
-              leftSection={<IconClockPlay size={14} />}
+              leftSection={<IconClock size={14} />}
               style={{ cursor: 'pointer' }}
               onClick={open}
             >
