@@ -36,6 +36,7 @@ import {
 import logo from '../assets/logo-infrabot.jpeg';
 import { Footer } from '../components/Footer';
 import { NotificationBell } from './NotificationBell';
+import { SimuladorTiempoControl } from '../components/SimuladorTiempoControl';
 import { listarUsuariosPendientes } from '../api/usuarios';
 import { esAdministrador } from '../utils/auth';
 import classes from './AppLayout.module.css';
@@ -148,6 +149,7 @@ export function AppLayout() {
           </Group>
 
           <Group gap="sm">
+            {esAdministrador() && <SimuladorTiempoControl />}
             {esAdministrador() && <NotificationBell />}
             <Menu shadow="md" width={200}>
             <Menu.Target>

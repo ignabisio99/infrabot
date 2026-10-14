@@ -13,9 +13,51 @@ import httpx
 from core.ai.config import ai_ssl_verify
 from core.storage import UPLOADS_DIR
 
+from collections import deque
+
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN", "")
 WHATSAPP_PHONE_ID = os.getenv("WHATSAPP_PHONE_ID", "")
 GRAPH_API_URL = f"https://graph.facebook.com/v21.0/{WHATSAPP_PHONE_ID}/messages"
+
+_HISTORIAL_SALIENTES: deque[dict] = deque(maxlen=200)
+
+
+def registrar_saliente(
+    tipo: str,
+    to: str,
+    body: str,
+    botones: list[dict] | None = None,
+    secciones: list[dict] | None = None,
+) -> dict:
+    from core import reloj
+
+    item = {
+        "id": str(uuid.uuid4()),
+        "fecha": reloj.ahora().isoformat(),
+        "fecha_art": reloj.formatear_art(),
+        "to": to,
+        "tipo": tipo,
+        "body": body,
+        "botones": botones or [],
+        "secciones": secciones or [],
+    }
+    _HISTORIAL_SALIENTES.append(item)
+    return item
+
+
+def obtener_historial_salientes(to: str | None = None, limite: int = 50) -> list[dict]:
+    items = list(_HISTORIAL_SALIENTES)
+    if to:
+        t = to.strip().lower()
+        items = [
+            it for it in items
+            if it["to"].strip().lower() == t or (len(t) >= 6 and it["to"].endswith(t[-8:]))
+        ]
+    return items[-limite:]
+
+
+def limpiar_historial_salientes() -> None:
+    _HISTORIAL_SALIENTES.clear()
 
 
 def _normalizar_numero_ar(phone_number: str) -> str:
@@ -33,21 +75,31 @@ def _headers() -> dict:
 
 
 def _enviar(payload: dict) -> dict:
-    response = httpx.post(
-        GRAPH_API_URL,
-        headers=_headers(),
-        json=payload,
-        timeout=10,
-        verify=ai_ssl_verify(),
-    )
-    if response.status_code != 200:
-        print(f"[WHATSAPP] Error: {response.status_code} - {response.text}")
-    return response.json()
+    destinatario = str(payload.get("to", ""))
+    if not WHATSAPP_TOKEN or not WHATSAPP_PHONE_ID or destinatario.startswith("sim"):
+        return {"messaging_product": "whatsapp", "messages": [{"id": f"sim_{uuid.uuid4()}"}]}
+
+    try:
+        response = httpx.post(
+            GRAPH_API_URL,
+            headers=_headers(),
+            json=payload,
+            timeout=10,
+            verify=ai_ssl_verify(),
+        )
+        if response.status_code != 200:
+            print(f"[WHATSAPP] Error: {response.status_code} - {response.text}")
+        return response.json()
+    except Exception as e:
+        print(f"[WHATSAPP] Fallo de conexión al enviar: {e}")
+        return {"messaging_product": "whatsapp", "error": str(e)}
 
 
 def enviar_mensaje(to: str, body: str) -> dict:
     """Envía un mensaje de texto simple."""
+    original_to = to
     to = _normalizar_numero_ar(to)
+    registrar_saliente("texto", original_to, body)
     payload = {
         "messaging_product": "whatsapp",
         "to": to,
@@ -65,7 +117,9 @@ def enviar_botones(to: str, body: str, botones: list[dict]) -> dict:
         body: Texto del mensaje
         botones: Lista de dicts con "id" y "title" (max 3, title max 20 chars)
     """
+    original_to = to
     to = _normalizar_numero_ar(to)
+    registrar_saliente("botones", original_to, body, botones=botones)
     payload = {
         "messaging_product": "whatsapp",
         "to": to,
@@ -94,7 +148,9 @@ def enviar_lista(to: str, body: str, boton_texto: str, secciones: list[dict]) ->
         secciones: Lista de secciones, cada una con "title" y "rows"
                    Cada row tiene "id", "title" y opcionalmente "description"
     """
+    original_to = to
     to = _normalizar_numero_ar(to)
+    registrar_saliente("lista", original_to, body, secciones=secciones)
     payload = {
         "messaging_product": "whatsapp",
         "to": to,

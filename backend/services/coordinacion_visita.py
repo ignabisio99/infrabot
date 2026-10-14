@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
+from core import reloj
 from models.contratista import Contratista
 from models.reclamo import EstadoReclamo, Reclamo
 from models.visita import EstadoVisita, Visita
@@ -155,8 +156,7 @@ def ejemplo_formato_fecha() -> tuple[str, str]:
     """Genera ejemplos de fecha y hora futuras en formato DD/MM HH:MM."""
     from datetime import timedelta
 
-    art = timezone(timedelta(hours=-3))
-    ahora_art = datetime.now(timezone.utc).astimezone(art)
+    ahora_art = reloj.ahora_art()
     f1 = (ahora_art + timedelta(days=1)).strftime("%d/%m 10:00")
     f2 = (ahora_art + timedelta(days=2)).strftime("%d/%m 15:30")
     return f1, f2
@@ -173,7 +173,7 @@ def formato_valido(texto: str) -> bool:
 def opciones_pasadas(texto: str) -> list[str]:
     """Devuelve las opciones cuya fecha/hora es anterior o igual al momento actual."""
     opciones = _separar_opciones(texto)
-    ahora = datetime.now(timezone.utc)
+    ahora = reloj.ahora()
     pasadas = []
     for op in opciones:
         dt = _parsear_fecha(op)
@@ -187,7 +187,7 @@ def es_fecha_futura(texto_opcion: str) -> bool:
     dt = _parsear_fecha(texto_opcion)
     if dt is None:
         return False
-    return dt > datetime.now(timezone.utc)
+    return dt > reloj.ahora()
 
 
 def agregar_disponibilidad(db: Session, visita: Visita, texto: str) -> int:
@@ -226,7 +226,7 @@ def finalizar_disponibilidad(db: Session, visita: Visita) -> tuple[bool, str | N
         return False, "sin_opciones"
 
     # Filtrar solo opciones que sigan vigentes (futuras)
-    ahora = datetime.now(timezone.utc)
+    ahora = reloj.ahora()
     opciones_vigentes = [
         op for op in opciones
         if (dt := _parsear_fecha(op)) is not None and dt > ahora
@@ -278,7 +278,7 @@ def confirmar_eleccion(db: Session, visita: Visita, indice: int) -> str | None:
 
     elegido = opciones[indice - 1]
     fecha_dt = _parsear_fecha(elegido)
-    ahora = datetime.now(timezone.utc)
+    ahora = reloj.ahora()
 
     # Validar que no haya vencido la opción elegida
     if fecha_dt is not None and fecha_dt <= ahora:
@@ -357,8 +357,7 @@ def _parsear_fecha(texto: str) -> datetime | None:
     mes = int(m_fecha.group(2))
     anio_txt = m_fecha.group(3)
     art = timezone(timedelta(hours=-3))
-    ahora = datetime.now(timezone.utc)
-    ahora_art = ahora.astimezone(art)
+    ahora_art = reloj.ahora_art()
 
     if anio_txt:
         anio = int(anio_txt) + (2000 if len(anio_txt) == 2 else 0)

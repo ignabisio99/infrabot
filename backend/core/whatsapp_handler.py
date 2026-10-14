@@ -13,6 +13,7 @@ from difflib import SequenceMatcher
 
 from sqlalchemy.orm import Session, joinedload
 
+from core import reloj
 from core.ai import config as ai_config
 from models.foto_reclamo import FotoReclamo, TipoMedia
 from models.reclamo import EstadoReclamo, PrioridadReclamo, Reclamo
@@ -1242,7 +1243,7 @@ def _procesar_info_adicional(db: Session, usuario: str, mensaje: str) -> str:
 
     # Anexar el texto a las observaciones del reclamo
     prefijo = "\n\n" if reclamo.observaciones else ""
-    fecha = datetime.now(ART).strftime("%d/%m/%Y %H:%M")
+    fecha = reloj.formatear_art()
     reclamo.observaciones = (
         (reclamo.observaciones or "") + f"{prefijo}[Info adicional {fecha}] {texto}"
     )
@@ -1343,7 +1344,7 @@ def _procesar_visita_eleccion(db: Session, usuario: str, mensaje: str) -> str:
     except coordinacion_visita.FechaPasada:
         # La opción elegida ya venció. Ver si quedan otras opciones futuras.
         opciones = coordinacion_visita._opciones_lista(visita)
-        ahora = datetime.now(timezone.utc)
+        ahora = reloj.ahora()
         opciones_futuras = [
             (i + 1, op) for i, op in enumerate(opciones)
             if (dt := coordinacion_visita._parsear_fecha(op)) is not None and dt > ahora

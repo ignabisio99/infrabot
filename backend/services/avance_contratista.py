@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session, joinedload
 
+from core import reloj
 from models.comentario_reclamo import ComentarioReclamo
 from models.foto_reclamo import FotoReclamo, TipoMedia
 from models.presupuesto import Presupuesto
@@ -74,7 +75,7 @@ def estado_conversacion_avance(db: Session, telefono: str) -> dict | None:
 
 def _marcar_actividad(db: Session, reclamo: Reclamo) -> None:
     """Reinicia el reloj de 48 h y, si estaba escalado, levanta la intervención."""
-    ahora = datetime.now(timezone.utc)
+    ahora = reloj.ahora()
     fila = (
         db.query(RecordatorioContratista)
         .filter(RecordatorioContratista.reclamo_id == reclamo.id)

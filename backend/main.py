@@ -24,6 +24,7 @@ from api.roles_mano_obra import router as roles_mano_obra_router
 from api.whatsapp import router as whatsapp_router
 from api.whatsapp_sim import router as whatsapp_sim_router
 from api.visitas import router as visitas_router
+from api.simulador_tiempo import router as simulador_tiempo_router
 from core.database import (
     Base,
     SessionLocal,
@@ -166,6 +167,7 @@ app.include_router(configuracion_router)
 app.include_router(roles_mano_obra_router)
 app.include_router(reportes_router)
 app.include_router(notificaciones_router)
+app.include_router(simulador_tiempo_router)
 
 @app.get("/")
 def read_root():
