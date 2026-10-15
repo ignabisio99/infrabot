@@ -69,6 +69,23 @@ def asegurar_columna_detalle_tarea(bind=engine):
         conn.execute(text("ALTER TABLE presupuesto ADD COLUMN detalle_tarea TEXT"))
 
 
+def asegurar_columna_autor_foto(bind=engine):
+    """Agrega `foto_reclamo.usuario_id` si la tabla ya existía sin esa columna."""
+    inspector = inspect(bind)
+    if "foto_reclamo" not in inspector.get_table_names():
+        return
+    columnas = {columna["name"] for columna in inspector.get_columns("foto_reclamo")}
+    if "usuario_id" in columnas:
+        return
+    with bind.begin() as conn:
+        conn.execute(
+            text(
+                "ALTER TABLE foto_reclamo ADD COLUMN usuario_id INTEGER "
+                "REFERENCES usuario(id) ON DELETE SET NULL"
+            )
+        )
+
+
 def asegurar_columnas_seguimiento(bind=engine):
     """Agrega las columnas del seguimiento de obra si las tablas ya existían sin ellas."""
     faltantes = {

@@ -1,27 +1,7 @@
 import pytest
 
-from core.dependencies import get_current_user
-from main import app
 from models.reclamo import EstadoReclamo
-from models.usuario import EstadoUsuario, TipoUsuario, Usuario
-
-
-@pytest.fixture
-def loguear(db):
-    def _loguear(tipo, nombre="Usuario"):
-        usuario = Usuario(
-            nombre=nombre,
-            email=f"{tipo.value.lower()}-{nombre.lower()}@test.local",
-            password_hash="x",
-            tipo=tipo,
-            estado=EstadoUsuario.APROBADO,
-        )
-        db.add(usuario)
-        db.flush()
-        app.dependency_overrides[get_current_user] = lambda: usuario
-        return usuario
-
-    return _loguear
+from models.usuario import TipoUsuario
 
 
 def test_varios_inspectores_comentan_y_se_listan_en_orden(client, loguear, crear_reclamo):

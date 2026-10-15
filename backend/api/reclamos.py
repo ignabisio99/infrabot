@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from core.database import get_db
 from core.dependencies import (
     get_current_admin,
+    get_current_admin_o_inspector,
     get_current_contratista,
     get_current_inspector,
     get_current_user,
@@ -61,7 +62,7 @@ TIPOS_MEDIA_PERMITIDOS = TIPOS_IMAGEN_PERMITIDOS | TIPOS_VIDEO_PERMITIDOS
 
 
 def _con_fotos(query):
-    return query.options(joinedload(Reclamo.fotos))
+    return query.options(joinedload(Reclamo.fotos).joinedload(FotoReclamo.usuario))
 
 
 def _email_del_contratista(db: Session, contratista: Contratista) -> str | None:
@@ -301,10 +302,22 @@ def eliminar_reclamo(reclamo_id: int, db: Session = Depends(get_db), _admin: Usu
 
 
 @router.post("/{reclamo_id}/fotos", response_model=FotoReclamoOut, status_code=201)
-def subir_foto(reclamo_id: int, archivo: UploadFile = File(...), db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
+def subir_foto(
+    reclamo_id: int,
+    archivo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_admin_o_inspector),
+):
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    # Igual que con los comentarios: lo que aporta el inspector queda en el expediente
+    # mientras el reclamo está abierto. El admin puede seguir cargando fotos siempre.
+    if usuario.es_inspector and reclamo.estado in estados_reclamo.ESTADOS_FINALES:
+        raise HTTPException(
+            status_code=409,
+            detail=f"No se pueden agregar fotos a un reclamo en {reclamo.estado.value}",
+        )
 
     if archivo.content_type not in TIPOS_MEDIA_PERMITIDOS:
         raise HTTPException(
@@ -316,7 +329,11 @@ def subir_foto(reclamo_id: int, archivo: UploadFile = File(...), db: Session = D
     url = storage.guardar(archivo, f"reclamos/{reclamo_id}")
 
     nueva_foto = FotoReclamo(
-        reclamo_id=reclamo_id, nombre_archivo=archivo.filename, url=url, tipo=tipo
+        reclamo_id=reclamo_id,
+        nombre_archivo=archivo.filename,
+        url=url,
+        tipo=tipo,
+        usuario_id=usuario.id,
     )
     db.add(nueva_foto)
     db.commit()
@@ -336,7 +353,12 @@ def subir_foto(reclamo_id: int, archivo: UploadFile = File(...), db: Session = D
 
 
 @router.delete("/{reclamo_id}/fotos/{foto_id}", status_code=204)
-def eliminar_foto(reclamo_id: int, foto_id: int, db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
+def eliminar_foto(
+    reclamo_id: int,
+    foto_id: int,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_admin_o_inspector),
+):
     foto = (
         db.query(FotoReclamo)
         .filter(FotoReclamo.id == foto_id, FotoReclamo.reclamo_id == reclamo_id)
@@ -344,9 +366,29 @@ def eliminar_foto(reclamo_id: int, foto_id: int, db: Session = Depends(get_db), 
     )
     if foto is None:
         raise HTTPException(status_code=404, detail="Foto no encontrada")
-    storage.eliminar(foto.url)
+
+    if usuario.es_inspector:
+        if foto.usuario_id != usuario.id:
+            raise HTTPException(status_code=403, detail="Solo podés quitar las fotos que subiste")
+        if foto.reclamo.estado in estados_reclamo.ESTADOS_FINALES:
+            raise HTTPException(
+                status_code=409,
+                detail=f"No se pueden quitar fotos de un reclamo en {foto.reclamo.estado.value}",
+            )
+        # Los contratistas presupuestan mirando las fotos: si el inspector quita una, queda
+        # constancia en los comentarios del reclamo.
+        db.add(
+            ComentarioReclamo(
+                reclamo_id=reclamo_id,
+                usuario_id=None,
+                texto=f"[Sistema]\n{usuario.nombre} (inspector) quitó la foto {foto.nombre_archivo}.",
+            )
+        )
+
+    url = foto.url
     db.delete(foto)
     db.commit()
+    storage.eliminar(url)
 
 
 @router.post("/{reclamo_id}/notificar-contratistas", response_model=NotificarContratistasOut)

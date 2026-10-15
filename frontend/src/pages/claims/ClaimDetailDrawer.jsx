@@ -48,7 +48,7 @@ import {
 import { formatoMoneda } from '../../utils/formatters';
 import { avisarNotificacionesCambiaron } from '../../layout/NotificationBell';
 import { formatearIdReclamo } from '../../utils/ids';
-import { esAdministrador, esInspector } from '../../utils/auth';
+import { esAdministrador, esInspector, getUsuarioActual } from '../../utils/auth';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 import { BudgetRequestsList } from './BudgetRequestsList';
 import { ChangeStatusModal } from './ChangeStatusModal';
@@ -58,12 +58,7 @@ import { ClaimPhotosManager } from './ClaimPhotosManager';
 import { NotifyContractorsModal } from './NotifyContractorsModal';
 import { PriorityBadge } from './PriorityBadge';
 import { StatusBadge } from './StatusBadge';
-import {
-  colorPorEstado,
-  estadosFinales,
-  etiquetaPorEstado,
-  proximoPasoPorEstado,
-} from './estados';
+import { colorPorEstado, estadosFinales, etiquetaPorEstado, proximoPasoPorEstado } from './estados';
 
 const iconoPorEstado = {
   PENDIENTE_REVISION: IconClipboardList,
@@ -82,6 +77,8 @@ const iconoPorEstado = {
 
 const AYUDA_INSPECTOR =
   'Lo que escribas acá lo ven el administrador y los contratistas al presupuestar. No se puede editar ni borrar.';
+const AYUDA_INSPECTOR_FOTOS =
+  ' En la pestaña Fotos podés agregar fotos y quitar las que subiste; si quitás una, queda registrado acá.';
 const AYUDA_COMENTARIOS =
   'Observaciones de los inspectores. Los contratistas también las ven al cargar su presupuesto.';
 
@@ -112,18 +109,29 @@ function TituloEvento({ evento }) {
   );
 }
 
+const SIN_CARGAR = {
+  id: null,
+  reclamo: null,
+  historial: [],
+  visita: null,
+  comentarios: [],
+};
+
 export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclamoActualizado }) {
   // Guarda el último fetch resuelto junto con el id al que corresponde: así `cargando`
   // se puede derivar comparando contra `reclamoId` en vez de duplicar estado, y una
   // respuesta vieja que llega tarde (ej. al cambiar rápido de reclamo) no pisa una más nueva.
-  const [ultimoCargado, setUltimoCargado] = useState({
-    id: null,
-    reclamo: null,
-    historial: [],
-    visita: null,
-    comentarios: [],
-  });
+  const [ultimoCargado, setUltimoCargado] = useState(SIN_CARGAR);
   const [recarga, setRecarga] = useState(0);
+
+  // Cada apertura vuelve a cargar todo: al cerrar o cambiar de reclamo se descarta lo que
+  // había, así no se muestra la versión anterior mientras llega la nueva y los hijos que
+  // copian props a su estado (ej. las fotos) no se montan con datos viejos.
+  const [reclamoIdPrevio, setReclamoIdPrevio] = useState(reclamoId);
+  if (reclamoId !== reclamoIdPrevio) {
+    setReclamoIdPrevio(reclamoId);
+    setUltimoCargado(SIN_CARGAR);
+  }
 
   useEffect(() => {
     if (reclamoId === null) return;
@@ -168,6 +176,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
   const puedeCambiarEstado = esAdmin && (reclamo?.estados_posibles?.length ?? 0) > 0;
   const puedeNotificar = esAdmin && reclamo?.estado === 'PENDIENTE_PRESUPUESTO';
   const pendienteIntervencion = reclamo?.estado === 'PENDIENTE_INTERVENCION';
+  const reclamoAbierto = reclamo ? !estadosFinales.includes(reclamo.estado) : false;
 
   const volverAEjecucion = async () => {
     setVolviendoEjecucion(true);
@@ -188,8 +197,8 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
     }
   };
 
-  useEffect(() => {
-    if (!confirmarReabrir || !reclamo?.id) return;
+  const abrirCambioContratista = () => {
+    setConfirmarReabrir(true);
     setCargandoOfertas(true);
     setOfertaElegida(null);
     listarOfertasReutilizables(reclamo.id)
@@ -199,7 +208,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
         setOfertasReutilizables([]);
       })
       .finally(() => setCargandoOfertas(false));
-  }, [confirmarReabrir, reclamo?.id]);
+  };
 
   const cancelarPresupuestoYConvocar = async () => {
     setReabriendo(true);
@@ -308,9 +317,9 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
               title="Pendiente de intervención"
             >
               <Text size="sm" mb={esAdmin ? 'sm' : 0}>
-                El contratista no respondió los recordatorios de avance. Si hablaste con él y
-                sigue en obra, volvé a ejecución. Si no, podés elegir otra oferta que ya se
-                había enviado o convocar a otros contratistas.
+                El contratista no respondió los recordatorios de avance. Si hablaste con él y sigue
+                en obra, volvé a ejecución. Si no, podés elegir otra oferta que ya se había enviado
+                o convocar a otros contratistas.
               </Text>
               {esAdmin && (
                 <Group gap="sm">
@@ -322,7 +331,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
                   >
                     Volver a ejecución
                   </Button>
-                  <Button color="orange" onClick={() => setConfirmarReabrir(true)}>
+                  <Button color="orange" onClick={abrirCambioContratista}>
                     Cambiar contratista
                   </Button>
                 </Group>
@@ -508,18 +517,28 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
                 reclamoId={reclamo.id}
                 fotosIniciales={reclamo.fotos}
                 soloLectura
+                puedeSubir={inspector && reclamoAbierto}
+                puedeEliminarFoto={(foto) =>
+                  inspector && reclamoAbierto && foto.usuario_id === getUsuarioActual()?.id
+                }
+                // Al quitar una foto el backend deja un comentario: recargar para verlo.
+                onFotoEliminada={() => setRecarga((n) => n + 1)}
               />
             </Tabs.Panel>
 
             <Tabs.Panel value="comentarios" pt="md">
               <Group gap={6} mb="sm" wrap="nowrap" align="flex-start" c="dimmed">
                 <IconInfoCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-                <Text size="sm">{inspector ? AYUDA_INSPECTOR : AYUDA_COMENTARIOS}</Text>
+                <Text size="sm">
+                  {inspector
+                    ? AYUDA_INSPECTOR + (reclamoAbierto ? AYUDA_INSPECTOR_FOTOS : '')
+                    : AYUDA_COMENTARIOS}
+                </Text>
               </Group>
               <ClaimCommentsThread
                 reclamoId={reclamo.id}
                 comentarios={comentarios}
-                puedeComentar={inspector && !estadosFinales.includes(reclamo.estado)}
+                puedeComentar={inspector && reclamoAbierto}
                 onComentarioAgregado={(nuevo) =>
                   setUltimoCargado((actual) =>
                     actual.id === nuevo.reclamo_id
@@ -569,9 +588,8 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
               {!cargandoOfertas && ofertasReutilizables.length > 0 && (
                 <>
                   <Text size="sm">
-                    Hay ofertas que ya se habían enviado y no se eligieron. Podés asignar una
-                    ahora: se cancela el presupuesto actual y se coordina una visita con ese
-                    contratista.
+                    Hay ofertas que ya se habían enviado y no se eligieron. Podés asignar una ahora:
+                    se cancela el presupuesto actual y se coordina una visita con ese contratista.
                   </Text>
                   <Radio.Group value={ofertaElegida} onChange={setOfertaElegida}>
                     <Stack gap="xs">

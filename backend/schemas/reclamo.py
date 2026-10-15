@@ -53,6 +53,8 @@ class FotoReclamoOut(BaseModel):
     url: str
     tipo: TipoMedia
     fecha_creacion: datetime
+    usuario_id: int | None = None
+    autor: str | None = None
 
 
 class ReclamoOut(ReclamoCreate):

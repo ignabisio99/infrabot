@@ -54,6 +54,7 @@ function MediaThumbnail({ item, onClick }) {
 
 // Grilla de miniaturas con botón de borrar. `onSelect` es opcional (click para ampliar)
 // y `removingId` también (id del ítem que se está borrando, para mostrar loading).
+// Un ítem con `eliminable: false` no muestra el botón aunque haya `onRemove`.
 export function PhotoGrid({ items, onRemove, onSelect, removingId }) {
   if (items.length === 0) return null;
 
@@ -62,7 +63,7 @@ export function PhotoGrid({ items, onRemove, onSelect, removingId }) {
       {items.map((item) => (
         <div key={item.id} style={{ position: 'relative', aspectRatio: '1 / 1' }}>
           <MediaThumbnail item={item} onClick={onSelect ? () => onSelect(item) : undefined} />
-          {onRemove && (
+          {onRemove && item.eliminable !== false && (
             <ActionIcon
               variant="filled"
               color="red"

@@ -79,6 +79,18 @@ def get_current_inspector(
     return usuario
 
 
+def get_current_admin_o_inspector(
+    usuario: Usuario = Depends(get_current_user),
+) -> Usuario:
+    """Exige que el usuario autenticado sea ADMINISTRADOR o INSPECTOR."""
+    if not (usuario.es_admin or usuario.es_inspector):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los administradores e inspectores pueden realizar esta acción",
+        )
+    return usuario
+
+
 def get_current_contratista(
     usuario: Usuario = Depends(get_current_user),
 ) -> Usuario:

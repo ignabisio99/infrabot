@@ -188,7 +188,7 @@ function App() {
     );
   }
 
-  // Inspector aprobado → sólo ve reclamos y los comenta
+  // Inspector aprobado → sólo ve reclamos, los comenta y les agrega fotos
   if (usuario.tipo === 'INSPECTOR') {
     return (
       <Routes>

@@ -21,6 +21,7 @@ from core.auth import hash_password
 from core.database import (
     Base,
     SessionLocal,
+    asegurar_columna_autor_foto,
     asegurar_columna_detalle_tarea,
     asegurar_columna_tipo_item,
     asegurar_tipo_usuario_inspector,
@@ -548,6 +549,7 @@ def main():
         Base.metadata.create_all(bind=engine)
         asegurar_columna_tipo_item()
         asegurar_columna_detalle_tarea()
+        asegurar_columna_autor_foto()
         asegurar_tipo_usuario_inspector()
         asegurar_valor_analisis_agente()
 
