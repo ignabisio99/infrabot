@@ -21,6 +21,7 @@ import { IconExchange, IconEye } from '@tabler/icons-react';
 import { RowActionsMenu } from '../../components/RowActionsMenu';
 import { eliminarReclamo, listarReclamos } from '../../api/reclamos';
 import { esInspector } from '../../utils/auth';
+import { fechaEnRango, idCoincideConBusqueda } from '../../utils/filtros';
 import { formatearIdReclamo } from '../../utils/ids';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 import { ChangeStatusModal } from './ChangeStatusModal';
@@ -39,15 +40,6 @@ const opcionesPrioridad = [
 
 const POR_PAGINA = 10;
 
-// Los valores del DatePickerInput llegan como string "YYYY-MM-DD". Parsearlos con
-// `new Date(string)` los interpreta como medianoche UTC y desfasa el día en timezones
-// negativos (ej. UTC-3), por eso se arman a mano como fecha local.
-function parsearFechaFiltro(valor) {
-  if (!valor) return null;
-  const [anio, mes, dia] = valor.split('-').map(Number);
-  return new Date(anio, mes - 1, dia);
-}
-
 // El Dashboard enlaza acá con los filtros ya elegidos: uno o varios estados separados por
 // coma (/reclamos?estado=EN_EVALUACION, /reclamos?estado=APROBADO,EN_EJECUCION) y el ID
 // (/reclamos?busqueda=REC-00000007). Los estados que no existan se ignoran en vez de
@@ -65,14 +57,6 @@ function busquedaDeParams(searchParams) {
 function reclamoAbrirDeParams(searchParams) {
   const id = Number(searchParams.get('abrir'));
   return searchParams.get('abrir') && !Number.isNaN(id) ? id : null;
-}
-
-// Acepta "34", "0034", "REC-00000034", etc: se queda solo con los dígitos
-// escritos y busca esa subcadena dentro del ID completo (con ceros a la izquierda).
-function idCoincideConBusqueda(id, busqueda) {
-  const digitos = busqueda.replace(/\D/g, '');
-  if (!digitos) return true;
-  return String(id).padStart(8, '0').includes(digitos);
 }
 
 export function ClaimsListPage() {
@@ -121,9 +105,6 @@ export function ClaimsListPage() {
   }, []);
 
   const reclamosFiltrados = useMemo(() => {
-    const desde = parsearFechaFiltro(rangoFechas[0]);
-    const hasta = parsearFechaFiltro(rangoFechas[1]);
-
     return reclamos.filter((reclamo) => {
       if (prioridadFiltro && reclamo.prioridad !== prioridadFiltro) return false;
 
@@ -132,17 +113,7 @@ export function ClaimsListPage() {
 
       if (!idCoincideConBusqueda(reclamo.id, busquedaId)) return false;
 
-      const fecha = new Date(reclamo.fecha_creacion);
-
-      if (desde && fecha < desde) return false;
-
-      if (hasta) {
-        const finDia = new Date(hasta);
-        finDia.setHours(23, 59, 59, 999);
-        if (fecha > finDia) return false;
-      }
-
-      return true;
+      return fechaEnRango(reclamo.fecha_creacion, rangoFechas);
     });
   }, [reclamos, prioridadFiltro, estadosFiltro, rangoFechas, busquedaId]);
 
