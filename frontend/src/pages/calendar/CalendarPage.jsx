@@ -18,7 +18,7 @@ import {
 import { IconArrowRight } from '@tabler/icons-react';
 
 import { listarVisitas } from '../../api/visitas';
-import { esAdministrador, esInspector } from '../../utils/auth';
+import { esAdministrador } from '../../utils/auth';
 import { formatearIdReclamo } from '../../utils/ids';
 import { ClaimDetailDrawer } from '../claims/ClaimDetailDrawer';
 
@@ -106,7 +106,7 @@ export function CalendarPage() {
   const [reclamoId, setReclamoId] = useState(null);
 
   const abrirReclamo = (id) => {
-    if (esAdministrador() || esInspector()) {
+    if (esAdministrador()) {
       setVisitaSeleccionada(null);
       setReclamoId(id);
       return;

@@ -36,10 +36,7 @@ const LINKS_CONTRATISTA = [
   { label: 'Calendario', path: '/calendario', icon: IconCalendar },
 ];
 
-const LINKS_INSPECTOR = [
-  { label: 'Reclamos', path: '/reclamos', icon: IconClipboardList },
-  { label: 'Calendario', path: '/calendario', icon: IconCalendar },
-];
+const LINKS_INSPECTOR = [{ label: 'Reclamos', path: '/reclamos', icon: IconClipboardList }];
 
 function ConFooter({ children }) {
   return (
@@ -194,7 +191,6 @@ function App() {
       <Routes>
         <Route element={<PortalLayout links={LINKS_INSPECTOR} etiquetaRol="Inspector" />}>
           <Route path="/reclamos" element={<ClaimsListPage />} />
-          <Route path="/calendario" element={<CalendarPage />} />
           <Route path="/perfil" element={<ProfilePage />} />
           <Route path="*" element={<Navigate to="/reclamos" replace />} />
         </Route>
