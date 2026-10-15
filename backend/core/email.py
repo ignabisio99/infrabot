@@ -1,4 +1,4 @@
-"""Envío de emails usando Gmail SMTP."""
+"""Envío de emails por SMTP: Gmail en producción, Mailpit en desarrollo."""
 
 import logging
 import os
@@ -17,7 +17,7 @@ APP_URL = os.getenv("APP_URL", "http://localhost:3000")
 
 def enviar_email(destinatario: str, asunto: str, html: str) -> bool:
     """Envía un email. Devuelve True si fue exitoso."""
-    if not SMTP_EMAIL or not SMTP_PASSWORD:
+    if not SMTP_EMAIL:
         logger.warning("Email no configurado. Asunto: %s → %s", asunto, destinatario)
         return False
 
@@ -29,8 +29,13 @@ def enviar_email(destinatario: str, asunto: str, html: str) -> bool:
 
     try:
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_EMAIL, SMTP_PASSWORD)
+            # Gmail exige TLS y login; Mailpit, el SMTP de desarrollo, no ofrece ninguno.
+            server.ehlo()
+            if server.has_extn("starttls"):
+                server.starttls()
+                server.ehlo()
+            if server.has_extn("auth"):
+                server.login(SMTP_EMAIL, SMTP_PASSWORD)
             server.sendmail(SMTP_EMAIL, destinatario, msg.as_string())
         logger.info("Email enviado a %s - Asunto: %s", destinatario, asunto)
         return True

@@ -10,7 +10,7 @@ Sistema de gestión de reclamos de infraestructura escolar con bot de WhatsApp i
 - **WhatsApp:** Meta Cloud API (webhooks + mensajes interactivos con botones)
 - **IA:** LangGraph + proveedor configurable (mock / OpenAI / Gemini)
 - **Colas y workers:** Redis (cola de mensajes de WhatsApp) + tareas en background
-- **Infraestructura:** Docker Compose (Postgres, Redis, backend, frontend, Adminer)
+- **Infraestructura:** Docker Compose (Postgres, Redis, backend, frontend, Adminer, Mailpit)
 
 ## Funcionalidades principales
 
@@ -81,6 +81,7 @@ docker compose up
 - **Backend (API):** http://localhost:8000
 - **Swagger UI:** http://localhost:8000/docs
 - **Adminer (visor de la base):** http://localhost:8082 (servidor `db`, usuario y contraseña del `.env`)
+- **Mailpit (mails de desarrollo):** http://localhost:8025 — en local los emails caen acá en vez de enviarse
 
 ## Configurar el bot de WhatsApp
 

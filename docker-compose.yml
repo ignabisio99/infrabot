@@ -32,6 +32,10 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       SMTP_EMAIL: ${SMTP_EMAIL}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
+      # En desarrollo los mails van a Mailpit (bandeja en http://localhost:8025) y no
+      # salen a nadie. Para mandarlos de verdad: SMTP_HOST=smtp.gmail.com y SMTP_PORT=587.
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
       APP_URL: ${APP_URL}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       WHATSAPP_TOKEN: ${WHATSAPP_TOKEN}
@@ -67,6 +71,14 @@ services:
     depends_on:
       - db
       - redis
+      - mailpit
+
+  mailpit:
+    image: axllent/mailpit
+    container_name: mailpit_infrabot
+    restart: always
+    ports:
+      - "${MAILPIT_PORT:-8025}:8025"
 
   redis:
     image: redis:7-alpine
