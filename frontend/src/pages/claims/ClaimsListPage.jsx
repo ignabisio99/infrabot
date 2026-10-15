@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ActionIcon,
   Alert,
-  Badge,
   Button,
   Container,
   Group,
@@ -62,6 +61,12 @@ function busquedaDeParams(searchParams) {
   return searchParams.get('busqueda') ?? '';
 }
 
+// `?abrir=34` abre el detalle de ese reclamo al entrar.
+function reclamoAbrirDeParams(searchParams) {
+  const id = Number(searchParams.get('abrir'));
+  return searchParams.get('abrir') && !Number.isNaN(id) ? id : null;
+}
+
 // Acepta "34", "0034", "REC-00000034", etc: se queda solo con los dígitos
 // escritos y busca esa subcadena dentro del ID completo (con ceros a la izquierda).
 function idCoincideConBusqueda(id, busqueda) {
@@ -77,7 +82,9 @@ export function ClaimsListPage() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [eliminandoId, setEliminandoId] = useState(null);
-  const [reclamoIdSeleccionado, setReclamoIdSeleccionado] = useState(null);
+  const [reclamoIdSeleccionado, setReclamoIdSeleccionado] = useState(() =>
+    reclamoAbrirDeParams(searchParams),
+  );
   const [reclamoParaCambiarEstado, setReclamoParaCambiarEstado] = useState(null);
 
   const [prioridadFiltro, setPrioridadFiltro] = useState('');
@@ -102,6 +109,8 @@ export function ClaimsListPage() {
     setBusquedaId(busquedaDeParams(searchParams));
     setPrioridadFiltro('');
     setRangoFechas([null, null]);
+    const abrir = reclamoAbrirDeParams(searchParams);
+    if (abrir !== null) setReclamoIdSeleccionado(abrir);
   }
 
   useEffect(() => {
@@ -110,14 +119,6 @@ export function ClaimsListPage() {
       .catch((err) => setError(err.message))
       .finally(() => setCargando(false));
   }, []);
-
-  useEffect(() => {
-    const abrir = searchParams.get('abrir');
-    if (abrir) {
-      const id = Number(abrir);
-      if (!Number.isNaN(id)) setReclamoIdSeleccionado(id);
-    }
-  }, [searchParams]);
 
   const reclamosFiltrados = useMemo(() => {
     const desde = parsearFechaFiltro(rangoFechas[0]);
@@ -299,7 +300,7 @@ export function ClaimsListPage() {
                   </Table.Td>
                   <Table.Td>{reclamo.categoria}</Table.Td>
                   <Table.Td>
-                    <Text truncate="end" maw={280} title={reclamo.descripcion}>
+                    <Text truncate="end" maw={240} title={reclamo.descripcion}>
                       {reclamo.descripcion}
                     </Text>
                   </Table.Td>
