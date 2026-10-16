@@ -15,7 +15,7 @@ import {
   em,
 } from '@mantine/core';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router';
 import {
   IconHome,
   IconClipboardList,
@@ -32,11 +32,13 @@ import {
   IconUserCheck,
   IconUsersGroup,
   IconBrandWhatsapp,
+  IconMessageChatbot,
 } from '@tabler/icons-react';
 import logo from '../assets/logo-infrabot.jpeg';
 import { Footer } from '../components/Footer';
 import { NotificationBell } from './NotificationBell';
 import { listarUsuariosPendientes } from '../api/usuarios';
+import { ConversacionesProvider, useConversaciones } from '../pages/conversaciones/ConversacionesContext';
 import { esAdministrador } from '../utils/auth';
 import classes from './AppLayout.module.css';
 
@@ -52,6 +54,7 @@ const links = [
   },
   { label: 'Presupuestos', path: '/presupuestos', icon: IconReceipt2 },
   { label: 'Calendario', path: '/calendario', icon: IconCalendar },
+  { label: 'Conversaciones', path: '/conversaciones', icon: IconMessageChatbot, mostrarChats: true },
   { label: 'Reportes', path: '/reportes', icon: IconChartBar },
   { label: 'Solicitudes', path: '/solicitudes', icon: IconUserCheck, mostrarPendientes: true },
   { label: 'Configuración', path: '/configuracion', icon: IconSettings },
@@ -79,6 +82,14 @@ const NAVBAR_WIDTH_EXPANDIDO = 260;
 const NAVBAR_WIDTH_COLAPSADO = 80;
 
 export function AppLayout() {
+  return (
+    <ConversacionesProvider>
+      <AppLayoutInner />
+    </ConversacionesProvider>
+  );
+}
+
+function AppLayoutInner() {
   const [mobileOpened, { toggle: toggleMobile, close: closeMobile }] = useDisclosure();
   const [colapsadoDesktop, { toggle: toggleColapsado }] = useDisclosure(false);
   const esMobile = useMediaQuery(`(max-width: ${em(767)})`);
@@ -97,6 +108,7 @@ export function AppLayout() {
   // (por ejemplo, después de editar el perfil).
   const usuario = getUsuario();
   const [pendientesCount, setPendientesCount] = useState(0);
+  const { esperaCount, miasNuevosCount } = useConversaciones();
 
   // Conteo de solicitudes pendientes (solo admins). Se refresca al navegar para que
   // el badge se actualice después de aprobar/rechazar en la página de solicitudes.
@@ -186,7 +198,12 @@ export function AppLayout() {
             const activo = link.exact
               ? location.pathname === link.path
               : location.pathname.startsWith(link.path);
-            const tienePendientes = link.mostrarPendientes && pendientesCount > 0;
+            const badgeCount = link.mostrarPendientes
+              ? pendientesCount
+              : link.mostrarChats
+                ? esperaCount + miasNuevosCount
+                : 0;
+            const tienePendientes = badgeCount > 0;
             const item = (
               <NavLink
                 className={classes.navLink}
@@ -201,7 +218,7 @@ export function AppLayout() {
                       variant="filled"
                       style={{ boxShadow: '0 0 0 3px rgba(255,255,255,0.15)' }}
                     >
-                      {pendientesCount}
+                      {badgeCount}
                     </Badge>
                   ) : undefined
                 }
@@ -242,7 +259,7 @@ export function AppLayout() {
             return colapsado ? (
               <Tooltip
                 key={link.path}
-                label={tienePendientes ? `${link.label} (${pendientesCount})` : link.label}
+                label={tienePendientes ? `${link.label} (${badgeCount})` : link.label}
                 position="right"
                 withArrow
               >

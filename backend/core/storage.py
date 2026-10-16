@@ -21,6 +21,10 @@ class Storage(ABC):
         """Guarda el archivo y devuelve la URL pública para acceder a él."""
 
     @abstractmethod
+    def guardar_bytes(self, contenido: bytes, subcarpeta: str, extension: str) -> str:
+        """Guarda bytes crudos y devuelve la URL pública."""
+
+    @abstractmethod
     def eliminar(self, url: str) -> None:
         """Elimina el archivo asociado a una URL devuelta por `guardar`."""
 
@@ -41,6 +45,15 @@ class LocalStorage(Storage):
         with ruta_archivo.open("wb") as buffer:
             buffer.write(archivo.file.read())
 
+        return f"{self.url_base}/{subcarpeta}/{nombre_unico}"
+
+    def guardar_bytes(self, contenido: bytes, subcarpeta: str, extension: str) -> str:
+        destino = self.directorio_base / subcarpeta
+        destino.mkdir(parents=True, exist_ok=True)
+        ext = extension if extension.startswith(".") else f".{extension}"
+        nombre_unico = f"{uuid.uuid4().hex}{ext}"
+        ruta_archivo = destino / nombre_unico
+        ruta_archivo.write_bytes(contenido)
         return f"{self.url_base}/{subcarpeta}/{nombre_unico}"
 
     def eliminar(self, url: str) -> None:

@@ -1,5 +1,5 @@
 import { Card, Group, Text, ThemeIcon } from '@mantine/core';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 /**
  * Tarjeta de un indicador: el número grande, qué mide y una línea de contexto.

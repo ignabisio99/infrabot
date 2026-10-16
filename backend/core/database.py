@@ -69,6 +69,20 @@ def asegurar_columna_detalle_tarea(bind=engine):
         conn.execute(text("ALTER TABLE presupuesto ADD COLUMN detalle_tarea TEXT"))
 
 
+def asegurar_columna_pregunta_inicio_enviada(bind=engine):
+    """Agrega `visita.pregunta_inicio_enviada` si la tabla ya existía sin esa columna."""
+    inspector = inspect(bind)
+    if "visita" not in inspector.get_table_names():
+        return
+    columnas = {columna["name"] for columna in inspector.get_columns("visita")}
+    if "pregunta_inicio_enviada" in columnas:
+        return
+    with bind.begin() as conn:
+        conn.execute(
+            text("ALTER TABLE visita ADD COLUMN pregunta_inicio_enviada TIMESTAMPTZ")
+        )
+
+
 def asegurar_valores_estado_reclamo(bind=engine):
     """Agrega valores nuevos al enum `estado_reclamo` si la base se creó antes.
 

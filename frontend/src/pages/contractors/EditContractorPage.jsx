@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router';
 import { Alert, Anchor, Container, Loader, Title } from '@mantine/core';
 
 import { ContractorForm } from './ContractorForm';

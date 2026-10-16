@@ -12,7 +12,7 @@ import {
   em,
 } from '@mantine/core';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router';
 import {
   IconChevronDown,
   IconChevronLeft,

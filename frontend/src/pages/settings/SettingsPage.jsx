@@ -2,17 +2,21 @@ import { useEffect, useState } from 'react';
 import {
   Alert,
   Button,
+  Checkbox,
   Container,
   Group,
   NumberInput,
   Stack,
   Text,
+  Textarea,
   TextInput,
   Title,
 } from '@mantine/core';
 
 import {
+  actualizarConfiguracionAtencion,
   actualizarUmbralesAuditoria,
+  obtenerConfiguracionAtencion,
   obtenerUmbralesAuditoria,
 } from '../../api/configuracion';
 import { ejecutarSeguimiento, sincronizarReferenciasCsv } from '../../api/ai';
@@ -23,6 +27,16 @@ import {
   listarRolesManoObra,
 } from '../../api/rolesManoObra';
 import { notifyError, notifySuccess } from '../../utils/notifications';
+
+const DIAS_ATENCION = [
+  { value: '0', label: 'Lun' },
+  { value: '1', label: 'Mar' },
+  { value: '2', label: 'Mié' },
+  { value: '3', label: 'Jue' },
+  { value: '4', label: 'Vie' },
+  { value: '5', label: 'Sáb' },
+  { value: '6', label: 'Dom' },
+];
 
 export function SettingsPage() {
   const [aprobarPct, setAprobarPct] = useState(5);
@@ -37,6 +51,12 @@ export function SettingsPage() {
   const [nuevoRol, setNuevoRol] = useState('');
   const [guardandoRolId, setGuardandoRolId] = useState(null);
   const [agregandoRol, setAgregandoRol] = useState(false);
+  const [diasAtencion, setDiasAtencion] = useState(['0', '1', '2', '3', '4']);
+  const [horaDesde, setHoraDesde] = useState('09:00');
+  const [horaHasta, setHoraHasta] = useState('18:00');
+  const [mensajeFuera, setMensajeFuera] = useState('');
+  const [inactividadMin, setInactividadMin] = useState(60);
+  const [guardandoAtencion, setGuardandoAtencion] = useState(false);
 
   const cargarRoles = () =>
     listarRolesManoObra().then((data) => {
@@ -45,10 +65,15 @@ export function SettingsPage() {
     });
 
   useEffect(() => {
-    Promise.all([obtenerUmbralesAuditoria(), cargarRoles()])
-      .then(([data]) => {
+    Promise.all([obtenerUmbralesAuditoria(), obtenerConfiguracionAtencion(), cargarRoles()])
+      .then(([data, atencion]) => {
         setAprobarPct(Number(data.umbral_aprobar) * 100);
         setRevisarPct(Number(data.umbral_revisar) * 100);
+        setDiasAtencion((atencion.dias || []).map(String));
+        setHoraDesde(atencion.hora_desde);
+        setHoraHasta(atencion.hora_hasta);
+        setMensajeFuera(atencion.mensaje_fuera_horario);
+        setInactividadMin(atencion.inactividad_usuario_min);
       })
       .catch((err) => setError(err.message))
       .finally(() => setCargando(false));
@@ -113,6 +138,90 @@ export function SettingsPage() {
         </Text>
         <Button onClick={handleGuardar} loading={guardando} disabled={cargando} w="fit-content">
           Guardar umbrales
+        </Button>
+
+        <Title order={4} mt="md">
+          Horario de atención humana
+        </Title>
+        <Text size="sm" c="dimmed">
+          Fuera de este horario (Argentina) el usuario no entra a la cola: recibe el mensaje
+          de abajo y sigue con el bot. También se cierra el chat si el usuario no responde
+          al operador en los minutos indicados.
+        </Text>
+        <Checkbox.Group
+          label="Días"
+          value={diasAtencion}
+          onChange={setDiasAtencion}
+        >
+          <Group mt={6} gap="sm">
+            {DIAS_ATENCION.map((dia) => (
+              <Checkbox key={dia.value} value={dia.value} label={dia.label} disabled={cargando} />
+            ))}
+          </Group>
+        </Checkbox.Group>
+        <Group grow>
+          <TextInput
+            label="Desde"
+            type="time"
+            value={horaDesde}
+            onChange={(e) => setHoraDesde(e.currentTarget.value)}
+            disabled={cargando}
+          />
+          <TextInput
+            label="Hasta"
+            type="time"
+            value={horaHasta}
+            onChange={(e) => setHoraHasta(e.currentTarget.value)}
+            disabled={cargando}
+          />
+        </Group>
+        <Textarea
+          label="Mensaje fuera de horario"
+          minRows={3}
+          value={mensajeFuera}
+          onChange={(e) => setMensajeFuera(e.currentTarget.value)}
+          disabled={cargando}
+        />
+        <NumberInput
+          label="Minutos sin respuesta del usuario"
+          min={1}
+          max={1440}
+          value={inactividadMin}
+          onChange={(value) => setInactividadMin(Number(value) || 1)}
+          disabled={cargando}
+        />
+        <Button
+          w="fit-content"
+          loading={guardandoAtencion}
+          disabled={cargando}
+          onClick={async () => {
+            if (diasAtencion.length === 0) {
+              notifyError('Elegí al menos un día de atención.');
+              return;
+            }
+            setGuardandoAtencion(true);
+            try {
+              const data = await actualizarConfiguracionAtencion({
+                dias: diasAtencion.map(Number),
+                hora_desde: horaDesde,
+                hora_hasta: horaHasta,
+                mensaje_fuera_horario: mensajeFuera,
+                inactividad_usuario_min: inactividadMin,
+              });
+              setDiasAtencion(data.dias.map(String));
+              setHoraDesde(data.hora_desde);
+              setHoraHasta(data.hora_hasta);
+              setMensajeFuera(data.mensaje_fuera_horario);
+              setInactividadMin(data.inactividad_usuario_min);
+              notifySuccess('Horario de atención actualizado.');
+            } catch (err) {
+              notifyError(err.message);
+            } finally {
+              setGuardandoAtencion(false);
+            }
+          }}
+        >
+          Guardar horario
         </Button>
 
         <Title order={4} mt="md">

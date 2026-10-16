@@ -12,7 +12,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import dayjs from 'dayjs';
 import 'dayjs/locale/es';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router';
 
 import App from './App.jsx';
 

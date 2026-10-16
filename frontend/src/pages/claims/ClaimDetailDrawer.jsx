@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Badge,
@@ -33,6 +33,8 @@ import {
   IconSparkles,
   IconTruck,
   IconArrowsExchange,
+  IconArrowsMaximize,
+  IconArrowsMinimize,
 } from '@tabler/icons-react';
 
 import {
@@ -45,11 +47,13 @@ import {
   listarOfertasReutilizables,
   reabrirConvocatoria,
 } from '../../api/reclamos';
+import { historialPorTelefono } from '../../api/conversaciones';
 import { formatoMoneda } from '../../utils/formatters';
 import { avisarNotificacionesCambiaron } from '../../layout/NotificationBell';
 import { formatearIdReclamo } from '../../utils/ids';
 import { esAdministrador, esInspector } from '../../utils/auth';
 import { notifyError, notifySuccess } from '../../utils/notifications';
+import { HiloChat } from '../conversaciones/HiloChat';
 import { BudgetRequestsList } from './BudgetRequestsList';
 import { ChangeStatusModal } from './ChangeStatusModal';
 import { ClaimCommentsThread } from './ClaimComments';
@@ -109,6 +113,150 @@ function TituloEvento({ evento }) {
         </Badge>
       )}
     </Group>
+  );
+}
+
+const PAGINA_CHAT_RECLAMO = 30;
+
+function ChatDelReclamo({ telefono }) {
+  const [abierto, setAbierto] = useState(false);
+  const [ampliado, setAmpliado] = useState(false);
+  const [mensajes, setMensajes] = useState([]);
+  const [hayMas, setHayMas] = useState(false);
+  const [cargando, setCargando] = useState(false);
+  const [cargandoMas, setCargandoMas] = useState(false);
+  const [error, setError] = useState(null);
+  const viewport = useRef(null);
+
+  const irAlFinal = () => {
+    const el = viewport.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  };
+
+  useEffect(() => {
+    if (!abierto) return undefined;
+    let vigente = true;
+    setCargando(true);
+    historialPorTelefono(telefono, { limit: PAGINA_CHAT_RECLAMO })
+      .then((data) => {
+        if (!vigente) return;
+        setMensajes(data.mensajes);
+        setHayMas(data.hay_mas);
+        setError(null);
+        window.setTimeout(irAlFinal, 80);
+      })
+      .catch((err) => {
+        if (vigente) setError(err.message);
+      })
+      .finally(() => {
+        if (vigente) setCargando(false);
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [telefono, abierto]);
+
+  useEffect(() => {
+    if (!abierto || cargando || mensajes.length === 0) return undefined;
+    const t1 = window.setTimeout(irAlFinal, 50);
+    const t2 = window.setTimeout(irAlFinal, 280);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [abierto, ampliado, cargando, mensajes.length]);
+
+  const cargarMas = () => {
+    if (!mensajes.length || cargandoMas) return;
+    const el = viewport.current;
+    const previa = el?.scrollHeight ?? 0;
+    const top = el?.scrollTop ?? 0;
+    setCargandoMas(true);
+    historialPorTelefono(telefono, { limit: PAGINA_CHAT_RECLAMO, antesDe: mensajes[0].id })
+      .then((data) => {
+        setMensajes((prev) => [...data.mensajes, ...prev]);
+        setHayMas(data.hay_mas);
+        requestAnimationFrame(() => {
+          if (el) el.scrollTop = top + (el.scrollHeight - previa);
+        });
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setCargandoMas(false));
+  };
+
+  const hilo = (
+    <Stack gap={6} mt={ampliado ? 0 : 'xs'}>
+      {hayMas && (
+        <Button variant="subtle" size="compact-xs" loading={cargandoMas} onClick={cargarMas}>
+          Cargar mensajes anteriores
+        </Button>
+      )}
+      <div
+        ref={viewport}
+        style={{
+          height: ampliado ? '70vh' : 360,
+          overflow: 'auto',
+        }}
+      >
+        <HiloChat mensajes={mensajes} />
+      </div>
+    </Stack>
+  );
+
+  return (
+    <Paper withBorder p="xs" radius="md">
+      <Group justify="space-between" gap="xs">
+        <Text size="sm" fw={600}>
+          Chat de WhatsApp
+        </Text>
+        <Group gap={4}>
+          {abierto && !cargando && mensajes.length > 0 && (
+            <Button
+              variant="subtle"
+              size="compact-xs"
+              leftSection={
+                ampliado ? <IconArrowsMinimize size={14} /> : <IconArrowsMaximize size={14} />
+              }
+              onClick={() => setAmpliado((v) => !v)}
+            >
+              {ampliado ? 'Reducir' : 'Expandir'}
+            </Button>
+          )}
+          <Button
+            variant="subtle"
+            size="compact-xs"
+            onClick={() => {
+              setAbierto((v) => !v);
+              setAmpliado(false);
+            }}
+          >
+            {abierto ? 'Cerrar' : 'Ver chat'}
+          </Button>
+        </Group>
+      </Group>
+      {abierto && cargando && <Loader size="sm" mt="xs" />}
+      {abierto && !cargando && error && (
+        <Text size="sm" c="dimmed" mt="xs">
+          No se pudo cargar el chat.
+        </Text>
+      )}
+      {abierto && !cargando && !error && mensajes.length === 0 && (
+        <Text size="sm" c="dimmed" mt="xs">
+          No hay mensajes de WhatsApp para este número.
+        </Text>
+      )}
+      {abierto && !cargando && !error && mensajes.length > 0 && !ampliado && hilo}
+      <Modal
+        opened={ampliado}
+        onClose={() => setAmpliado(false)}
+        title="Chat de WhatsApp"
+        size="lg"
+        centered
+        transitionProps={{ onEntered: irAlFinal }}
+      >
+        {hilo}
+      </Modal>
+    </Paper>
   );
 }
 
@@ -279,8 +427,12 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
         )
       }
       styles={{
-        header: { borderBottom: '1px solid var(--mantine-color-gray-3)', paddingBottom: 12 },
-        body: { paddingTop: 16 },
+        header: {
+          borderBottom: '1px solid var(--mantine-color-gray-3)',
+          paddingBottom: 12,
+          alignItems: 'flex-start',
+        },
+        body: { paddingTop: 16, overflowY: 'auto' },
       }}
     >
       {cargando && <Loader />}
@@ -288,15 +440,18 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
       {!cargando && reclamo && (
         <>
           {reclamo.telefono_creador && (
-            <Group gap={6} mb="md" c="dimmed">
-              <IconBrandWhatsapp size={15} color="var(--mantine-color-teal-6)" />
-              <Text size="sm">
-                Creado desde WhatsApp por{' '}
-                <Text span fw={600} c="dark">
-                  {reclamo.telefono_creador}
+            <Stack gap="xs" mb="md">
+              <Group gap={6} c="dimmed">
+                <IconBrandWhatsapp size={15} color="var(--mantine-color-teal-6)" />
+                <Text size="sm">
+                  Creado desde WhatsApp por{' '}
+                  <Text span fw={600} c="dark">
+                    {reclamo.telefono_creador}
+                  </Text>
                 </Text>
-              </Text>
-            </Group>
+              </Group>
+              {esAdmin && <ChatDelReclamo telefono={reclamo.telefono_creador} />}
+            </Stack>
           )}
 
           {pendienteIntervencion && (

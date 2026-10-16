@@ -1,6 +1,6 @@
 import { Badge, Card, Group, Table, Text, Title } from '@mantine/core';
 import { IconCheck } from '@tabler/icons-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 import { StatusBadge } from '../claims/StatusBadge';
 import { formatearIdReclamo } from '../../utils/ids';

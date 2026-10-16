@@ -15,7 +15,9 @@ from core.whatsapp_client import (
     enviar_lista,
     enviar_mensaje,
 )
-from core.whatsapp_handler import procesar_audio, procesar_media, procesar_mensaje
+from core.whatsapp_handler import procesar_audio_detalle, procesar_media, procesar_mensaje
+from models.mensaje_conversacion import TipoMensaje
+from services import conversaciones as convs
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,8 @@ def procesar_job(job: dict[str, Any]) -> None:
         _procesar_media(origen, job.get("media_id") or "", job.get("caption") or "")
     elif kind == "post_ia":
         _procesar_post_ia(int(job.get("reclamo_id") or 0))
+    elif kind == "transcribir":
+        _procesar_transcribir(int(job.get("mensaje_id") or 0))
     else:
         logger.warning("Job WhatsApp desconocido: %s", kind)
 
@@ -130,7 +134,12 @@ def _procesar_texto(origen: str, texto: str) -> None:
         return
     db = SessionLocal()
     try:
+        convs.registrar_entrante(db, origen, texto=texto)
         respuesta = procesar_mensaje(db, texto, usuario=origen)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
     _enviar_respuesta(origen, respuesta)
@@ -143,19 +152,80 @@ def _procesar_audio(origen: str, media_id: str) -> None:
         return
     db = SessionLocal()
     try:
-        respuesta = procesar_audio(db, usuario=origen, audio=contenido, mime_type=mime_type)
+        if convs.activa(db, origen) is not None:
+            url = convs.guardar_media_operador(contenido, mime_type)
+            if url is None:
+                convs.registrar_entrante(
+                    db, origen, texto="[Audio demasiado grande o vacío]", tipo=TipoMensaje.TEXTO
+                )
+            else:
+                mensaje = convs.registrar_entrante(
+                    db,
+                    origen,
+                    tipo=TipoMensaje.AUDIO,
+                    media_url=url,
+                    mime_type=mime_type,
+                    con_ttl=True,
+                )
+                encolar({"kind": "transcribir", "mensaje_id": mensaje.id})
+            db.commit()
+            return
+        texto, _proveedor, respuesta = procesar_audio_detalle(
+            db, usuario=origen, audio=contenido, mime_type=mime_type
+        )
+        if texto:
+            convs.registrar_entrante(db, origen, texto=texto)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
     _enviar_respuesta(origen, respuesta)
 
 
 def _procesar_media(origen: str, media_id: str, caption: str) -> None:
-    url_local, mime_type = descargar_media(media_id)
-    if not url_local:
-        enviar_mensaje(origen, "⚠️ No pude descargar el archivo. Intentá de nuevo.")
-        return
     db = SessionLocal()
     try:
+        con_operador = convs.activa(db, origen) is not None
+        if con_operador:
+            contenido, mime_type = descargar_media_binario(media_id)
+            if not contenido:
+                enviar_mensaje(origen, "⚠️ No pude descargar el archivo. Intentá de nuevo.")
+                return
+            url = convs.guardar_media_operador(contenido, mime_type)
+            tipo = convs._tipo_media(mime_type)
+            if url is None:
+                convs.registrar_entrante(
+                    db,
+                    origen,
+                    texto=caption or "[Archivo demasiado grande o vacío]",
+                    tipo=TipoMensaje.TEXTO,
+                )
+            else:
+                convs.registrar_entrante(
+                    db,
+                    origen,
+                    texto=caption or None,
+                    tipo=tipo,
+                    media_url=url,
+                    mime_type=mime_type,
+                    con_ttl=True,
+                )
+            db.commit()
+            return
+        url_local, mime_type = descargar_media(media_id)
+        if not url_local:
+            enviar_mensaje(origen, "⚠️ No pude descargar el archivo. Intentá de nuevo.")
+            return
+        convs.registrar_entrante(
+            db,
+            origen,
+            texto=caption or None,
+            tipo=convs._tipo_media(mime_type),
+            media_url=url_local,
+            mime_type=mime_type,
+        )
         respuesta = procesar_media(
             db,
             usuario=origen,
@@ -163,12 +233,59 @@ def _procesar_media(origen: str, media_id: str, caption: str) -> None:
             mime_type=mime_type,
             caption=caption,
         )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
     _enviar_respuesta(origen, respuesta)
 
 
+def _procesar_transcribir(mensaje_id: int) -> None:
+    if not mensaje_id:
+        return
+    from core.storage import UPLOADS_DIR
+    from services.ai import stt
+
+    db = SessionLocal()
+    try:
+        from models.mensaje_conversacion import MensajeConversacion
+
+        mensaje = db.get(MensajeConversacion, mensaje_id)
+        if mensaje is None or not mensaje.media_url or mensaje.media_eliminada:
+            return
+        relativo = mensaje.media_url.removeprefix("/uploads/")
+        ruta = UPLOADS_DIR / relativo
+        if not ruta.is_file():
+            convs.actualizar_transcripcion(db, mensaje_id, None)
+            return
+        try:
+            texto = stt.transcribir_audio(ruta.read_bytes(), mensaje.mime_type or "audio/ogg")
+        except stt.TranscripcionError:
+            texto = None
+        convs.actualizar_transcripcion(db, mensaje_id, texto)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Falló la transcripción del mensaje %s", mensaje_id)
+    finally:
+        db.close()
+
+
+def _texto_respuesta(respuesta) -> str:
+    if respuesta is None:
+        return ""
+    if isinstance(respuesta, dict):
+        return (respuesta.get("body") or "").strip()
+    return str(respuesta).strip()
+
+
 def _enviar_respuesta(to: str, respuesta) -> None:
+    if not _texto_respuesta(respuesta) and not (
+        isinstance(respuesta, dict) and (respuesta.get("botones") or respuesta.get("secciones"))
+    ):
+        return
     if isinstance(respuesta, dict):
         tipo = respuesta.get("tipo")
         if tipo == "botones":
@@ -177,5 +294,18 @@ def _enviar_respuesta(to: str, respuesta) -> None:
             enviar_lista(to, respuesta["body"], respuesta["boton_texto"], respuesta["secciones"])
         else:
             enviar_mensaje(to, respuesta.get("body", str(respuesta)))
+        cuerpo = respuesta.get("body") or ""
     else:
         enviar_mensaje(to, respuesta)
+        cuerpo = str(respuesta)
+    if not cuerpo:
+        return
+    db = SessionLocal()
+    try:
+        convs.registrar_saliente(db, to, cuerpo)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("No se pudo guardar la respuesta saliente a %s", to)
+    finally:
+        db.close()

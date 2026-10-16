@@ -15,11 +15,13 @@ import {
 import { IconMicrophone, IconPaperclip, IconRefresh, IconSend } from '@tabler/icons-react';
 
 import {
+  listarMensajesSim,
   reiniciarSimuladorWhatsApp,
   simularWhatsAppMedia,
   simularWhatsAppTexto,
 } from '../../api/whatsappSim';
 import { useGrabarAudio } from '../../hooks/useGrabarAudio';
+import { formatoHoraMensaje } from '../../utils/formatters';
 import { notifyError } from '../../utils/notifications';
 
 const ORIGEN_DEFAULT = 'sim5491100000000';
@@ -34,9 +36,14 @@ function claveMensajes(origen) {
   return `infrabot_whatsapp_sim_msgs:${(origen || '').trim() || ORIGEN_DEFAULT}`;
 }
 
+function asegurarPrefijoSim(valor) {
+  const limpio = (valor || '').trim() || ORIGEN_DEFAULT;
+  return limpio.toLowerCase().startsWith('sim') ? limpio : `sim${limpio}`;
+}
+
 function leerOrigenGuardado() {
   try {
-    return localStorage.getItem(ORIGEN_KEY) || ORIGEN_DEFAULT;
+    return asegurarPrefijoSim(localStorage.getItem(ORIGEN_KEY) || ORIGEN_DEFAULT);
   } catch {
     return ORIGEN_DEFAULT;
   }
@@ -55,6 +62,7 @@ function burbuja(de, contenido) {
   return {
     id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     de,
+    fecha: new Date().toISOString(),
     ...contenido,
   };
 }
@@ -67,11 +75,64 @@ export function WhatsAppSimPage() {
   const abajo = useRef(null);
   const adjuntoRef = useRef(null);
   const origenRef = useRef(origen);
+  const idsServidor = useRef(new Set());
+  const despuesDeRef = useRef(0);
   const { grabando, empezar, detener } = useGrabarAudio();
 
   useEffect(() => {
     abajo.current?.scrollIntoView({ behavior: 'smooth' });
   }, [mensajes]);
+
+  useEffect(() => {
+    let cancelado = false;
+    const vistos = new Set();
+    setMensajes((actuales) => {
+      actuales.forEach((m) => {
+        const raw = String(m.id);
+        if (raw.startsWith('srv-')) {
+          const n = Number(raw.slice(4));
+          if (Number.isFinite(n)) vistos.add(n);
+        }
+      });
+      return actuales;
+    });
+    idsServidor.current = vistos;
+    despuesDeRef.current = vistos.size ? Math.max(...vistos) : 0;
+
+    const tick = async () => {
+      try {
+        const lista = await listarMensajesSim(origen, despuesDeRef.current || undefined);
+        if (cancelado) return;
+        const nuevos = lista.filter((m) => !idsServidor.current.has(m.id));
+        if (!nuevos.length) return;
+        nuevos.forEach((m) => idsServidor.current.add(m.id));
+        despuesDeRef.current = Math.max(despuesDeRef.current, ...nuevos.map((m) => m.id));
+        setMensajes((actuales) => {
+          const ya = new Set(actuales.map((x) => x.id));
+          const extra = nuevos
+            .filter((n) => !ya.has(`srv-${n.id}`))
+            .map((m) => ({
+              id: `srv-${m.id}`,
+              de: m.autor === 'OPERADOR' ? 'operador' : 'bot',
+              texto: m.texto || '',
+              fecha: m.fecha,
+              botones: [],
+              secciones: [],
+            }));
+          return extra.length ? [...actuales, ...extra] : actuales;
+        });
+      } catch {
+        // El simulador sigue andando aunque falle el historial.
+      }
+    };
+
+    tick();
+    const timer = setInterval(tick, 2000);
+    return () => {
+      cancelado = true;
+      clearInterval(timer);
+    };
+  }, [origen]);
 
   useEffect(() => {
     if (origenRef.current !== origen) {
@@ -81,7 +142,18 @@ export function WhatsAppSimPage() {
     }
     try {
       localStorage.setItem(ORIGEN_KEY, origen);
-      localStorage.setItem(claveMensajes(origen), JSON.stringify(mensajes));
+      const visto = new Set();
+      const unicos = [];
+      mensajes.forEach((m) => {
+        if (visto.has(m.id)) return;
+        visto.add(m.id);
+        unicos.push(m);
+      });
+      if (unicos.length !== mensajes.length) {
+        setMensajes(unicos);
+        return;
+      }
+      localStorage.setItem(claveMensajes(origen), JSON.stringify(unicos));
     } catch {
       // Quota o modo privado: la charla sigue en pantalla.
     }
@@ -111,7 +183,9 @@ export function WhatsAppSimPage() {
     setTexto('');
     try {
       const respuesta = await simularWhatsAppTexto(origen, contenido);
-      agregarRespuesta(respuesta);
+      if (respuesta.body || respuesta.botones?.length || respuesta.secciones?.length) {
+        agregarRespuesta(respuesta);
+      }
     } catch (err) {
       notifyError(err.message);
     } finally {
@@ -151,7 +225,9 @@ export function WhatsAppSimPage() {
           ),
         );
       }
-      agregarRespuesta(respuesta);
+      if (respuesta.body || respuesta.botones?.length || respuesta.secciones?.length) {
+        agregarRespuesta(respuesta);
+      }
     } catch (err) {
       if (esAudio) {
         setMensajes((actuales) =>
@@ -172,6 +248,9 @@ export function WhatsAppSimPage() {
     if (enviando || grabando) return;
     try {
       await reiniciarSimuladorWhatsApp(origen);
+      idsServidor.current = new Set();
+      const existentes = await listarMensajesSim(origen);
+      despuesDeRef.current = existentes.reduce((acc, m) => Math.max(acc, m.id), 0);
       setMensajes([]);
       localStorage.removeItem(claveMensajes(origen));
     } catch (err) {
@@ -214,9 +293,10 @@ export function WhatsAppSimPage() {
 
       <TextInput
         label="Número simulado"
-        description="Identifica esta charla. No es un WhatsApp real."
+        description="Identifica esta charla. Si no empieza con sim, se antepone para no pegarle a WhatsApp real."
         value={origen}
         onChange={(e) => setOrigen(e.currentTarget.value)}
+        onBlur={() => setOrigen((actual) => asegurarPrefijoSim(actual))}
       />
 
       <Paper
@@ -261,12 +341,18 @@ export function WhatsAppSimPage() {
                 maw="85%"
                 style={{
                   alignSelf: msg.de === 'yo' ? 'flex-end' : 'flex-start',
-                  background: msg.de === 'yo' ? '#005c4b' : '#202c33',
+                  background:
+                    msg.de === 'yo' ? '#005c4b' : msg.de === 'operador' ? '#1fa7b3' : '#202c33',
                 }}
               >
                 <Text size="sm" c="gray.1" style={{ whiteSpace: 'pre-wrap' }}>
                   {msg.texto}
                 </Text>
+                {formatoHoraMensaje(msg.fecha) ? (
+                  <Text size="xs" c="gray.5" ta="right" mt={4}>
+                    {formatoHoraMensaje(msg.fecha)}
+                  </Text>
+                ) : null}
                 {msg.transcripcion && (
                   <Text size="xs" c="gray.4" mt={4} style={{ whiteSpace: 'pre-wrap' }}>
                     {msg.transcripcion}
