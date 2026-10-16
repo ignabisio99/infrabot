@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router';
 import { Box, Center, Loader, Stack, Text } from '@mantine/core';
 import { IconCalendar, IconClipboardList, IconReceipt2 } from '@tabler/icons-react';
 
@@ -27,6 +27,7 @@ import { ReportsPage } from './pages/reports/ReportsPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
 import { ProfilePage } from './pages/profile/ProfilePage';
 import { UsersApprovalPage } from './pages/users/UsersApprovalPage';
+import { ConversacionesPage } from './pages/conversaciones/ConversacionesPage';
 import { WhatsAppSimPage } from './pages/whatsapp/WhatsAppSimPage';
 import { Footer } from './components/Footer';
 
@@ -218,6 +219,7 @@ function App() {
         <Route path="/configuracion" element={<SettingsPage />} />
         <Route path="/perfil" element={<ProfilePage />} />
         <Route path="/whatsapp" element={<WhatsAppSimPage />} />
+        <Route path="/conversaciones" element={<ConversacionesPage />} />
         <Route path="*" element={<Navigate to="/reclamos" replace />} />
       </Route>
     </Routes>

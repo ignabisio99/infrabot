@@ -8,6 +8,7 @@ import os
 logger = logging.getLogger(__name__)
 
 _client = None
+_async_client = None
 
 
 def redis_url() -> str:
@@ -41,6 +42,28 @@ def get_redis():
         return None
 
 
+async def get_redis_async():
+    """Cliente asyncio para SSE. None si Redis no responde."""
+    global _async_client
+    try:
+        from redis.asyncio import Redis
+
+        if _async_client is None:
+            _async_client = Redis.from_url(
+                redis_url(),
+                decode_responses=True,
+                socket_connect_timeout=1,
+                socket_timeout=2,
+            )
+        await _async_client.ping()
+        return _async_client
+    except Exception as exc:
+        logger.debug("Redis async no disponible: %s", exc)
+        _async_client = None
+        return None
+
+
 def reset_redis_cache() -> None:
-    global _client
+    global _client, _async_client
     _client = None
+    _async_client = None

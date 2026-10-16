@@ -107,6 +107,11 @@ def asegurar_columnas_seguimiento(bind=engine):
                     conn.execute(text(f"ALTER TABLE {tabla} ADD COLUMN {columna} {tipo}"))
 
 
+def asegurar_columna_pregunta_inicio_enviada(bind=engine):
+    """Compat: la columna quedó en `asegurar_columnas_seguimiento`."""
+    asegurar_columnas_seguimiento(bind=bind)
+
+
 def asegurar_valores_estado_reclamo(bind=engine):
     """Agrega valores nuevos al enum `estado_reclamo` si la base se creó antes.
 

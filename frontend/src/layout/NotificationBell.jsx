@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActionIcon, Button, Indicator, Menu, Text } from '@mantine/core';
 import { IconBell } from '@tabler/icons-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 import { conteoNotificaciones } from '../api/notificaciones';
 

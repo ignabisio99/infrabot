@@ -13,6 +13,7 @@ import models  # noqa: F401 - registra todos los modelos antes de create_all (ve
 from api.auth import router as auth_router
 from api.ai import router as ai_router
 from api.configuracion import router as configuracion_router
+from api.conversaciones import router as conversaciones_router
 from api.contratistas import router as contratistas_router
 from api.dashboard import router as dashboard_router
 from api.reportes import router as reportes_router
@@ -39,7 +40,12 @@ from core.database import (
     engine,
 )
 from core.storage import UPLOADS_DIR
-from services.workers import loop_cola_whatsapp, loop_seguimiento
+from services.workers import (
+    loop_cola_whatsapp,
+    loop_limpieza_conversaciones,
+    loop_seguimiento,
+    loop_timeouts_conversaciones,
+)
 
 # Zona horaria UTC-3 (Argentina)
 ART = timezone(timedelta(hours=-3))
@@ -107,6 +113,8 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(loop_cola_whatsapp(stop), name="cola-whatsapp"),
         asyncio.create_task(loop_seguimiento(stop), name="seguimiento-48h"),
         asyncio.create_task(loop_recordatorios(), name="recordatorios-visitas"),
+        asyncio.create_task(loop_limpieza_conversaciones(stop), name="limpieza-media-chats"),
+        asyncio.create_task(loop_timeouts_conversaciones(stop), name="timeouts-chats"),
     ]
     yield
     stop.set()
@@ -171,6 +179,7 @@ app.include_router(configuracion_router)
 app.include_router(roles_mano_obra_router)
 app.include_router(reportes_router)
 app.include_router(notificaciones_router)
+app.include_router(conversaciones_router)
 app.include_router(simulador_tiempo_router)
 
 @app.get("/")

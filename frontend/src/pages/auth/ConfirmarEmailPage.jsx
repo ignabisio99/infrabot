@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router';
 import { Alert, Button, Container, Loader, Paper, Stack, Text } from '@mantine/core';
 import { IconCheck, IconX } from '@tabler/icons-react';
 import { API_URL } from '../../api/apiClient';

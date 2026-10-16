@@ -24,3 +24,17 @@ export async function actualizarUmbralesAuditoria({ umbralAprobar, umbralRevisar
   });
   return leerJson(response, 'No se pudieron guardar los umbrales de auditoría.');
 }
+
+export async function obtenerConfiguracionAtencion() {
+  const response = await fetchConAuth(`${API_URL}/configuracion/atencion`);
+  return leerJson(response, 'No se pudo obtener el horario de atención.');
+}
+
+export async function actualizarConfiguracionAtencion(datos) {
+  const response = await fetchConAuth(`${API_URL}/configuracion/atencion`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(datos),
+  });
+  return leerJson(response, 'No se pudo guardar el horario de atención.');
+}

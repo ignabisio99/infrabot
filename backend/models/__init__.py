@@ -13,7 +13,10 @@ ejemplo, no se registra solo porque core/auth.py lo importa dentro de las funcio
 
 from models.adjunto_presupuesto import AdjuntoPresupuesto, TipoAdjuntoPresupuesto
 from models.comentario_reclamo import ComentarioReclamo
+from models.configuracion_atencion import ConfiguracionAtencion
 from models.configuracion_auditoria import ConfiguracionAuditoria
+from models.conversacion import Conversacion, EstadoConversacion
+from models.conversacion_participante import ConversacionParticipante
 from models.contratista import Contratista
 from models.estimacion_preliminar import EstimacionPreliminar
 from models.foto_reclamo import FotoReclamo
@@ -23,6 +26,7 @@ from models.indice_inflacion import IndiceInflacion
 from models.notificacion import Notificacion
 from models.institucion import Institucion
 from models.lista_contratistas import ListaContratistas, lista_contratista_asociacion
+from models.mensaje_conversacion import AutorMensaje, MensajeConversacion, TipoMensaje
 from models.presupuesto import (
     EstadoPresupuesto,
     ItemPresupuesto,
@@ -43,8 +47,12 @@ from models.visita import EstadoVisita, Visita
 __all__ = [
     "AdjuntoPresupuesto",
     "ComentarioReclamo",
+    "ConfiguracionAtencion",
     "ConfiguracionAuditoria",
+    "Conversacion",
+    "ConversacionParticipante",
     "Contratista",
+    "EstadoConversacion",
     "EstadoPresupuesto",
     "EstadoReclamo",
     "EstadoUsuario",
@@ -56,6 +64,7 @@ __all__ = [
     "Institucion",
     "ItemPresupuesto",
     "ListaContratistas",
+    "MensajeConversacion",
     "Notificacion",
     "OrigenCambioEstado",
     "PrioridadReclamo",
@@ -67,6 +76,8 @@ __all__ = [
     "RolManoObra",
     "SolicitudPresupuesto",
     "TipoAdjuntoPresupuesto",
+    "TipoMensaje",
+    "AutorMensaje",
     "TipoItemPresupuesto",
     "TipoRecomendacionIA",
     "TipoUsuario",

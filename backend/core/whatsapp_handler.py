@@ -606,23 +606,26 @@ def _mostrar_ayuda(variante: str = "menu"):
             "¿Qué te gustaría hacer?"
         )
     elif variante == "no_entendi":
-        body = "🤖 No entendí tu mensaje. Estas son las opciones disponibles:"
+        body = (
+            "🤖 No entendí tu mensaje. Estas son las opciones disponibles.\n\n"
+            "También podés tocar *Hablar con humano* o escribir *operador*."
+        )
     else:
         body = "🤖 *InfraBot*\n\n¿Qué querés hacer?"
 
-    # WhatsApp admite 3 botones. Con IA on se reemplaza "buscar" por el modo libre;
-    # buscar sigue disponible escribiendo el ID o *ver #<id>*.
+    # WhatsApp admite 3 botones. El tercero es siempre pasar a un humano;
+    # buscar/recientes siguen por texto (*ver #<id>*, *recientes*).
     if ai_config.ai_whatsapp_enabled():
         botones = [
             {"id": "libre", "title": "💬 Contame el problema"},
             {"id": "nuevo", "title": "📝 Nuevo reclamo"},
-            {"id": "recientes", "title": "📋 Ver recientes"},
+            {"id": "operador", "title": "🙋 Hablar con humano"},
         ]
     else:
         botones = [
             {"id": "nuevo", "title": "📝 Nuevo reclamo"},
             {"id": "recientes", "title": "📋 Ver recientes"},
-            {"id": "buscar_reclamo", "title": "🔍 Buscar reclamo"},
+            {"id": "operador", "title": "🙋 Hablar con humano"},
         ]
 
     return {
@@ -1627,6 +1630,25 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
             "Esperá unos minutos antes de volver a escribir."
         )
 
+    from services.conversaciones import activa as conv_activa
+    from services.conversaciones import cancelar_por_usuario
+    from services.conversaciones import pedir_operador, pedir_volver_bot, solicitar as solicitar_operador
+
+    conv_hum = conv_activa(db, usuario) if usuario else None
+    if conv_hum is not None:
+        esperando = conv_hum.estado.value == "ESPERANDO_OPERADOR"
+        if pedir_volver_bot(texto, en_espera=esperando):
+            cancelar_por_usuario(db, conv_hum.id)
+            menu = _mostrar_ayuda(variante="menu")
+            menu = {
+                **menu,
+                "body": (
+                    "👌 Listo, volviste con el asistente.\n\n" + (menu.get("body") or "")
+                ).strip(),
+            }
+            return menu
+        return ""
+
     # Evaluar si es una sesión nueva ANTES de registrar esta interacción.
     sesion_nueva = _es_sesion_nueva(usuario)
     tenia_actividad = bool(usuario) and usuario in _ultima_actividad
@@ -1637,6 +1659,23 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
     if texto == "cancelar" and usuario in _conversaciones:
         del _conversaciones[usuario]
         return "❌ Operación cancelada. Escribí *ayuda* para ver los comandos."
+
+    if usuario and pedir_operador(texto):
+        from services.configuracion_atencion import dentro_de_atencion, mensaje_fuera_horario
+
+        if not dentro_de_atencion(db):
+            return mensaje_fuera_horario(db)
+        solicitar_operador(db, usuario)
+        _conversaciones.pop(usuario, None)
+        return {
+            "tipo": "botones",
+            "body": (
+                "🙋 Te estoy pasando con un operador. En breve te van a responder.\n"
+                "Mientras tanto podés seguir escribiendo acá.\n\n"
+                "Si tardamos, tocá *Volver al bot* o escribí *cancelar*."
+            ),
+            "botones": [{"id": "cancelar", "title": "Volver al bot"}],
+        }
 
     # Si el creador está aportando información adicional a un reclamo
     if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "info_adicional":
@@ -1798,6 +1837,7 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
             "📖 *Comandos adicionales:*\n\n"
             "• *ver #<id>* — Ver detalle de un reclamo\n"
             "• *buscar <escuela>* — Buscar por escuela\n"
+            "• *operador* — Hablar con una persona\n"
             "• *cancelar* — Cancelar operación en curso\n\n"
             "Ejemplos:\n"
             "  ver #3\n"
@@ -1835,6 +1875,11 @@ def procesar_media(db: Session, usuario: str, url_local: str, mime_type: str, ca
 
     if usuario:
         _ultima_actividad[usuario] = datetime.now(timezone.utc)
+
+    from services.conversaciones import activa as conv_activa
+
+    if usuario and conv_activa(db, usuario) is not None:
+        return ""
 
     if usuario not in _conversaciones or _conversaciones[usuario].get("paso") != "avance_ejecucion":
         estado_av = avance_contratista.estado_conversacion_avance(db, usuario)
@@ -1931,7 +1976,12 @@ def procesar_audio_detalle(
     proveedor_stt: str | None = None,
 ) -> tuple[str | None, str, object]:
     """Como procesar_audio, pero también devuelve (transcripcion, proveedor, respuesta)."""
+    from services.conversaciones import activa as conv_activa
+
     proveedor = ai_config.resolver_stt_provider(proveedor_stt)
+    if usuario and conv_activa(db, usuario) is not None:
+        return None, proveedor, ""
+
     try:
         texto = stt.transcribir_audio(audio, mime_type, proveedor=proveedor)
     except stt.TranscripcionError:

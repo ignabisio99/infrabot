@@ -1,5 +1,5 @@
 import { Card, Text, Title, Tooltip, UnstyledButton } from '@mantine/core';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 import { colorPorEstado, etiquetaPorEstado } from '../claims/estados';
 import classes from './Dashboard.module.css';

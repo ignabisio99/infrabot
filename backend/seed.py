@@ -24,6 +24,7 @@ from core.database import (
     asegurar_columna_autor_foto,
     asegurar_columna_detalle_tarea,
     asegurar_columna_tipo_item,
+    asegurar_columnas_seguimiento,
     asegurar_tipo_usuario_inspector,
     asegurar_valor_analisis_agente,
     engine,
@@ -550,6 +551,7 @@ def main():
         asegurar_columna_tipo_item()
         asegurar_columna_detalle_tarea()
         asegurar_columna_autor_foto()
+        asegurar_columnas_seguimiento()
         asegurar_tipo_usuario_inspector()
         asegurar_valor_analisis_agente()
 

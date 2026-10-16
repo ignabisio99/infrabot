@@ -26,6 +26,13 @@ export async function reiniciarSimuladorWhatsApp(origen) {
   return leerJson(response, 'No se pudo reiniciar la charla.');
 }
 
+export async function listarMensajesSim(origen, despuesDe) {
+  const params = new URLSearchParams({ origen });
+  if (despuesDe) params.set('despues_de', String(despuesDe));
+  const response = await fetchConAuth(`${API_URL}/whatsapp/simular/mensajes?${params}`);
+  return leerJson(response, 'No se pudieron cargar los mensajes del simulador.');
+}
+
 export async function simularWhatsAppMedia(origen, archivo, caption = '', proveedorStt = '') {
   const form = new FormData();
   form.append('origen', origen);
