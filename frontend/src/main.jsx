@@ -15,6 +15,7 @@ import 'dayjs/locale/es';
 import { BrowserRouter } from 'react-router';
 
 import App from './App.jsx';
+import './index.css';
 
 // react-big-calendar lee el locale global de dayjs (localeData ignora el argumento),
 // así que sin esto la semana arranca en domingo.

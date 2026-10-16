@@ -13,6 +13,7 @@ from difflib import SequenceMatcher
 
 from sqlalchemy.orm import Session, joinedload
 
+from core import reloj
 from core.ai import config as ai_config
 from models.foto_reclamo import FotoReclamo, TipoMedia
 from models.reclamo import EstadoReclamo, PrioridadReclamo, Reclamo
@@ -1245,7 +1246,7 @@ def _procesar_info_adicional(db: Session, usuario: str, mensaje: str) -> str:
 
     # Anexar el texto a las observaciones del reclamo
     prefijo = "\n\n" if reclamo.observaciones else ""
-    fecha = datetime.now(ART).strftime("%d/%m/%Y %H:%M")
+    fecha = reloj.formatear_art()
     reclamo.observaciones = (
         (reclamo.observaciones or "") + f"{prefijo}[Info adicional {fecha}] {texto}"
     )
@@ -1271,20 +1272,47 @@ def _procesar_visita_disponibilidad(db: Session, usuario: str, mensaje: str) -> 
     texto = mensaje.strip()
 
     if _es_comando(texto, "listo", "terminar", "fin", "ok"):
-        if coordinacion_visita.finalizar_disponibilidad(db, visita):
+        ok, motivo = coordinacion_visita.finalizar_disponibilidad(db, visita)
+        if ok:
             del _conversaciones[usuario]
             return (
                 "✅ ¡Gracias! Le pasé tus opciones a quien creó el reclamo. "
                 "Te aviso apenas elija un horario."
             )
-        return "⚠️ Todavía no cargaste ninguna opción válida. Enviá al menos una en formato *DD/MM HH:MM*."
+        f1, _ = coordinacion_visita.ejemplo_formato_fecha()
+        if motivo == "todas_pasadas":
+            return (
+                "⚠️ Las opciones que habías cargado ya pasaron.\n"
+                f"Por favor ingresá al menos una opción con fecha y hora posterior a la actual (ej: _{f1}_)."
+            )
+        return (
+            "⚠️ Todavía no cargaste ninguna opción válida.\n"
+            f"Enviá al menos una en formato *DD/MM HH:MM* (ej: _{f1}_)."
+        )
 
     # Validar el formato DD/MM HH:MM para poder programar recordatorios.
     if not coordinacion_visita.formato_valido(texto):
+        f1, _ = coordinacion_visita.ejemplo_formato_fecha()
         return (
             "⚠️ No pude interpretar esa fecha. Usá el formato *DD/MM HH:MM*.\n"
-            "Por ejemplo: _12/08 10:00_\n\n"
+            f"Por ejemplo: _{f1}_\n\n"
             "Podés mandar varias juntas separadas por coma o en mensajes distintos."
+        )
+
+    # Validar que no se ingresen fechas anteriores a la actual
+    pasadas = coordinacion_visita.opciones_pasadas(texto)
+    if pasadas:
+        f1, _ = coordinacion_visita.ejemplo_formato_fecha()
+        if len(pasadas) == 1:
+            return (
+                f"⚠️ La fecha y hora ingresada (*{pasadas[0]}*) ya pasó.\n\n"
+                "No podés coordinar visitas en fechas pasadas. "
+                f"Por favor ingresá una fecha y hora posterior a la actual (ej: _{f1}_)."
+            )
+        pasadas_str = ", ".join(f"*{p}*" for p in pasadas)
+        return (
+            f"⚠️ Las siguientes fechas ya pasaron: {pasadas_str}.\n\n"
+            f"Todas las opciones deben ser posteriores a la fecha y hora actual (ej: _{f1}_)."
         )
 
     cantidad = coordinacion_visita.agregar_disponibilidad(db, visita, texto)
@@ -1297,7 +1325,9 @@ def _procesar_visita_disponibilidad(db: Session, usuario: str, mensaje: str) -> 
 
 def _procesar_visita_eleccion(db: Session, usuario: str, mensaje: str) -> str:
     """El creador del reclamo elige uno de los horarios propuestos."""
-    from models.visita import Visita
+    from models.contratista import Contratista
+    from models.reclamo import Reclamo
+    from models.visita import EstadoVisita, Visita
     from services import coordinacion_visita
 
     conv = _conversaciones[usuario]
@@ -1312,7 +1342,55 @@ def _procesar_visita_eleccion(db: Session, usuario: str, mensaje: str) -> str:
     except ValueError:
         return "⚠️ Respondé con el número de la opción que preferís (ej: *1*)."
 
-    elegido = coordinacion_visita.confirmar_eleccion(db, visita, indice)
+    try:
+        elegido = coordinacion_visita.confirmar_eleccion(db, visita, indice)
+    except coordinacion_visita.FechaPasada:
+        # La opción elegida ya venció. Ver si quedan otras opciones futuras.
+        opciones = coordinacion_visita._opciones_lista(visita)
+        ahora = reloj.ahora()
+        opciones_futuras = [
+            (i + 1, op) for i, op in enumerate(opciones)
+            if (dt := coordinacion_visita._parsear_fecha(op)) is not None and dt > ahora
+        ]
+
+        if opciones_futuras:
+            lineas = "\n".join(f"{num}. {op}" for num, op in opciones_futuras)
+            opcion_rechazada = opciones[indice - 1] if 0 <= indice - 1 < len(opciones) else ""
+            return (
+                f"⚠️ El horario seleccionado (*{opcion_rechazada}*) ya pasó y no se puede coordinar.\n\n"
+                f"Por favor elegí una de las opciones que siguen vigentes:\n\n{lineas}\n\n"
+                "Respondé con el número de la opción elegida."
+            )
+
+        # Si todas las opciones de la visita ya pasaron, se le pide nueva disponibilidad al contratista
+        del _conversaciones[usuario]
+        visita.estado = EstadoVisita.ESPERANDO_DISPONIBILIDAD
+        visita.disponibilidades = None
+        db.commit()
+
+        reclamo = db.get(Reclamo, visita.reclamo_id)
+        contratista = db.get(Contratista, visita.contratista_id) if reclamo else None
+        if contratista and contratista.telefono:
+            registrar_estado_conversacion(
+                contratista.telefono,
+                {"paso": "visita_disponibilidad", "visita_id": visita.id},
+            )
+            f1, _ = coordinacion_visita.ejemplo_formato_fecha()
+            coordinacion_visita._enviar(
+                contratista.telefono,
+                f"📅 *Reclamo #{reclamo.id} — {reclamo.nombre_escuela}*\n\n"
+                "Los horarios que habías propuesto para la visita ya pasaron sin haber sido confirmados.\n\n"
+                f"Por favor indicá nuevas opciones de disponibilidad con fecha y hora posterior a la actual "
+                f"(ej: _{f1}_).\n"
+                "Cuando termines, escribí *listo*.",
+            )
+
+        return (
+            "⚠️ Todos los horarios propuestos por el contratista ya pasaron sin confirmación.\n\n"
+            "Le solicitamos al contratista que nos envíe nuevas opciones de disponibilidad. "
+            "Te avisaremos por acá apenas las recibamos."
+        )
+
     if elegido is None:
         return "⚠️ Ese número no corresponde a ninguna opción. Probá de nuevo."
 
@@ -1809,8 +1887,6 @@ def procesar_media(db: Session, usuario: str, url_local: str, mime_type: str, ca
             _conversaciones[usuario] = estado_av
 
     if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "avance_ejecucion":
-        from services import avance_contratista
-
         conv = _conversaciones[usuario]
         reclamo = db.get(Reclamo, conv["reclamo_id"])
         if reclamo is None:

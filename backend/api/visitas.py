@@ -18,11 +18,7 @@ def listar_visitas(
     usuario: Usuario = Depends(get_current_user),
 ):
     # `Usuario.tipo` es nullable: quien no completó el perfil todavía no tiene rol.
-    if usuario.tipo not in {
-        TipoUsuario.ADMINISTRADOR,
-        TipoUsuario.INSPECTOR,
-        TipoUsuario.CONTRATISTA,
-    }:
+    if usuario.tipo not in {TipoUsuario.ADMINISTRADOR, TipoUsuario.CONTRATISTA}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tenés permisos para consultar las visitas",

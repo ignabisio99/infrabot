@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from core.database import get_db
 from core.dependencies import (
     get_current_admin,
+    get_current_admin_o_inspector,
     get_current_contratista,
     get_current_inspector,
     get_current_user,
@@ -41,7 +42,7 @@ from schemas.reclamo import (
     ReclamoCreate,
     ReclamoOut,
 )
-from services import estados_presupuesto, estados_reclamo
+from services import avisos_presupuesto, estados_presupuesto, estados_reclamo
 from services.ai.automatico import post_alta_reclamo, post_fotos_reclamo
 from services.reabrir_convocatoria import (
     ReaperturaInvalida,
@@ -61,7 +62,7 @@ TIPOS_MEDIA_PERMITIDOS = TIPOS_IMAGEN_PERMITIDOS | TIPOS_VIDEO_PERMITIDOS
 
 
 def _con_fotos(query):
-    return query.options(joinedload(Reclamo.fotos))
+    return query.options(joinedload(Reclamo.fotos).joinedload(FotoReclamo.usuario))
 
 
 def _email_del_contratista(db: Session, contratista: Contratista) -> str | None:
@@ -145,6 +146,10 @@ def cambiar_estado_reclamo(
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
 
+    # Las ofertas en carrera se quedan sin evaluación: sin el aviso, el contratista
+    # seguiría esperando una decisión o corrigiendo algo que ya no sirve.
+    vigentes = [p for p in reclamo.presupuestos if estados_presupuesto.esta_vigente(p)]
+
     try:
         estados_reclamo.cambiar_estado(
             db, reclamo, datos.estado, motivo=datos.motivo, usuario_id=user.id
@@ -156,6 +161,9 @@ def cambiar_estado_reclamo(
 
     db.commit()
     db.refresh(reclamo)
+    if reclamo.estado is EstadoReclamo.CANCELADO:
+        for presupuesto in vigentes:
+            avisos_presupuesto.avisar_reclamo_cancelado(db, presupuesto, datos.motivo)
     return reclamo
 
 
@@ -294,10 +302,22 @@ def eliminar_reclamo(reclamo_id: int, db: Session = Depends(get_db), _admin: Usu
 
 
 @router.post("/{reclamo_id}/fotos", response_model=FotoReclamoOut, status_code=201)
-def subir_foto(reclamo_id: int, archivo: UploadFile = File(...), db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
+def subir_foto(
+    reclamo_id: int,
+    archivo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_admin_o_inspector),
+):
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    # Igual que con los comentarios: lo que aporta el inspector queda en el expediente
+    # mientras el reclamo está abierto. El admin puede seguir cargando fotos siempre.
+    if usuario.es_inspector and reclamo.estado in estados_reclamo.ESTADOS_FINALES:
+        raise HTTPException(
+            status_code=409,
+            detail=f"No se pueden agregar fotos a un reclamo en {reclamo.estado.value}",
+        )
 
     if archivo.content_type not in TIPOS_MEDIA_PERMITIDOS:
         raise HTTPException(
@@ -309,7 +329,11 @@ def subir_foto(reclamo_id: int, archivo: UploadFile = File(...), db: Session = D
     url = storage.guardar(archivo, f"reclamos/{reclamo_id}")
 
     nueva_foto = FotoReclamo(
-        reclamo_id=reclamo_id, nombre_archivo=archivo.filename, url=url, tipo=tipo
+        reclamo_id=reclamo_id,
+        nombre_archivo=archivo.filename,
+        url=url,
+        tipo=tipo,
+        usuario_id=usuario.id,
     )
     db.add(nueva_foto)
     db.commit()
@@ -329,7 +353,12 @@ def subir_foto(reclamo_id: int, archivo: UploadFile = File(...), db: Session = D
 
 
 @router.delete("/{reclamo_id}/fotos/{foto_id}", status_code=204)
-def eliminar_foto(reclamo_id: int, foto_id: int, db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
+def eliminar_foto(
+    reclamo_id: int,
+    foto_id: int,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_admin_o_inspector),
+):
     foto = (
         db.query(FotoReclamo)
         .filter(FotoReclamo.id == foto_id, FotoReclamo.reclamo_id == reclamo_id)
@@ -337,9 +366,29 @@ def eliminar_foto(reclamo_id: int, foto_id: int, db: Session = Depends(get_db), 
     )
     if foto is None:
         raise HTTPException(status_code=404, detail="Foto no encontrada")
-    storage.eliminar(foto.url)
+
+    if usuario.es_inspector:
+        if foto.usuario_id != usuario.id:
+            raise HTTPException(status_code=403, detail="Solo podés quitar las fotos que subiste")
+        if foto.reclamo.estado in estados_reclamo.ESTADOS_FINALES:
+            raise HTTPException(
+                status_code=409,
+                detail=f"No se pueden quitar fotos de un reclamo en {foto.reclamo.estado.value}",
+            )
+        # Los contratistas presupuestan mirando las fotos: si el inspector quita una, queda
+        # constancia en los comentarios del reclamo.
+        db.add(
+            ComentarioReclamo(
+                reclamo_id=reclamo_id,
+                usuario_id=None,
+                texto=f"[Sistema]\n{usuario.nombre} (inspector) quitó la foto {foto.nombre_archivo}.",
+            )
+        )
+
+    url = foto.url
     db.delete(foto)
     db.commit()
+    storage.eliminar(url)
 
 
 @router.post("/{reclamo_id}/notificar-contratistas", response_model=NotificarContratistasOut)
@@ -413,9 +462,10 @@ def notificar_contratistas(
         # Notificación adicional por email. Sirve tanto para registro normal como
         # Google SSO: en ambos el email queda guardado en el Usuario.
         email_contratista = _email_del_contratista(db, c)
+        ok_email = False
         if email_contratista:
             try:
-                enviar_solicitud_presupuesto(
+                ok_email = enviar_solicitud_presupuesto(
                     email_contratista,
                     reclamo_id,
                     reclamo.nombre_escuela,
@@ -425,6 +475,9 @@ def notificar_contratistas(
             except Exception as e:  # noqa: BLE001 - el email es complementario
                 print(f"[EMAIL] No se pudo enviar solicitud de presupuesto: {e}")
 
+        # Con que le llegue por un canal ya está convocado: si no, el contratista tiene
+        # la invitación en el mail pero el reclamo no le aparece en el portal.
+        ok = ok or ok_email
         if ok:
             enviados += 1
             # Registrar la solicitud (idempotente: no duplicar si ya existía)
@@ -480,15 +533,19 @@ def listar_solicitudes_presupuesto(
     )
 
     # Presupuestos ya cargados para este reclamo, indexados por contratista
+    # Ordenados por id para que, si cargó más de uno, quede el último.
     presupuestos = (
-        db.query(Presupuesto).filter(Presupuesto.reclamo_id == reclamo_id).all()
+        db.query(Presupuesto)
+        .filter(Presupuesto.reclamo_id == reclamo_id)
+        .order_by(Presupuesto.id)
+        .all()
     )
-    presupuesto_por_contratista = {p.contratista_id: p.id for p in presupuestos}
+    presupuesto_por_contratista = {p.contratista_id: p for p in presupuestos}
 
     resultado = []
     for s in solicitudes:
         c = s.contratista
-        presupuesto_id = presupuesto_por_contratista.get(s.contratista_id)
+        presupuesto = presupuesto_por_contratista.get(s.contratista_id)
         resultado.append(
             SolicitudPresupuestoOut(
                 contratista_id=s.contratista_id,
@@ -496,8 +553,10 @@ def listar_solicitudes_presupuesto(
                 especialidad=c.especialidad if c else "—",
                 telefono=c.telefono if c else "—",
                 fecha_solicitud=s.fecha_solicitud,
-                presupuesto_cargado=presupuesto_id is not None,
-                presupuesto_id=presupuesto_id,
+                presupuesto_cargado=presupuesto is not None,
+                presupuesto_id=presupuesto.id if presupuesto else None,
+                presupuesto_estado=presupuesto.estado.value if presupuesto else None,
+                version=presupuesto.version if presupuesto else 0,
             )
         )
     return resultado

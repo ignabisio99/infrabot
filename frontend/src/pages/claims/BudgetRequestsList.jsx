@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Badge, Card, Group, Loader, Stack, Text, UnstyledButton } from '@mantine/core';
-import { IconCheck, IconClock, IconEye } from '@tabler/icons-react';
+import { IconClock, IconEye } from '@tabler/icons-react';
 
 import { listarSolicitudesPresupuesto } from '../../api/listasContratistas';
 import { obtenerPresupuesto } from '../../api/presupuestos';
 import { notifyError } from '../../utils/notifications';
 import { BudgetItemsModal } from '../budgets/BudgetItemsModal';
+import { BudgetStatusBadge } from '../budgets/BudgetStatusBadge';
 
 export function BudgetRequestsList({ reclamoId }) {
   const [solicitudes, setSolicitudes] = useState([]);
@@ -64,10 +65,13 @@ export function BudgetRequestsList({ reclamoId }) {
                   </Text>
                 </div>
                 <Group gap="xs" wrap="nowrap">
-                  {cargado ? (
-                    <Badge color="teal" variant="light" leftSection={<IconCheck size={12} />}>
-                      Presupuesto cargado
+                  {cargado && s.version > 1 && (
+                    <Badge color="gray" variant="outline" tt="none">
+                      Versión {s.version}
                     </Badge>
+                  )}
+                  {cargado ? (
+                    <BudgetStatusBadge estado={s.presupuesto_estado} variant="light" />
                   ) : (
                     <Badge color="gray" variant="light" leftSection={<IconClock size={12} />}>
                       Pendiente
@@ -97,7 +101,9 @@ export function BudgetRequestsList({ reclamoId }) {
         onClose={() => setPresupuestoVisto(null)}
         onDecidido={() => {
           setPresupuestoVisto(null);
-          listarSolicitudesPresupuesto(reclamoId).then(setSolicitudes).catch(() => {});
+          listarSolicitudesPresupuesto(reclamoId)
+            .then(setSolicitudes)
+            .catch(() => {});
         }}
       />
     </>

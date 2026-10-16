@@ -5,11 +5,12 @@ from __future__ import annotations
 import logging
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session, joinedload
 
+from core import reloj
 from core.whatsapp_client import enviar_mensaje
 from models.comentario_reclamo import ComentarioReclamo
 from models.presupuesto import EstadoPresupuesto, Presupuesto
@@ -68,12 +69,13 @@ class ResultadoSeguimiento:
     enviados: int
     omitidos: int
     escalados: int = 0
+    detalles: list[dict] = field(default_factory=list)
 
 
 def ejecutar_seguimiento(db: Session) -> ResultadoSeguimiento:
     """Envía recordatorio si pasaron SEGUIMIENTO_HORAS desde el último aviso (o desde EN_EJECUCION)."""
     umbral = timedelta(hours=seguimiento_horas())
-    ahora = datetime.now(timezone.utc)
+    ahora = reloj.ahora()
     reclamos = (
         db.query(Reclamo)
         .options(joinedload(Reclamo.historial_estados))
@@ -83,12 +85,18 @@ def ejecutar_seguimiento(db: Session) -> ResultadoSeguimiento:
     enviados = 0
     omitidos = 0
     escalados = 0
+    detalles: list[dict] = []
     for reclamo in reclamos:
         # Marca de intervención forzada por el admin (herramienta de simulación): sigue
         # yendo a PENDIENTE_INTERVENCION, no a DESIERTO.
         if tiene_marca_intervencion(reclamo.observaciones):
             if _escalar(db, reclamo):
                 escalados += 1
+                detalles.append({
+                    "tipo": "intervencion",
+                    "reclamo_id": reclamo.id,
+                    "detalle": f"⚠️ Reclamo #{reclamo.id} escalado a intervención forzada",
+                })
             else:
                 omitidos += 1
             continue
@@ -96,16 +104,26 @@ def ejecutar_seguimiento(db: Session) -> ResultadoSeguimiento:
             resultado_envio = _enviar(db, reclamo, ahora)
             if resultado_envio is True:
                 enviados += 1
+                detalles.append({
+                    "tipo": "pregunta_termino",
+                    "reclamo_id": reclamo.id,
+                    "detalle": f"❓ Pregunta de seguimiento ('¿Terminaste el trabajo?') enviada al contratista del Reclamo #{reclamo.id}",
+                })
                 # Agotados los intentos sin respuesta: el reclamo queda desierto para
                 # poder reconvocar (CU-05: el contratista dejó de responder).
                 if _requiere_intervencion(db, reclamo.id):
                     if _escalar_desierto(db, reclamo):
                         escalados += 1
+                        detalles.append({
+                            "tipo": "desierto",
+                            "reclamo_id": reclamo.id,
+                            "detalle": f"⚠️ Reclamo #{reclamo.id} pasó a desierto por falta de respuesta del contratista",
+                        })
             else:
                 omitidos += 1
         else:
             omitidos += 1
-    return ResultadoSeguimiento(enviados=enviados, omitidos=omitidos, escalados=escalados)
+    return ResultadoSeguimiento(enviados=enviados, omitidos=omitidos, escalados=escalados, detalles=detalles)
 
 
 def _vencer(db: Session, reclamo: Reclamo, ahora: datetime, umbral: timedelta) -> bool:
@@ -236,7 +254,7 @@ def quitar_lineas_marca_intervencion(observaciones: str | None) -> str | None:
 
 def reiniciar_reloj_seguimiento(db: Session, reclamo: Reclamo) -> None:
     """Al volver a ejecución, el umbral de 48 h arranca de nuevo."""
-    ahora = datetime.now(timezone.utc)
+    ahora = reloj.ahora()
     fila = (
         db.query(RecordatorioContratista)
         .filter(RecordatorioContratista.reclamo_id == reclamo.id)
@@ -390,7 +408,7 @@ def registrar_tiempo_estimado(db: Session, reclamo: Reclamo, texto: str) -> floa
     Devuelve las horas estimadas (interpretadas). Si no se pudo interpretar, usa el
     umbral por defecto de seguimiento como fallback.
     """
-    ahora = datetime.now(timezone.utc)
+    ahora = reloj.ahora()
     horas = _horas_estimadas(texto)
     if horas is None or horas <= 0:
         horas = seguimiento_horas()
@@ -433,7 +451,7 @@ def preguntar_a_escuela_si_resuelto(db: Session, reclamo: Reclamo) -> bool:
         .filter(RecordatorioContratista.reclamo_id == reclamo.id)
         .first()
     )
-    ahora = datetime.now(timezone.utc)
+    ahora = reloj.ahora()
     if fila is None:
         fila = RecordatorioContratista(
             reclamo_id=reclamo.id, ultimo_envio=ahora, cantidad_envios=0
@@ -481,7 +499,7 @@ def preguntar_a_escuela_si_resuelto(db: Session, reclamo: Reclamo) -> bool:
 
 def reactivar_seguimiento(db: Session, reclamo: Reclamo) -> None:
     """La escuela dijo que NO quedó resuelto: se reactiva el ciclo de preguntas al contratista."""
-    ahora = datetime.now(timezone.utc)
+    ahora = reloj.ahora()
     fila = (
         db.query(RecordatorioContratista)
         .filter(RecordatorioContratista.reclamo_id == reclamo.id)

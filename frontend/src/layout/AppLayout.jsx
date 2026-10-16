@@ -37,6 +37,7 @@ import {
 import logo from '../assets/logo-infrabot.jpeg';
 import { Footer } from '../components/Footer';
 import { NotificationBell } from './NotificationBell';
+import { SimuladorTiempoControl } from '../components/SimuladorTiempoControl';
 import { listarUsuariosPendientes } from '../api/usuarios';
 import { ConversacionesProvider, useConversaciones } from '../pages/conversaciones/ConversacionesContext';
 import { esAdministrador } from '../utils/auth';
@@ -160,16 +161,17 @@ function AppLayoutInner() {
           </Group>
 
           <Group gap="sm">
+            {esAdministrador() && <SimuladorTiempoControl />}
             {esAdministrador() && <NotificationBell />}
             <Menu shadow="md" width={200}>
             <Menu.Target>
               <UnstyledButton>
-                <Group gap="xs">
+                <Group gap="xs" wrap="nowrap">
                   <Avatar color="#1fa7b3" radius="xl">
                     {usuario.iniciales}
                   </Avatar>
-                  <div style={{ lineHeight: 1.1 }}>
-                    <Text size="sm" fw={500}>
+                  <div style={{ lineHeight: 1.1, maxWidth: 160 }} className="header-user-info">
+                    <Text size="sm" fw={500} truncate>
                       {usuario.nombre}
                     </Text>
                   </div>

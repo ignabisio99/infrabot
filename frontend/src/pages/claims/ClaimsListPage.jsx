@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router';
 import {
   ActionIcon,
   Alert,
-  Badge,
   Button,
   Container,
   Group,
@@ -22,6 +21,7 @@ import { IconExchange, IconEye } from '@tabler/icons-react';
 import { RowActionsMenu } from '../../components/RowActionsMenu';
 import { eliminarReclamo, listarReclamos } from '../../api/reclamos';
 import { esInspector } from '../../utils/auth';
+import { fechaEnRango, idCoincideConBusqueda } from '../../utils/filtros';
 import { formatearIdReclamo } from '../../utils/ids';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 import { ChangeStatusModal } from './ChangeStatusModal';
@@ -40,15 +40,6 @@ const opcionesPrioridad = [
 
 const POR_PAGINA = 10;
 
-// Los valores del DatePickerInput llegan como string "YYYY-MM-DD". Parsearlos con
-// `new Date(string)` los interpreta como medianoche UTC y desfasa el día en timezones
-// negativos (ej. UTC-3), por eso se arman a mano como fecha local.
-function parsearFechaFiltro(valor) {
-  if (!valor) return null;
-  const [anio, mes, dia] = valor.split('-').map(Number);
-  return new Date(anio, mes - 1, dia);
-}
-
 // El Dashboard enlaza acá con los filtros ya elegidos: uno o varios estados separados por
 // coma (/reclamos?estado=EN_EVALUACION, /reclamos?estado=APROBADO,EN_EJECUCION) y el ID
 // (/reclamos?busqueda=REC-00000007). Los estados que no existan se ignoran en vez de
@@ -62,12 +53,10 @@ function busquedaDeParams(searchParams) {
   return searchParams.get('busqueda') ?? '';
 }
 
-// Acepta "34", "0034", "REC-00000034", etc: se queda solo con los dígitos
-// escritos y busca esa subcadena dentro del ID completo (con ceros a la izquierda).
-function idCoincideConBusqueda(id, busqueda) {
-  const digitos = busqueda.replace(/\D/g, '');
-  if (!digitos) return true;
-  return String(id).padStart(8, '0').includes(digitos);
+// `?abrir=34` abre el detalle de ese reclamo al entrar.
+function reclamoAbrirDeParams(searchParams) {
+  const id = Number(searchParams.get('abrir'));
+  return searchParams.get('abrir') && !Number.isNaN(id) ? id : null;
 }
 
 export function ClaimsListPage() {
@@ -77,7 +66,9 @@ export function ClaimsListPage() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [eliminandoId, setEliminandoId] = useState(null);
-  const [reclamoIdSeleccionado, setReclamoIdSeleccionado] = useState(null);
+  const [reclamoIdSeleccionado, setReclamoIdSeleccionado] = useState(() =>
+    reclamoAbrirDeParams(searchParams),
+  );
   const [reclamoParaCambiarEstado, setReclamoParaCambiarEstado] = useState(null);
 
   const [prioridadFiltro, setPrioridadFiltro] = useState('');
@@ -102,6 +93,8 @@ export function ClaimsListPage() {
     setBusquedaId(busquedaDeParams(searchParams));
     setPrioridadFiltro('');
     setRangoFechas([null, null]);
+    const abrir = reclamoAbrirDeParams(searchParams);
+    if (abrir !== null) setReclamoIdSeleccionado(abrir);
   }
 
   useEffect(() => {
@@ -111,18 +104,7 @@ export function ClaimsListPage() {
       .finally(() => setCargando(false));
   }, []);
 
-  useEffect(() => {
-    const abrir = searchParams.get('abrir');
-    if (abrir) {
-      const id = Number(abrir);
-      if (!Number.isNaN(id)) setReclamoIdSeleccionado(id);
-    }
-  }, [searchParams]);
-
   const reclamosFiltrados = useMemo(() => {
-    const desde = parsearFechaFiltro(rangoFechas[0]);
-    const hasta = parsearFechaFiltro(rangoFechas[1]);
-
     return reclamos.filter((reclamo) => {
       if (prioridadFiltro && reclamo.prioridad !== prioridadFiltro) return false;
 
@@ -131,17 +113,7 @@ export function ClaimsListPage() {
 
       if (!idCoincideConBusqueda(reclamo.id, busquedaId)) return false;
 
-      const fecha = new Date(reclamo.fecha_creacion);
-
-      if (desde && fecha < desde) return false;
-
-      if (hasta) {
-        const finDia = new Date(hasta);
-        finDia.setHours(23, 59, 59, 999);
-        if (fecha > finDia) return false;
-      }
-
-      return true;
+      return fechaEnRango(reclamo.fecha_creacion, rangoFechas);
     });
   }, [reclamos, prioridadFiltro, estadosFiltro, rangoFechas, busquedaId]);
 
@@ -196,7 +168,7 @@ export function ClaimsListPage() {
 
   return (
     <Container fluid px={0}>
-      <Group justify="space-between" mb="md">
+      <Group justify="space-between" mb="md" wrap="wrap">
         <Title order={2}>Reclamos</Title>
         {!soloLectura && (
           <Button onClick={() => navigate('/reclamos/nuevo')}>+ Nuevo Reclamo</Button>
@@ -204,7 +176,7 @@ export function ClaimsListPage() {
       </Group>
 
       {!cargando && reclamos.length > 0 && (
-        <Group mb="md" align="flex-end">
+        <Group mb="md" align="flex-end" wrap="wrap">
           <TextInput
             label="ID"
             placeholder="Ej: REC-00000034 o 34"
@@ -299,7 +271,7 @@ export function ClaimsListPage() {
                   </Table.Td>
                   <Table.Td>{reclamo.categoria}</Table.Td>
                   <Table.Td>
-                    <Text truncate="end" maw={280} title={reclamo.descripcion}>
+                    <Text truncate="end" maw={240} title={reclamo.descripcion}>
                       {reclamo.descripcion}
                     </Text>
                   </Table.Td>

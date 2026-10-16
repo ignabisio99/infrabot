@@ -18,14 +18,14 @@ from sqlalchemy.orm import Session
 
 import models  # noqa: F401 - registra todos los modelos antes del create_all
 from core.database import Base, asegurar_valores_estado_reclamo, get_db
-from core.dependencies import get_current_admin
+from core.dependencies import get_current_admin, get_current_user
 from main import app
 from models.contratista import Contratista
 from models.historial_estado_presupuesto import HistorialEstadoPresupuesto
 from models.historial_estado_reclamo import HistorialEstadoReclamo
 from models.presupuesto import EstadoPresupuesto, ItemPresupuesto, Presupuesto
 from models.reclamo import EstadoReclamo, PrioridadReclamo, Reclamo
-from models.usuario import TipoUsuario, Usuario
+from models.usuario import EstadoUsuario, TipoUsuario, Usuario
 from models.visita import EstadoVisita, Visita
 
 UTC = timezone.utc
@@ -89,6 +89,26 @@ def client(db):
     yield TestClient(app)
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def loguear(db):
+    """Deja logueado a un usuario nuevo del tipo dado (para endpoints que miran el rol)."""
+
+    def _loguear(tipo, nombre="Usuario"):
+        usuario = Usuario(
+            nombre=nombre,
+            email=f"{tipo.value.lower()}-{nombre.lower()}@test.local",
+            password_hash="x",
+            tipo=tipo,
+            estado=EstadoUsuario.APROBADO,
+        )
+        db.add(usuario)
+        db.flush()
+        app.dependency_overrides[get_current_user] = lambda: usuario
+        return usuario
+
+    return _loguear
 
 
 # --- Factories -------------------------------------------------------------------------

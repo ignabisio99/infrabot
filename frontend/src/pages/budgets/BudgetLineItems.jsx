@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import {
   Autocomplete,
   Button,
-  Group,
   NumberInput,
+  Paper,
   Select,
   Stack,
   Text,
@@ -49,14 +49,22 @@ export function BudgetLineItems({ form }) {
           Materiales
         </Text>
         {form.values.materials.map((_, index) => (
-          <Group key={form.key(`materials.${index}`)} align="flex-start" wrap="nowrap">
+          <Paper
+            key={form.key(`materials.${index}`)}
+            withBorder
+            p="sm"
+            radius="md"
+            className="line-item-row"
+          >
             <TextInput
+              label="Material"
               placeholder="Material"
               style={{ flex: 2 }}
               key={form.key(`materials.${index}.description`)}
               {...form.getInputProps(`materials.${index}.description`)}
             />
             <NumberInput
+              label="Cantidad"
               placeholder="Cantidad"
               min={0}
               decimalScale={2}
@@ -65,6 +73,7 @@ export function BudgetLineItems({ form }) {
               {...form.getInputProps(`materials.${index}.quantity`)}
             />
             <Autocomplete
+              label="Unidad"
               placeholder="Unidad"
               data={UNIDADES}
               maxDropdownHeight={260}
@@ -74,6 +83,7 @@ export function BudgetLineItems({ form }) {
               {...form.getInputProps(`materials.${index}.unit`)}
             />
             <NumberInput
+              label="Costo unitario"
               placeholder="Costo unitario"
               min={0}
               decimalScale={2}
@@ -85,13 +95,14 @@ export function BudgetLineItems({ form }) {
             <Button
               type="button"
               color="red"
-              variant="subtle"
+              variant="light"
+              className="line-item-remove"
               disabled={form.values.materials.length === 1}
               onClick={() => form.removeListItem('materials', index)}
             >
               Quitar
             </Button>
-          </Group>
+          </Paper>
         ))}
         <Button
           type="button"
@@ -107,8 +118,15 @@ export function BudgetLineItems({ form }) {
           Mano de obra
         </Text>
         {form.values.labor.map((_, index) => (
-          <Group key={form.key(`labor.${index}`)} align="flex-start" wrap="nowrap">
+          <Paper
+            key={form.key(`labor.${index}`)}
+            withBorder
+            p="sm"
+            radius="md"
+            className="line-item-row"
+          >
             <Select
+              label="Rol"
               placeholder="Rol"
               data={opcionesRoles}
               searchable
@@ -118,6 +136,7 @@ export function BudgetLineItems({ form }) {
               {...form.getInputProps(`labor.${index}.description`)}
             />
             <NumberInput
+              label="Horas"
               placeholder="Horas"
               min={0}
               decimalScale={2}
@@ -126,6 +145,7 @@ export function BudgetLineItems({ form }) {
               {...form.getInputProps(`labor.${index}.quantity`)}
             />
             <NumberInput
+              label="Costo por hora"
               placeholder="Costo por hora"
               min={0}
               decimalScale={2}
@@ -137,13 +157,14 @@ export function BudgetLineItems({ form }) {
             <Button
               type="button"
               color="red"
-              variant="subtle"
+              variant="light"
+              className="line-item-remove"
               disabled={form.values.labor.length === 1}
               onClick={() => form.removeListItem('labor', index)}
             >
               Quitar
             </Button>
-          </Group>
+          </Paper>
         ))}
         <Button
           type="button"

@@ -6,7 +6,11 @@ export const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 export function extraerMensajeError(detail, mensajePorDefecto) {
   if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail) && detail[0]?.msg) return detail[0].msg;
+  if (Array.isArray(detail) && detail[0]?.msg) {
+    // Pydantic v2 antepone "Value error, " a los mensajes de field_validator
+    const msg = detail[0].msg;
+    return msg.replace(/^Value error,\s*/i, '');
+  }
   return mensajePorDefecto;
 }
 

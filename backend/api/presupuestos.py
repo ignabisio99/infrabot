@@ -7,7 +7,8 @@ from core.database import get_db
 from core.dependencies import get_current_admin, get_current_contratista, get_current_user
 from models.contratista import Contratista
 from models.historial_estado_presupuesto import HistorialEstadoPresupuesto
-from models.presupuesto import ItemPresupuesto, Presupuesto
+from models.historial_estado_reclamo import OrigenCambioEstado
+from models.presupuesto import EstadoPresupuesto, ItemPresupuesto, Presupuesto
 from models.reclamo import Reclamo
 from models.usuario import Usuario
 from schemas.presupuesto import (
@@ -16,8 +17,9 @@ from schemas.presupuesto import (
     PresupuestoCreate,
     PresupuestoOut,
     PresupuestoUpdate,
+    VersionPresupuestoOut,
 )
-from services import estados_presupuesto, estados_reclamo
+from services import avisos_presupuesto, estados_presupuesto, estados_reclamo
 from services.ai.automatico import post_presupuesto
 
 logger = logging.getLogger(__name__)
@@ -75,6 +77,18 @@ def _validar_sin_decidir(presupuesto: Presupuesto, accion: str) -> None:
         )
 
 
+def _validar_puede_ofertar(reclamo: Reclamo, contratista_id: int) -> None:
+    """Una oferta en evaluación por contratista: ésa se edita. Si se la rechazaron o quedó
+    sin seleccionar, puede cargar otra."""
+    ofertas = estados_presupuesto.ofertas_del_contratista(reclamo, contratista_id)
+    estados = {p.estado for p in ofertas}
+    if estados & estados_presupuesto.ESTADOS_VIGENTES:
+        raise HTTPException(
+            status_code=409,
+            detail="Ya hay un presupuesto de este contratista en evaluación para el reclamo: editalo en vez de cargar otro",
+        )
+
+
 def _validar_contratista(contratista_id: int, db: Session) -> None:
     if db.get(Contratista, contratista_id) is None:
         raise HTTPException(status_code=404, detail="Contratista no encontrado")
@@ -88,9 +102,12 @@ def crear_presupuesto(datos: PresupuestoCreate, db: Session = Depends(get_db), u
         datos.contratista_id if user.es_admin else _ficha_del_contratista(db, user).id
     )
     _validar_contratista(contratista_id, db)
+    _validar_puede_ofertar(reclamo, contratista_id)
 
     nuevo_presupuesto = Presupuesto(
-        reclamo_id=datos.reclamo_id,
+        # Por la relación y no por id: así entra en `reclamo.presupuestos`, que ya se
+        # cargó al validar y que después lee la sincronización del reclamo.
+        reclamo=reclamo,
         contratista_id=contratista_id,
         detalle_tarea=datos.detalle_tarea,
         observaciones=datos.observaciones,
@@ -144,12 +161,38 @@ def actualizar_presupuesto(
     _exigir_acceso(db, presupuesto, user)
     _validar_sin_decidir(presupuesto, "editar")
     _obtener_reclamo_cotizable(presupuesto.reclamo_id, db)
-    _validar_contratista(datos.contratista_id, db)
+    # Igual que al crear: el contratista no puede pasarle su oferta a otra empresa.
+    contratista_id = datos.contratista_id if user.es_admin else presupuesto.contratista_id
+    _validar_contratista(contratista_id, db)
 
-    presupuesto.contratista_id = datos.contratista_id
+    items = [item.model_dump() for item in datos.items]
+    if estados_presupuesto.sin_cambios(
+        presupuesto, datos.detalle_tarea, datos.observaciones, items
+    ):
+        # Una versión idéntica a la anterior no aporta nada al historial, y como
+        # respuesta a un pedido de ajustes no corrige nada.
+        if presupuesto.estado is EstadoPresupuesto.AJUSTES_SOLICITADOS:
+            raise HTTPException(
+                status_code=422,
+                detail="No hiciste cambios: corregí lo que te pidieron antes de enviar la versión nueva",
+            )
+        return _con_relaciones(db.query(Presupuesto)).filter(Presupuesto.id == presupuesto.id).first()
+
+    estados_presupuesto.archivar_version(db, presupuesto)
+    if presupuesto.estado is EstadoPresupuesto.AJUSTES_SOLICITADOS:
+        estados_presupuesto.cambiar_estado(
+            db,
+            presupuesto,
+            EstadoPresupuesto.RECIBIDO,
+            motivo=f"Se envió la versión {presupuesto.version}",
+            usuario_id=user.id,
+            origen=OrigenCambioEstado.AUTOMATICO,
+        )
+
+    presupuesto.contratista_id = contratista_id
     presupuesto.detalle_tarea = datos.detalle_tarea
     presupuesto.observaciones = datos.observaciones
-    presupuesto.items = [ItemPresupuesto(**item.model_dump()) for item in datos.items]
+    presupuesto.items = [ItemPresupuesto(**item) for item in items]
 
     db.commit()
     db.refresh(presupuesto)
@@ -193,6 +236,13 @@ def decidir_presupuesto(
     if presupuesto is None:
         raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
 
+    # Las que siguen en carrera: si se aprueba éste, quedan sin seleccionar y hay que avisarles.
+    hermanos_vigentes = [
+        p
+        for p in presupuesto.reclamo.presupuestos
+        if p.id != presupuesto.id and estados_presupuesto.esta_vigente(p)
+    ]
+
     try:
         estados_presupuesto.decidir(
             db, presupuesto, datos.estado, motivo=datos.motivo, usuario_id=user.id
@@ -207,6 +257,11 @@ def decidir_presupuesto(
 
     db.commit()
     db.refresh(presupuesto)
+    if datos.estado in estados_presupuesto.ESTADOS_CON_MOTIVO_OBLIGATORIO:
+        avisos_presupuesto.avisar_decision(db, presupuesto)
+    for hermano in hermanos_vigentes:
+        if hermano.estado is EstadoPresupuesto.NO_SELECCIONADO:
+            avisos_presupuesto.avisar_decision(db, hermano)
     return presupuesto
 
 
@@ -224,3 +279,15 @@ def listar_historial_presupuesto(
         .order_by(HistorialEstadoPresupuesto.fecha, HistorialEstadoPresupuesto.id)
         .all()
     )
+
+
+@router.get("/{presupuesto_id}/versiones", response_model=list[VersionPresupuestoOut])
+def listar_versiones_presupuesto(
+    presupuesto_id: int, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)
+):
+    """Las versiones anteriores, de la primera a la última. La vigente es el presupuesto."""
+    presupuesto = db.get(Presupuesto, presupuesto_id)
+    if presupuesto is None:
+        raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
+    _exigir_acceso(db, presupuesto, user)
+    return presupuesto.versiones_anteriores

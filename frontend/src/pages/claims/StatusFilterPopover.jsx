@@ -2,11 +2,11 @@ import { Button, Checkbox, Input, Popover, Stack } from '@mantine/core';
 import { useDisclosure, useId } from '@mantine/hooks';
 import { IconChevronDown } from '@tabler/icons-react';
 
-import { ESTADOS, etiquetaPorEstado } from './estados';
+import { ESTADOS, etiquetaPorEstado as etiquetasReclamo } from './estados';
 
 // Qué dice el botón según cuántos estados haya elegidos. Con uno solo se muestra su
 // nombre; de dos en adelante no entran, así que va el conteo.
-function resumen(estados) {
+function resumen(estados, etiquetaPorEstado) {
   if (estados.length === 0) return 'Todos';
   if (estados.length === 1) return etiquetaPorEstado[estados[0]] ?? estados[0];
   return `${estados.length} estados`;
@@ -22,8 +22,15 @@ const ANCHO = 260;
  * Es un botón y no un MultiSelect porque el campo crecía al apilar las etiquetas de cada
  * estado elegido y empujaba la tabla hacia abajo: acá el control mide siempre lo mismo,
  * haya cero u once estados marcados.
+ *
+ * Por defecto lista los estados de reclamo; Presupuestos le pasa los suyos.
  */
-export function StatusFilterPopover({ value, onChange }) {
+export function StatusFilterPopover({
+  value,
+  onChange,
+  estados = ESTADOS,
+  etiquetaPorEstado = etiquetasReclamo,
+}) {
   const [abierto, { toggle, close }] = useDisclosure(false);
   // El id del wrapper se fija para poder referenciar el label desde el botón: Mantine lo
   // renderiza como `${id}-label`.
@@ -63,14 +70,14 @@ export function StatusFilterPopover({ value, onChange }) {
             onClick={toggle}
             w={ANCHO}
           >
-            {resumen(value)}
+            {resumen(value, etiquetaPorEstado)}
           </Button>
         </Popover.Target>
 
         <Popover.Dropdown>
           <Checkbox.Group value={value} onChange={onChange}>
             <Stack gap="xs">
-              {ESTADOS.map((estado) => (
+              {estados.map((estado) => (
                 <Checkbox key={estado} value={estado} label={etiquetaPorEstado[estado]} />
               ))}
             </Stack>

@@ -1,38 +1,65 @@
 """Máquina de estados del presupuesto.
 
 Misma forma que services/estados_reclamo.py: toda transición pasa por acá y cada cambio
-queda en el historial. El ciclo es corto y de un solo salto.
+queda en el historial.
 
     RECIBIDO ─(se elige este)──────────> APROBADO
              ├─(no sirve la oferta)────> RECHAZADO
+             ├─(hay que corregirla)────> AJUSTES_SOLICITADOS ─(envía la corrección)*─> RECIBIDO
              └─(se aprobó otro)*───────> NO_SELECCIONADO ─(se elige esta)*─> APROBADO
 
     (*) Las dispara el sistema. Un gestor no marca "no seleccionado": si una oferta no
     le sirve la rechaza. NO_SELECCIONADO puede volver a APROBADO si, tras una
     intervención, se elige una oferta que ya se había enviado.
+
+RECHAZADO cierra esa oferta, pero no al contratista: mientras la convocatoria siga
+abierta puede mandar otra, que arranca de cero. Si la oferta sirve pero hay que corregir
+algo, se piden ajustes, y cada corrección es una versión nueva del mismo presupuesto.
 """
+
+from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
 from models.historial_estado_presupuesto import HistorialEstadoPresupuesto
 from models.historial_estado_reclamo import OrigenCambioEstado
-from models.presupuesto import EstadoPresupuesto, Presupuesto
-from models.reclamo import EstadoReclamo
+from models.presupuesto import (
+    EstadoPresupuesto,
+    Presupuesto,
+    TipoItemPresupuesto,
+    VersionPresupuesto,
+)
+from models.reclamo import EstadoReclamo, Reclamo
 from services import estados_reclamo
 
 ESTADO_INICIAL = EstadoPresupuesto.RECIBIDO
 
 # Lo que cuenta como oferta en pie; es lo que mira el reclamo para saber si tiene algo
 # para evaluar.
-ESTADOS_VIGENTES = frozenset({EstadoPresupuesto.RECIBIDO})
+ESTADOS_VIGENTES = frozenset(
+    {EstadoPresupuesto.RECIBIDO, EstadoPresupuesto.AJUSTES_SOLICITADOS}
+)
 
-# Descartar una oferta sin decir por qué deja al contratista sin respuesta.
-ESTADOS_CON_MOTIVO_OBLIGATORIO = frozenset({EstadoPresupuesto.RECHAZADO})
+# Sin el motivo, el contratista no sabe por qué lo descartaron ni qué corregir.
+ESTADOS_CON_MOTIVO_OBLIGATORIO = frozenset(
+    {EstadoPresupuesto.RECHAZADO, EstadoPresupuesto.AJUSTES_SOLICITADOS}
+)
+
+# Con una de éstas en el reclamo, el contratista no carga otra: la vigente se edita.
+ESTADOS_QUE_IMPIDEN_OFERTAR = ESTADOS_VIGENTES
 
 TRANSICIONES: dict[EstadoPresupuesto, frozenset[EstadoPresupuesto]] = {
     EstadoPresupuesto.RECIBIDO: frozenset(
         {
             EstadoPresupuesto.APROBADO,
+            EstadoPresupuesto.RECHAZADO,
+            EstadoPresupuesto.AJUSTES_SOLICITADOS,
+            EstadoPresupuesto.NO_SELECCIONADO,
+        }
+    ),
+    EstadoPresupuesto.AJUSTES_SOLICITADOS: frozenset(
+        {
+            EstadoPresupuesto.RECIBIDO,
             EstadoPresupuesto.RECHAZADO,
             EstadoPresupuesto.NO_SELECCIONADO,
         }
@@ -44,6 +71,9 @@ TRANSICIONES: dict[EstadoPresupuesto, frozenset[EstadoPresupuesto]] = {
 
 TRANSICIONES_SOLO_AUTOMATICAS: dict[EstadoPresupuesto, frozenset[EstadoPresupuesto]] = {
     EstadoPresupuesto.RECIBIDO: frozenset({EstadoPresupuesto.NO_SELECCIONADO}),
+    EstadoPresupuesto.AJUSTES_SOLICITADOS: frozenset(
+        {EstadoPresupuesto.RECIBIDO, EstadoPresupuesto.NO_SELECCIONADO}
+    ),
     EstadoPresupuesto.APROBADO: frozenset({EstadoPresupuesto.RECHAZADO}),
     EstadoPresupuesto.NO_SELECCIONADO: frozenset({EstadoPresupuesto.APROBADO}),
 }
@@ -86,6 +116,107 @@ def hay_evaluacion_abierta(presupuesto: Presupuesto) -> bool:
     """No alcanza con que el presupuesto siga RECIBIDO: si el reclamo se canceló o ya
     eligió otra oferta, sobre ésta no se decide más."""
     return presupuesto.reclamo.estado is EstadoReclamo.EN_EVALUACION
+
+
+def ofertas_del_contratista(reclamo: Reclamo, contratista_id: int) -> list[Presupuesto]:
+    """Las ofertas de un contratista para un reclamo, de la primera a la última.
+
+    Suele haber una sola. Hay más si le rechazaron una y mandó otra, o si quedó sin
+    seleccionar y después se reabrió la convocatoria.
+    """
+    return sorted(
+        (p for p in reclamo.presupuestos if p.contratista_id == contratista_id),
+        key=lambda p: p.id,
+    )
+
+
+def puede_ofertar(reclamo: Reclamo, contratista_id: int) -> bool:
+    """Si el contratista puede cargar una oferta nueva: la convocatoria está abierta y no
+    tiene una en evaluación. Una rechazada o sin seleccionar no lo impide."""
+    return estados_reclamo.admite_presupuesto(reclamo.estado) and not any(
+        p.estado in ESTADOS_QUE_IMPIDEN_OFERTAR
+        for p in ofertas_del_contratista(reclamo, contratista_id)
+    )
+
+
+def admite_edicion(presupuesto: Presupuesto) -> bool:
+    return esta_vigente(presupuesto) and estados_reclamo.admite_presupuesto(
+        presupuesto.reclamo.estado
+    )
+
+
+def _texto(valor: str | None) -> str:
+    return (valor or "").strip()
+
+
+def sin_cambios(
+    presupuesto: Presupuesto,
+    detalle_tarea: str | None,
+    observaciones: str | None,
+    items: list[dict],
+) -> bool:
+    """Si lo que manda el contratista es igual a la versión vigente."""
+
+    def clave(tipo, descripcion, cantidad, unidad, costo_unitario):
+        return (
+            TipoItemPresupuesto(tipo),
+            _texto(descripcion),
+            Decimal(cantidad),
+            _texto(unidad),
+            Decimal(costo_unitario),
+        )
+
+    actuales = sorted(
+        clave(i.tipo, i.descripcion, i.cantidad, i.unidad, i.costo_unitario)
+        for i in presupuesto.items
+    )
+    nuevos = sorted(clave(**item) for item in items)
+    return (
+        _texto(presupuesto.detalle_tarea) == _texto(detalle_tarea)
+        and _texto(presupuesto.observaciones) == _texto(observaciones)
+        and actuales == nuevos
+    )
+
+
+def motivo_estado(presupuesto: Presupuesto) -> str | None:
+    """Por qué se rechazó o qué ajustes se pidieron; None en los demás estados."""
+    if presupuesto.estado not in ESTADOS_CON_MOTIVO_OBLIGATORIO:
+        return None
+    return next(
+        (
+            evento.motivo
+            for evento in reversed(presupuesto.historial_estados)
+            if evento.estado_nuevo is presupuesto.estado
+        ),
+        None,
+    )
+
+
+def archivar_version(db: Session, presupuesto: Presupuesto) -> VersionPresupuesto:
+    """Guarda el contenido actual antes de que se lo reemplace. No hace commit."""
+    anteriores = presupuesto.versiones_anteriores
+    version = VersionPresupuesto(
+        numero=presupuesto.version,
+        detalle_tarea=presupuesto.detalle_tarea,
+        observaciones=presupuesto.observaciones,
+        items=[
+            {
+                "tipo": item.tipo.value,
+                "descripcion": item.descripcion,
+                "cantidad": str(item.cantidad),
+                "unidad": item.unidad,
+                "costo_unitario": str(item.costo_unitario),
+            }
+            for item in presupuesto.items
+        ],
+        fecha_envio=anteriores[-1].fecha_reemplazo if anteriores else presupuesto.fecha,
+        ajustes_solicitados=motivo_estado(presupuesto)
+        if presupuesto.estado is EstadoPresupuesto.AJUSTES_SOLICITADOS
+        else None,
+    )
+    presupuesto.versiones_anteriores.append(version)
+    db.add(version)
+    return version
 
 
 def registrar_estado_inicial(

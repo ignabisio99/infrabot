@@ -16,6 +16,8 @@ import { IconMapPin } from '@tabler/icons-react';
 
 import { listarMisSolicitudes } from '../../api/contratistas';
 import { formatearIdReclamo } from '../../utils/ids';
+import { BudgetStatusBadge } from '../budgets/BudgetStatusBadge';
+import { estaVigente } from '../budgets/estados';
 
 const ETIQUETA_ESTADO = {
   PENDIENTE_REVISION: 'En revisión',
@@ -80,9 +82,21 @@ export function MySolicitudesPage() {
                 </Badge>
               </Group>
               {s.presupuesto_cargado ? (
-                <Badge color="teal" variant="light">
-                  Presupuesto enviado
-                </Badge>
+                <Group gap={6}>
+                  {s.version > 1 && (
+                    <Badge color="gray" variant="outline" tt="none">
+                      Versión {s.version}
+                    </Badge>
+                  )}
+                  {s.estado_reclamo === 'CANCELADO' &&
+                  estaVigente({ estado: s.presupuesto_estado }) ? (
+                    <Badge color="gray" variant="light" tt="none">
+                      Ya no se evalúa
+                    </Badge>
+                  ) : (
+                    <BudgetStatusBadge estado={s.presupuesto_estado} variant="light" />
+                  )}
+                </Group>
               ) : (
                 <Badge color="orange" variant="light">
                   Pendiente de cargar
@@ -96,12 +110,24 @@ export function MySolicitudesPage() {
               <Text size="sm">{s.ubicacion}</Text>
             </Group>
 
-            {!s.presupuesto_cargado && (
+            {s.puede_ofertar && (
               <Button
                 size="xs"
                 onClick={() => navigate(`/portal/reclamos/${s.reclamo_id}/presupuestar`)}
               >
-                Cargar presupuesto
+                {s.presupuesto_cargado ? 'Cargar un presupuesto nuevo' : 'Cargar presupuesto'}
+              </Button>
+            )}
+            {s.puede_editar && (
+              <Button
+                size="xs"
+                variant={s.presupuesto_estado === 'AJUSTES_SOLICITADOS' ? 'filled' : 'light'}
+                color={s.presupuesto_estado === 'AJUSTES_SOLICITADOS' ? 'orange' : undefined}
+                onClick={() => navigate(`/portal/reclamos/${s.reclamo_id}/presupuestar`)}
+              >
+                {s.presupuesto_estado === 'AJUSTES_SOLICITADOS'
+                  ? 'Ajustar presupuesto'
+                  : 'Editar presupuesto'}
               </Button>
             )}
           </Card>

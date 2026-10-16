@@ -15,6 +15,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+from core import reloj
 from core.database import SessionLocal
 from models.contratista import Contratista
 from models.reclamo import Reclamo
@@ -53,9 +54,13 @@ def _avisar_a_ambos(db, visita: Visita, encabezado: str) -> None:
         _enviar(reclamo.telefono_creador, cuerpo)
 
 
-def revisar_recordatorios(db) -> None:
-    """Revisa las visitas confirmadas y envía los recordatorios que correspondan."""
-    ahora = datetime.now(timezone.utc)
+def revisar_recordatorios(db) -> list[dict]:
+    """Revisa las visitas confirmadas y envía los recordatorios que correspondan.
+
+    Devuelve una lista con los eventos disparados.
+    """
+    ahora = reloj.ahora()
+    eventos: list[dict] = []
 
     visitas = (
         db.query(Visita)
@@ -86,6 +91,12 @@ def revisar_recordatorios(db) -> None:
             if enviar_pregunta_inicio(db, visita):
                 visita.pregunta_inicio_enviada = ahora
                 db.commit()
+                eventos.append({
+                    "tipo": "pregunta_inicio",
+                    "visita_id": visita.id,
+                    "reclamo_id": visita.reclamo_id,
+                    "detalle": f"🛠️ Hora pactada cumplida: se preguntó al contratista si inició la obra (Reclamo #{visita.reclamo_id})",
+                })
             continue
 
         # Recordatorio "mismo día": entre 0 y 12 horas antes de la visita.
@@ -93,6 +104,12 @@ def revisar_recordatorios(db) -> None:
             _avisar_a_ambos(db, visita, "⏰ *Recordatorio: la visita es hoy*")
             visita.recordatorio_mismo_dia_enviado = ahora
             db.commit()
+            eventos.append({
+                "tipo": "mismo_dia",
+                "visita_id": visita.id,
+                "reclamo_id": visita.reclamo_id,
+                "detalle": f"⏰ Recordatorio de hoy enviado a escuela y contratista (Reclamo #{visita.reclamo_id})",
+            })
             continue
 
         # Recordatorio "día antes": entre 12 y 36 horas antes.
@@ -100,6 +117,14 @@ def revisar_recordatorios(db) -> None:
             _avisar_a_ambos(db, visita, "🔔 *Recordatorio: la visita es mañana*")
             visita.recordatorio_dia_antes_enviado = ahora
             db.commit()
+            eventos.append({
+                "tipo": "dia_antes",
+                "visita_id": visita.id,
+                "reclamo_id": visita.reclamo_id,
+                "detalle": f"🔔 Recordatorio de 24h antes enviado a escuela y contratista (Reclamo #{visita.reclamo_id})",
+            })
+
+    return eventos
 
 
 async def loop_recordatorios() -> None:

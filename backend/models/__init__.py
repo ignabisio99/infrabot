@@ -27,7 +27,13 @@ from models.notificacion import Notificacion
 from models.institucion import Institucion
 from models.lista_contratistas import ListaContratistas, lista_contratista_asociacion
 from models.mensaje_conversacion import AutorMensaje, MensajeConversacion, TipoMensaje
-from models.presupuesto import EstadoPresupuesto, ItemPresupuesto, Presupuesto, TipoItemPresupuesto
+from models.presupuesto import (
+    EstadoPresupuesto,
+    ItemPresupuesto,
+    Presupuesto,
+    TipoItemPresupuesto,
+    VersionPresupuesto,
+)
 from models.reclamo import EstadoReclamo, PrioridadReclamo, Reclamo
 from models.recomendacion_ia import RecomendacionIA, TipoRecomendacionIA
 from models.recordatorio_contratista import RecordatorioContratista
@@ -77,6 +83,7 @@ __all__ = [
     "TipoUsuario",
     "TokenBlacklist",
     "Usuario",
+    "VersionPresupuesto",
     "EstadoVisita",
     "Visita",
     "lista_contratista_asociacion",

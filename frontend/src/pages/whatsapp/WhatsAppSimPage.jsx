@@ -12,7 +12,15 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import { IconMicrophone, IconPaperclip, IconRefresh, IconSend } from '@tabler/icons-react';
+import {
+  IconClock,
+  IconInbox,
+  IconMicrophone,
+  IconPaperclip,
+  IconRefresh,
+  IconSend,
+  IconSettings,
+} from '@tabler/icons-react';
 
 import {
   listarMensajesSim,
@@ -20,9 +28,17 @@ import {
   simularWhatsAppMedia,
   simularWhatsAppTexto,
 } from '../../api/whatsappSim';
+import {
+  avanzarTiempo,
+  obtenerEstadoSimulador,
+  obtenerMensajesSalientes,
+  resetearTiempo,
+} from '../../api/simuladorTiempo';
+import { esAdministrador } from '../../utils/auth';
+import { SimuladorTiempoModal } from '../../components/SimuladorTiempoModal';
 import { useGrabarAudio } from '../../hooks/useGrabarAudio';
 import { formatoHoraMensaje } from '../../utils/formatters';
-import { notifyError } from '../../utils/notifications';
+import { notifyError, notifySuccess } from '../../utils/notifications';
 
 const ORIGEN_DEFAULT = 'sim5491100000000';
 const ORIGEN_KEY = 'infrabot_whatsapp_sim_origen';
@@ -68,16 +84,88 @@ function burbuja(de, contenido) {
 }
 
 export function WhatsAppSimPage() {
+  const esAdmin = esAdministrador();
   const [origen, setOrigen] = useState(leerOrigenGuardado);
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [mensajes, setMensajes] = useState(() => leerMensajes(leerOrigenGuardado()));
+  const [modalSimuladorAbierto, setModalSimuladorAbierto] = useState(false);
+  const [estadoReloj, setEstadoReloj] = useState(null);
+  const [avanzandoReloj, setAvanzandoReloj] = useState(false);
   const abajo = useRef(null);
   const adjuntoRef = useRef(null);
   const origenRef = useRef(origen);
   const idsServidor = useRef(new Set());
   const despuesDeRef = useRef(0);
   const { grabando, empezar, detener } = useGrabarAudio();
+
+  const sincronizarMensajesBot = async (numeroAUsar = origen) => {
+    if (!numeroAUsar) return;
+    try {
+      const salientes = await obtenerMensajesSalientes(numeroAUsar, 15);
+      if (salientes && salientes.length > 0) {
+        setMensajes((actuales) => {
+          const idsExistentes = new Set(actuales.map((m) => m.id));
+          const textosExistentes = new Set(actuales.filter((m) => m.de === 'bot').map((m) => m.texto));
+          const nuevos = [];
+
+          for (const s of salientes) {
+            if (!idsExistentes.has(s.id) && !textosExistentes.has(s.body)) {
+              nuevos.push({
+                id: s.id,
+                de: 'bot',
+                texto: s.body,
+                botones: s.botones || [],
+                secciones: s.secciones || [],
+                tipo: s.tipo,
+              });
+              idsExistentes.add(s.id);
+              textosExistentes.add(s.body);
+            }
+          }
+
+          if (nuevos.length === 0) return actuales;
+          return [...actuales, ...nuevos];
+        });
+      }
+    } catch {
+      // Ignorar si falla
+    }
+  };
+
+  const handleAvanzarTiempo = async (params) => {
+    try {
+      setAvanzandoReloj(true);
+      const res = await avanzarTiempo(params);
+      setEstadoReloj(res);
+      notifySuccess(`Reloj avanzado: ${res.ahora_art}`);
+      await sincronizarMensajesBot(origen);
+    } catch (err) {
+      notifyError(err.message);
+    } finally {
+      setAvanzandoReloj(false);
+    }
+  };
+
+  const handleResetTiempo = async () => {
+    try {
+      setAvanzandoReloj(true);
+      const res = await resetearTiempo();
+      setEstadoReloj(res);
+      notifySuccess('Reloj restablecido a tiempo real.');
+    } catch (err) {
+      notifyError(err.message);
+    } finally {
+      setAvanzandoReloj(false);
+    }
+  };
+
+  useEffect(() => {
+    if (esAdmin) {
+      obtenerEstadoSimulador().then(setEstadoReloj).catch(() => {});
+    }
+    sincronizarMensajesBot(origen);
+  }, [origen, esAdmin]);
 
   useEffect(() => {
     abajo.current?.scrollIntoView({ behavior: 'smooth' });
@@ -272,8 +360,46 @@ export function WhatsAppSimPage() {
     }
   };
 
+  const telefonosActivos = [];
+  if (estadoReloj?.proximas_visitas) {
+    for (const v of estadoReloj.proximas_visitas) {
+      if (v.contratista_telefono && !telefonosActivos.some((x) => x.telefono === v.contratista_telefono)) {
+        telefonosActivos.push({
+          telefono: v.contratista_telefono,
+          etiqueta: `Contratista (${v.contratista || `#${v.reclamo_id}`})`,
+          color: 'teal',
+        });
+      }
+      if (v.creador_telefono && !telefonosActivos.some((x) => x.telefono === v.creador_telefono)) {
+        telefonosActivos.push({
+          telefono: v.creador_telefono,
+          etiqueta: `Escuela (${v.escuela || `#${v.reclamo_id}`})`,
+          color: 'blue',
+        });
+      }
+    }
+  }
+  if (estadoReloj?.reclamos_en_ejecucion) {
+    for (const r of estadoReloj.reclamos_en_ejecucion) {
+      if (r.contratista_telefono && !telefonosActivos.some((x) => x.telefono === r.contratista_telefono)) {
+        telefonosActivos.push({
+          telefono: r.contratista_telefono,
+          etiqueta: `Contratista (#${r.id})`,
+          color: 'teal',
+        });
+      }
+      if (r.creador_telefono && !telefonosActivos.some((x) => x.telefono === r.creador_telefono)) {
+        telefonosActivos.push({
+          telefono: r.creador_telefono,
+          etiqueta: `Escuela (#${r.id})`,
+          color: 'blue',
+        });
+      }
+    }
+  }
+
   return (
-    <Container size={520} px="xs">
+    <Container size={560} px="xs">
       <Stack gap="md">
       <div>
         <Title order={2} ta="center">
@@ -285,11 +411,114 @@ export function WhatsAppSimPage() {
         </Text>
       </div>
 
-      <Alert color="blue">
-        Los mensajes se guardan en este navegador. Si reiniciás el backend, el
-        bot pierde el paso a paso (el reclamo ya confirmado queda en la base).
-        Usá “Empezar nueva charla” para resetear.
-      </Alert>
+      {/* Barra de simulación de tiempo exclusiva para administradores */}
+      {esAdmin && (
+        <Paper
+          withBorder
+          p="xs"
+          radius="md"
+          style={{
+            background: estadoReloj?.es_simulado
+              ? 'linear-gradient(135deg, rgba(255, 146, 43, 0.08) 0%, rgba(255, 107, 107, 0.08) 100%)'
+              : '#f8fafc',
+            borderColor: estadoReloj?.es_simulado ? '#ffa94d' : undefined,
+          }}
+        >
+          <Group justify="space-between" align="center" mb={6}>
+            <Group gap="xs">
+              <Badge color={estadoReloj?.es_simulado ? 'orange' : 'teal'} variant="filled" size="sm">
+                🕒 {estadoReloj?.es_simulado ? `Simulado (${estadoReloj.offset_descripcion})` : 'Tiempo real'}
+              </Badge>
+              <Text size="xs" fw={600}>
+                {estadoReloj?.ahora_art || ''}
+              </Text>
+            </Group>
+            <Group gap={6}>
+              <Button
+                size="compact-xs"
+                variant="subtle"
+                color="teal"
+                leftSection={<IconInbox size={12} />}
+                onClick={() => sincronizarMensajesBot(origen)}
+              >
+                Chequear mensajes
+              </Button>
+              <Button
+                size="compact-xs"
+                variant="light"
+                color="blue"
+                leftSection={<IconSettings size={12} />}
+                onClick={() => setModalSimuladorAbierto(true)}
+              >
+                Panel completo
+              </Button>
+            </Group>
+          </Group>
+
+          <Group gap={6} wrap="wrap">
+            <Text size="xs" c="dimmed" fw={600}>
+              Avanzar:
+            </Text>
+            <Button
+              size="compact-xs"
+              variant="light"
+              color="teal"
+              onClick={() => handleAvanzarTiempo({ horas: 6 })}
+              loading={avanzandoReloj}
+            >
+              +6 h
+            </Button>
+            <Button
+              size="compact-xs"
+              variant="light"
+              color="teal"
+              onClick={() => handleAvanzarTiempo({ horas: 12 })}
+              loading={avanzandoReloj}
+            >
+              +12 h
+            </Button>
+            <Button
+              size="compact-xs"
+              variant="filled"
+              color="teal"
+              onClick={() => handleAvanzarTiempo({ dias: 1 })}
+              loading={avanzandoReloj}
+            >
+              +1 día
+            </Button>
+            <Button
+              size="compact-xs"
+              variant="filled"
+              color="teal"
+              onClick={() => handleAvanzarTiempo({ dias: 2 })}
+              loading={avanzandoReloj}
+            >
+              +2 días
+            </Button>
+            <Button
+              size="compact-xs"
+              variant="gradient"
+              gradient={{ from: 'teal', to: 'cyan' }}
+              onClick={() => handleAvanzarTiempo({ hasta_proxima_visita: true })}
+              loading={avanzandoReloj}
+            >
+              A hora de visita
+            </Button>
+            {estadoReloj?.es_simulado && (
+              <Button
+                size="compact-xs"
+                variant="subtle"
+                color="red"
+                leftSection={<IconRefresh size={12} />}
+                onClick={handleResetTiempo}
+                loading={avanzandoReloj}
+              >
+                Reset
+              </Button>
+            )}
+          </Group>
+        </Paper>
+      )}
 
       <TextInput
         label="Número simulado"
@@ -298,6 +527,26 @@ export function WhatsAppSimPage() {
         onChange={(e) => setOrigen(e.currentTarget.value)}
         onBlur={() => setOrigen((actual) => asegurarPrefijoSim(actual))}
       />
+
+      {/* Selector rápido de números activos */}
+      {telefonosActivos.length > 0 && (
+        <Group gap={6} wrap="wrap">
+          <Text size="xs" c="dimmed">
+            Accesos directos:
+          </Text>
+          {telefonosActivos.map((t) => (
+            <Button
+              key={t.telefono}
+              size="compact-xs"
+              variant={origen === t.telefono ? 'filled' : 'light'}
+              color={t.color}
+              onClick={() => setOrigen(t.telefono)}
+            >
+              {t.etiqueta}: {t.telefono}
+            </Button>
+          ))}
+        </Group>
+      )}
 
       <Paper
         withBorder
@@ -451,6 +700,15 @@ export function WhatsAppSimPage() {
         </Button>
       </Group>
       </Stack>
+
+      <SimuladorTiempoModal
+        opened={modalSimuladorAbierto}
+        onClose={() => setModalSimuladorAbierto(false)}
+        onTiempoActualizado={(n) => {
+          setEstadoReloj(n);
+          sincronizarMensajesBot(origen);
+        }}
+      />
     </Container>
   );
 }

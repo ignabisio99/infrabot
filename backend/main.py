@@ -25,14 +25,17 @@ from api.roles_mano_obra import router as roles_mano_obra_router
 from api.whatsapp import router as whatsapp_router
 from api.whatsapp_sim import router as whatsapp_sim_router
 from api.visitas import router as visitas_router
+from api.simulador_tiempo import router as simulador_tiempo_router
 from core.database import (
     Base,
     SessionLocal,
+    asegurar_columna_autor_foto,
     asegurar_columna_detalle_tarea,
-    asegurar_columna_pregunta_inicio_enviada,
     asegurar_columna_tipo_item,
+    asegurar_columnas_seguimiento,
     asegurar_tipo_usuario_inspector,
     asegurar_valor_analisis_agente,
+    asegurar_valores_estado_presupuesto,
     asegurar_valores_estado_reclamo,
     engine,
 )
@@ -84,10 +87,12 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     asegurar_columna_tipo_item()
     asegurar_columna_detalle_tarea()
-    asegurar_columna_pregunta_inicio_enviada()
+    asegurar_columna_autor_foto()
+    asegurar_columnas_seguimiento()
     asegurar_tipo_usuario_inspector()
     asegurar_valor_analisis_agente()
     asegurar_valores_estado_reclamo()
+    asegurar_valores_estado_presupuesto()
     db_roles = SessionLocal()
     try:
         from models.rol_mano_obra import asegurar_roles_iniciales
@@ -175,6 +180,7 @@ app.include_router(roles_mano_obra_router)
 app.include_router(reportes_router)
 app.include_router(notificaciones_router)
 app.include_router(conversaciones_router)
+app.include_router(simulador_tiempo_router)
 
 @app.get("/")
 def read_root():

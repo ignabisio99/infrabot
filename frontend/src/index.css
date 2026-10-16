@@ -1,0 +1,117 @@
+/* Ajustes globales de responsive (mobile). La app está pensada para desktop; estas
+   reglas evitan desbordes horizontales y adaptan tablas, inputs y grupos en pantallas
+   chicas sin tener que tocar cada página. Breakpoint sm de Mantine = 48em (768px). */
+
+/* 1) Nunca permitir scroll horizontal de toda la página en mobile. */
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Fila de ítem del presupuesto (material / mano de obra). En desktop los campos van en
+   una fila horizontal alineados abajo; el botón "Quitar" queda al final. */
+.line-item-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: var(--mantine-spacing-sm);
+}
+.line-item-row .line-item-remove {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 48em) {
+  /* 2) Tablas anchas: scroll horizontal propio en vez de romper el layout.
+     Mantine envuelve <table> en .mantine-Table-table; se hace scrolleable su contenedor. */
+  .mantine-Table-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+
+  /* 3) Inputs/Selects/DatePickers con ancho fijo por props (w=210, etc.): que se
+     adapten al ancho disponible en mobile en vez de forzar scroll. */
+  .mantine-TextInput-root,
+  .mantine-Select-root,
+  .mantine-NumberInput-root,
+  .mantine-MultiSelect-root,
+  .mantine-DatePickerInput-root,
+  .mantine-DateInput-root,
+  .mantine-Autocomplete-root,
+  .mantine-PasswordInput-root,
+  .mantine-Textarea-root {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* 4) Paper/Card con padding grande: reducirlo para ganar ancho útil. */
+  .mantine-Paper-root,
+  .mantine-Card-root {
+    overflow-wrap: anywhere;
+  }
+
+  /* 5) Grupos (header "título + botón", filtros, acciones): envolver en mobile para no
+     forzar una fila más ancha que la pantalla. Mantine usa flex-wrap: nowrap por defecto
+     en varios Group; acá se permite el wrap y se agrega separación vertical.
+     EXCEPCIÓN: los Group dentro del header del AppShell deben quedar en una sola fila
+     (logo a la izquierda, usuario a la derecha), así que no se les fuerza el wrap. */
+  .mantine-Group-root {
+    flex-wrap: wrap !important;
+    row-gap: var(--mantine-spacing-xs);
+  }
+  .mantine-AppShell-header .mantine-Group-root {
+    flex-wrap: nowrap !important;
+    row-gap: 0;
+  }
+
+  /* El nombre/rol de usuario en el header se oculta en mobile: alcanza con el avatar y
+     el chevron. Así nunca tapa ni empuja el logo. El menú (perfil/salir) sigue igual. */
+  .header-user-info {
+    display: none !important;
+  }
+
+  /* 9) Ítems del presupuesto en mobile: cada campo ocupa su propia fila a ancho completo
+     (nada de inputs angostos lado a lado) y el botón "Quitar" va full-width al final. */
+  .line-item-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--mantine-spacing-xs);
+  }
+  .line-item-row .line-item-remove {
+    width: 100%;
+  }
+
+  /* 6) Modales y Drawers casi a pantalla completa en mobile. */
+  .mantine-Modal-content,
+  .mantine-Drawer-content {
+    max-width: 100vw;
+  }
+
+  /* 7) Títulos muy grandes: achicar un poco para que no desborden. */
+  .mantine-Title-root {
+    overflow-wrap: anywhere;
+  }
+
+  /* 8) react-big-calendar: la toolbar (hoy/anterior/siguiente + vistas) se sale de la
+     pantalla. Se apila en varias filas y se compacta. */
+  .rbc-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .rbc-toolbar .rbc-btn-group {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .rbc-toolbar-label {
+    padding: 4px 0;
+  }
+  /* El propio calendario puede ser más ancho que la pantalla: scroll horizontal. */
+  .rbc-calendar {
+    min-width: 0;
+  }
+}

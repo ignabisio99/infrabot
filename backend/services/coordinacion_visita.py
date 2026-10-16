@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
+from core import reloj
 from models.contratista import Contratista
 from models.reclamo import EstadoReclamo, Reclamo
 from models.visita import EstadoVisita, Visita
@@ -74,6 +75,7 @@ def iniciar_coordinacion(db: Session, reclamo: Reclamo, contratista: Contratista
         {"paso": "visita_disponibilidad", "visita_id": visita.id},
     )
 
+    f1, f2 = ejemplo_formato_fecha()
     _enviar(
         contratista.telefono,
         f"🎉 *¡Tu presupuesto para el reclamo #{reclamo.id} fue aprobado!*\n\n"
@@ -81,9 +83,9 @@ def iniciar_coordinacion(db: Session, reclamo: Reclamo, contratista: Contratista
         f"📍 Ubicación: {reclamo.ubicacion}\n\n"
         "Para coordinar la visita de trabajo, indicanos tu disponibilidad horaria.\n\n"
         "📅 *Importante:* enviá cada opción en el formato *DD/MM HH:MM* "
-        "(día/mes y hora). Por ejemplo:\n"
-        "_12/08 10:00_\n"
-        "_13/08 15:30_\n\n"
+        "(día/mes y hora posterior a la actual). Por ejemplo:\n"
+        f"_{f1}_\n"
+        f"_{f2}_\n\n"
         "Podés mandarlas todas juntas separadas por coma, o una por mensaje.\n"
         "Respetar este formato nos permite enviarte los recordatorios automáticos.\n\n"
         "Cuando termines de cargar tus opciones, escribí *listo*.",
@@ -146,12 +148,46 @@ def estado_conversacion_pendiente(db: Session, telefono: str) -> dict | None:
     return None
 
 
+class FechaPasada(Exception):
+    """La fecha de la visita ya pasó y no se puede coordinar."""
+
+
+def ejemplo_formato_fecha() -> tuple[str, str]:
+    """Genera ejemplos de fecha y hora futuras en formato DD/MM HH:MM."""
+    from datetime import timedelta
+
+    ahora_art = reloj.ahora_art()
+    f1 = (ahora_art + timedelta(days=1)).strftime("%d/%m 10:00")
+    f2 = (ahora_art + timedelta(days=2)).strftime("%d/%m 15:30")
+    return f1, f2
+
+
 def formato_valido(texto: str) -> bool:
     """True si el texto tiene al menos una opción y todas son parseables (DD/MM HH:MM)."""
     opciones = _separar_opciones(texto)
     if not opciones:
         return False
     return all(_parsear_fecha(op) is not None for op in opciones)
+
+
+def opciones_pasadas(texto: str) -> list[str]:
+    """Devuelve las opciones cuya fecha/hora es anterior o igual al momento actual."""
+    opciones = _separar_opciones(texto)
+    ahora = reloj.ahora()
+    pasadas = []
+    for op in opciones:
+        dt = _parsear_fecha(op)
+        if dt is not None and dt <= ahora:
+            pasadas.append(op)
+    return pasadas
+
+
+def es_fecha_futura(texto_opcion: str) -> bool:
+    """True si la opción se puede parsear y su fecha/hora es posterior al momento actual."""
+    dt = _parsear_fecha(texto_opcion)
+    if dt is None:
+        return False
+    return dt > reloj.ahora()
 
 
 def agregar_disponibilidad(db: Session, visita: Visita, texto: str) -> int:
@@ -176,20 +212,37 @@ def _opciones_lista(visita: Visita) -> list[str]:
     return [linea.strip() for linea in visita.disponibilidades.splitlines() if linea.strip()]
 
 
-def finalizar_disponibilidad(db: Session, visita: Visita) -> bool:
+def finalizar_disponibilidad(db: Session, visita: Visita) -> tuple[bool, str | None]:
     """El contratista terminó de cargar disponibilidad. Se la manda al creador.
 
-    Devuelve True si había al menos una opción y se pasó al creador; False si no.
-    Deja al creador en estado conversacional 'visita_eleccion'.
+    Filtra opciones que hayan quedado en el pasado.
+    Devuelve (True, None) si se mandó al creador.
+    Devuelve (False, "sin_opciones") si no había opciones.
+    Devuelve (False, "todas_pasadas") si todas las opciones cargadas ya vencieron.
+    Devuelve (False, "sin_contacto") si falta el reclamo o teléfono del creador.
     """
     opciones = _opciones_lista(visita)
     if not opciones:
-        return False
+        return False, "sin_opciones"
+
+    # Filtrar solo opciones que sigan vigentes (futuras)
+    ahora = reloj.ahora()
+    opciones_vigentes = [
+        op for op in opciones
+        if (dt := _parsear_fecha(op)) is not None and dt > ahora
+    ]
+
+    if not opciones_vigentes:
+        visita.disponibilidades = None
+        db.commit()
+        return False, "todas_pasadas"
 
     reclamo = db.get(Reclamo, visita.reclamo_id)
     if reclamo is None or not reclamo.telefono_creador:
-        return False
+        return False, "sin_contacto"
 
+    # Actualizar para conservar solo las vigentes
+    visita.disponibilidades = "\n".join(opciones_vigentes)
     visita.estado = EstadoVisita.ESPERANDO_ELECCION
     db.commit()
 
@@ -200,7 +253,7 @@ def finalizar_disponibilidad(db: Session, visita: Visita) -> bool:
         {"paso": "visita_eleccion", "visita_id": visita.id},
     )
 
-    lineas = "\n".join(f"{i + 1}. {op}" for i, op in enumerate(opciones))
+    lineas = "\n".join(f"{i + 1}. {op}" for i, op in enumerate(opciones_vigentes))
     contratista = db.get(Contratista, visita.contratista_id)
     nombre = contratista.nombre_empresa if contratista else "el contratista"
     _enviar(
@@ -210,23 +263,30 @@ def finalizar_disponibilidad(db: Session, visita: Visita) -> bool:
         f"{lineas}\n\n"
         "Respondé con el *número* de la opción que te quede mejor (ej: *1*).",
     )
-    return True
+    return True, None
 
 
 def confirmar_eleccion(db: Session, visita: Visita, indice: int) -> str | None:
     """El creador eligió una opción (1-based). Confirma la visita a ambos.
 
     Devuelve el texto del horario confirmado, o None si el índice es inválido.
+    Lanza FechaPasada si la opción elegida ya pasó.
     """
     opciones = _opciones_lista(visita)
     if indice < 1 or indice > len(opciones):
         return None
 
     elegido = opciones[indice - 1]
+    fecha_dt = _parsear_fecha(elegido)
+    ahora = reloj.ahora()
+
+    # Validar que no haya vencido la opción elegida
+    if fecha_dt is not None and fecha_dt <= ahora:
+        raise FechaPasada(f"La opción elegida ({elegido}) ya pasó.")
+
     visita.horario_confirmado = elegido
     visita.estado = EstadoVisita.CONFIRMADA
-    # Intentar parsear una fecha para los recordatorios (mejor esfuerzo).
-    visita.fecha_visita = _parsear_fecha(elegido)
+    visita.fecha_visita = fecha_dt
 
     reclamo = db.get(Reclamo, visita.reclamo_id)
     contratista = db.get(Contratista, visita.contratista_id)
@@ -256,7 +316,7 @@ def confirmar_eleccion(db: Session, visita: Visita, indice: int) -> str | None:
             contratista.telefono,
             f"✅ *Visita confirmada — Reclamo #{reclamo.id}*\n\n"
             f"🏫 Escuela: {reclamo.nombre_escuela}\n"
-            f"📍 Ubicación: {reclamo.ubicacion}\n"
+            f"📍 Ubicación: {reclamo.ubicacion}\n\n"
             f"🗓️ Horario: {elegido}\n\n"
             "Te vamos a recordar la visita el día anterior y el mismo día.",
         )
@@ -281,6 +341,7 @@ def _parsear_fecha(texto: str) -> datetime | None:
     (la visita queda confirmada igual, solo sin aviso programado).
     """
     import re
+    from datetime import timedelta
 
     # Buscar dd/mm o dd/mm/aaaa
     m_fecha = re.search(r"(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?", texto)
@@ -295,11 +356,17 @@ def _parsear_fecha(texto: str) -> datetime | None:
     dia = int(m_fecha.group(1))
     mes = int(m_fecha.group(2))
     anio_txt = m_fecha.group(3)
-    ahora = datetime.now(timezone.utc)
+    art = timezone(timedelta(hours=-3))
+    ahora_art = reloj.ahora_art()
+
     if anio_txt:
         anio = int(anio_txt) + (2000 if len(anio_txt) == 2 else 0)
     else:
-        anio = ahora.year
+        # Si estamos en diciembre y el mes ingresado es enero, se asume el año siguiente
+        if ahora_art.month == 12 and mes == 1:
+            anio = ahora_art.year + 1
+        else:
+            anio = ahora_art.year
 
     if m_hora and m_hora.group(1):
         hora = int(m_hora.group(1))
@@ -309,9 +376,6 @@ def _parsear_fecha(texto: str) -> datetime | None:
 
     try:
         # Se guarda en UTC-3 (Argentina) convertido a UTC para comparar con utcnow.
-        from datetime import timedelta
-
-        art = timezone(timedelta(hours=-3))
         fecha_local = datetime(anio, mes, dia, hora, minuto, tzinfo=art)
         return fecha_local.astimezone(timezone.utc)
     except ValueError:
@@ -489,13 +553,15 @@ def reprogramar_visita(db: Session, visita: Visita) -> bool:
         contratista.telefono,
         {"paso": "visita_disponibilidad", "visita_id": visita.id},
     )
+    f1, _ = ejemplo_formato_fecha()
     _enviar(
         contratista.telefono,
         f"📅 *Reprogramemos la visita del reclamo #{reclamo.id}*\n\n"
         f"🏫 {reclamo.nombre_escuela}\n"
         f"📍 {reclamo.ubicacion}\n\n"
         "Indicá tu nueva disponibilidad en formato *DD/MM HH:MM* "
-        "(podés mandar varias separadas por coma).\n"
+        f"(ej: _{f1}_, podés mandar varias separadas por coma).\n"
+        "Recordá que las opciones deben ser posteriores a la fecha y hora actual.\n"
         "Cuando termines, escribí *listo*.",
     )
     return True

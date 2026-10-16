@@ -69,18 +69,47 @@ def asegurar_columna_detalle_tarea(bind=engine):
         conn.execute(text("ALTER TABLE presupuesto ADD COLUMN detalle_tarea TEXT"))
 
 
-def asegurar_columna_pregunta_inicio_enviada(bind=engine):
-    """Agrega `visita.pregunta_inicio_enviada` si la tabla ya existía sin esa columna."""
+def asegurar_columna_autor_foto(bind=engine):
+    """Agrega `foto_reclamo.usuario_id` si la tabla ya existía sin esa columna."""
     inspector = inspect(bind)
-    if "visita" not in inspector.get_table_names():
+    if "foto_reclamo" not in inspector.get_table_names():
         return
-    columnas = {columna["name"] for columna in inspector.get_columns("visita")}
-    if "pregunta_inicio_enviada" in columnas:
+    columnas = {columna["name"] for columna in inspector.get_columns("foto_reclamo")}
+    if "usuario_id" in columnas:
         return
     with bind.begin() as conn:
         conn.execute(
-            text("ALTER TABLE visita ADD COLUMN pregunta_inicio_enviada TIMESTAMPTZ")
+            text(
+                "ALTER TABLE foto_reclamo ADD COLUMN usuario_id INTEGER "
+                "REFERENCES usuario(id) ON DELETE SET NULL"
+            )
         )
+
+
+def asegurar_columnas_seguimiento(bind=engine):
+    """Agrega las columnas del seguimiento de obra si las tablas ya existían sin ellas."""
+    faltantes = {
+        "visita": {"pregunta_inicio_enviada": "TIMESTAMP WITH TIME ZONE"},
+        "recordatorio_contratista": {
+            "proxima_pregunta": "TIMESTAMP WITH TIME ZONE",
+            "consulto_escuela": "BOOLEAN NOT NULL DEFAULT FALSE",
+        },
+    }
+    inspector = inspect(bind)
+    tablas = inspector.get_table_names()
+    with bind.begin() as conn:
+        for tabla, columnas in faltantes.items():
+            if tabla not in tablas:
+                continue
+            existentes = {columna["name"] for columna in inspector.get_columns(tabla)}
+            for columna, tipo in columnas.items():
+                if columna not in existentes:
+                    conn.execute(text(f"ALTER TABLE {tabla} ADD COLUMN {columna} {tipo}"))
+
+
+def asegurar_columna_pregunta_inicio_enviada(bind=engine):
+    """Compat: la columna quedó en `asegurar_columnas_seguimiento`."""
+    asegurar_columnas_seguimiento(bind=bind)
 
 
 def asegurar_valores_estado_reclamo(bind=engine):
@@ -94,6 +123,17 @@ def asegurar_valores_estado_reclamo(bind=engine):
         for valor in EstadoReclamo:
             conn.execute(
                 text(f"ALTER TYPE estado_reclamo ADD VALUE IF NOT EXISTS '{valor.value}'")
+            )
+
+
+def asegurar_valores_estado_presupuesto(bind=engine):
+    """Agrega valores nuevos al enum `estado_presupuesto` si la base se creó antes."""
+    from models.presupuesto import EstadoPresupuesto
+
+    with bind.begin() as conn:
+        for valor in EstadoPresupuesto:
+            conn.execute(
+                text(f"ALTER TYPE estado_presupuesto ADD VALUE IF NOT EXISTS '{valor.value}'")
             )
 
 

@@ -65,6 +65,8 @@ export function ChangeStateModal({ entidad, config, onSubmit, onClose, onCambiad
     <Modal opened={abierto} onClose={onClose} title={config.titulo} centered>
       {entidad && (
         <Stack>
+          {config.resumen?.(entidad)}
+
           <Group gap="xs">
             <Text size="sm" c="dimmed">
               Estado actual:
@@ -81,7 +83,7 @@ export function ChangeStateModal({ entidad, config, onSubmit, onClose, onCambiad
                 placeholder="Elegí el estado"
                 data={entidad.estados_posibles.map((valor) => ({
                   value: valor,
-                  label: config.etiquetaPorEstado[valor],
+                  label: (config.etiquetaPorAccion ?? config.etiquetaPorEstado)[valor],
                 }))}
                 value={estado}
                 onChange={setEstado}

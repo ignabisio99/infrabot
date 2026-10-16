@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Image, Modal, Text } from '@mantine/core';
+import { Button, Group, Image, Modal, Text } from '@mantine/core';
 
 import { API_URL } from '../../api/apiClient';
 import { eliminarFotoReclamo, subirFotoReclamo } from '../../api/reclamos';
@@ -11,11 +11,21 @@ function isVideo(item) {
   return item.tipo === 'VIDEO' || /\.(mp4|mov|webm|3gp)$/i.test(item.src);
 }
 
-export function ClaimPhotosManager({ reclamoId, fotosIniciales = [], soloLectura = false }) {
+// `soloLectura` saca subida y borrado; `puedeSubir` y `puedeEliminarFoto` los habilitan
+// igual (caso inspector: sube y quita sólo las suyas).
+export function ClaimPhotosManager({
+  reclamoId,
+  fotosIniciales = [],
+  soloLectura = false,
+  puedeSubir = !soloLectura,
+  puedeEliminarFoto = () => !soloLectura,
+  onFotoEliminada,
+}) {
   const [fotos, setFotos] = useState(fotosIniciales);
   const [subiendo, setSubiendo] = useState(false);
   const [eliminandoId, setEliminandoId] = useState(null);
   const [mediaAmpliada, setMediaAmpliada] = useState(null);
+  const [fotoAEliminar, setFotoAEliminar] = useState(null);
 
   const handleDrop = async (archivos) => {
     setSubiendo(true);
@@ -32,10 +42,12 @@ export function ClaimPhotosManager({ reclamoId, fotosIniciales = [], soloLectura
   };
 
   const handleEliminar = async (fotoId) => {
+    setFotoAEliminar(null);
     setEliminandoId(fotoId);
     try {
       await eliminarFotoReclamo(reclamoId, fotoId);
       setFotos((actuales) => actuales.filter((foto) => foto.id !== fotoId));
+      onFotoEliminada?.(fotoId);
     } catch (error) {
       notifyError(error?.message);
     } finally {
@@ -48,11 +60,13 @@ export function ClaimPhotosManager({ reclamoId, fotosIniciales = [], soloLectura
     src: `${API_URL}${foto.url}`,
     alt: foto.nombre_archivo,
     tipo: foto.tipo,
+    autor: foto.autor,
+    eliminable: puedeEliminarFoto(foto),
   }));
 
   return (
     <div>
-      {!soloLectura && (
+      {puedeSubir && (
         <PhotoDropzone
           onDrop={handleDrop}
           loading={subiendo}
@@ -60,7 +74,7 @@ export function ClaimPhotosManager({ reclamoId, fotosIniciales = [], soloLectura
         />
       )}
 
-      {soloLectura && items.length === 0 && (
+      {!puedeSubir && items.length === 0 && (
         <Text c="dimmed" size="sm">
           Este reclamo no tiene fotos ni videos.
         </Text>
@@ -68,15 +82,38 @@ export function ClaimPhotosManager({ reclamoId, fotosIniciales = [], soloLectura
 
       <PhotoGrid
         items={items}
-        onRemove={soloLectura ? undefined : handleEliminar}
+        onRemove={(fotoId) => setFotoAEliminar(items.find((item) => item.id === fotoId))}
         onSelect={setMediaAmpliada}
         removingId={eliminandoId}
       />
 
       <Modal
+        opened={fotoAEliminar !== null}
+        onClose={() => setFotoAEliminar(null)}
+        title="Quitar foto"
+        centered
+      >
+        <Text size="sm">
+          ¿Quitar {fotoAEliminar?.alt}? Se borra del reclamo y no se puede deshacer.
+        </Text>
+        <Group justify="flex-end" mt="md">
+          <Button variant="default" onClick={() => setFotoAEliminar(null)}>
+            Cancelar
+          </Button>
+          <Button color="red" onClick={() => handleEliminar(fotoAEliminar.id)}>
+            Quitar
+          </Button>
+        </Group>
+      </Modal>
+
+      <Modal
         opened={mediaAmpliada !== null}
         onClose={() => setMediaAmpliada(null)}
-        title={mediaAmpliada?.alt}
+        title={
+          mediaAmpliada?.autor
+            ? `${mediaAmpliada.alt} — subida por ${mediaAmpliada.autor}`
+            : mediaAmpliada?.alt
+        }
         size="xl"
         centered
       >

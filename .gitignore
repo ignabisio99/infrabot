@@ -219,3 +219,6 @@ __marimo__/
 
 # Archivos subidos por usuarios (fotos de reclamos, guardadas en disco local en dev)
 backend/uploads/
+
+# Credenciales de la auth básica de Adminer (nginx). Se genera en el servidor, no se commitea.
+deploy/nginx/.adminer_htpasswd

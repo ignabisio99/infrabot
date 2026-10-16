@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  Accordion,
   Alert,
   Badge,
   Button,
@@ -12,9 +13,10 @@ import {
   Text,
 } from '@mantine/core';
 
-import { IconGavel } from '@tabler/icons-react';
+import { IconCheck, IconGavel } from '@tabler/icons-react';
 
 import { auditarPresupuesto, obtenerAuditoria } from '../../api/ai';
+import { obtenerVersionesPresupuesto } from '../../api/presupuestos';
 import { formatearIdReclamo } from '../../utils/ids';
 import { formatoMoneda, formatoNumero } from '../../utils/formatters';
 import { notifyError } from '../../utils/notifications';
@@ -52,8 +54,8 @@ function GrupoItems({ titulo, items }) {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {items.map((item) => (
-              <Table.Tr key={item.id}>
+            {items.map((item, index) => (
+              <Table.Tr key={item.id ?? index}>
                 <Table.Td>{item.descripcion}</Table.Td>
                 <Table.Td>
                   {formatoNumero.format(Number(item.cantidad))} {item.unidad ?? ''}
@@ -69,17 +71,85 @@ function GrupoItems({ titulo, items }) {
   );
 }
 
+function VersionesAnteriores({ presupuestoId }) {
+  const [versiones, setVersiones] = useState(null);
+
+  useEffect(() => {
+    let vigente = true;
+    obtenerVersionesPresupuesto(presupuestoId)
+      .then((data) => {
+        if (vigente) setVersiones(data);
+      })
+      .catch((err) => notifyError(err.message));
+    return () => {
+      vigente = false;
+    };
+  }, [presupuestoId]);
+
+  if (!versiones) return <Loader size="sm" mb="md" />;
+
+  return (
+    <>
+      <Text size="sm" fw={600} mb={4}>
+        Versiones anteriores
+      </Text>
+      <Accordion variant="contained" mb="md">
+        {[...versiones].reverse().map((version) => (
+          <Accordion.Item key={version.numero} value={String(version.numero)}>
+            <Accordion.Control>
+              <Group gap="xs">
+                <Text size="sm" fw={500}>
+                  Versión {version.numero}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  {new Date(version.fecha_envio).toLocaleString('es-AR')} ·{' '}
+                  {formatoMoneda.format(Number(version.monto))}
+                </Text>
+              </Group>
+            </Accordion.Control>
+            <Accordion.Panel>
+              {version.ajustes_solicitados && (
+                <Alert color="orange" mb="sm" title="Ajustes que se pidieron sobre esta versión">
+                  {version.ajustes_solicitados}
+                </Alert>
+              )}
+              {version.detalle_tarea && (
+                <Text size="sm" c="dimmed" mb="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                  {version.detalle_tarea}
+                </Text>
+              )}
+              <GrupoItems
+                titulo="Materiales"
+                items={version.items.filter((i) => i.tipo !== 'MANO_OBRA')}
+              />
+              <GrupoItems
+                titulo="Mano de obra"
+                items={version.items.filter((i) => i.tipo === 'MANO_OBRA')}
+              />
+            </Accordion.Panel>
+          </Accordion.Item>
+        ))}
+      </Accordion>
+    </>
+  );
+}
+
 export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
   const [informe, setInforme] = useState(null);
   const [cargadoPara, setCargadoPara] = useState(null);
   const [recalculando, setRecalculando] = useState(false);
   const [decidirAbierto, setDecidirAbierto] = useState(false);
-  const cargando = presupuesto !== null && cargadoPara !== presupuesto.id;
   const esAdmin = esAdministrador();
+  const aprobado = presupuesto?.estado === 'APROBADO';
+  // La auditoría solo se carga para admins y mientras el presupuesto no esté aprobado
+  const mostrarAuditoria = esAdmin && !aprobado;
+  const cargando = mostrarAuditoria && presupuesto !== null && cargadoPara !== presupuesto.id;
   const puedeDecidir = esAdmin && (presupuesto?.estados_posibles?.length ?? 0) > 0;
 
   useEffect(() => {
-    if (!presupuesto) return;
+    // La auditoría es una evaluación interna del organismo: el contratista no la ve.
+    // Tampoco tiene sentido mostrarla una vez que el presupuesto fue aprobado.
+    if (!presupuesto || !mostrarAuditoria) return;
     let vigente = true;
     obtenerAuditoria(presupuesto.id)
       .then((data) => {
@@ -96,7 +166,7 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
       setInforme(null);
       setCargadoPara(null);
     };
-  }, [presupuesto]);
+  }, [presupuesto, mostrarAuditoria]);
 
   const recalcular = async () => {
     if (!presupuesto) return;
@@ -119,12 +189,50 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
       opened={presupuesto !== null}
       onClose={onClose}
       title={
-        presupuesto ? `Ítems del presupuesto — ${formatearIdReclamo(presupuesto.reclamo.id)}` : ''
+        presupuesto ? (
+          <Group gap="xs" wrap="nowrap">
+            <Text fw={600}>
+              {`Ítems del presupuesto — ${formatearIdReclamo(presupuesto.reclamo.id)}${
+                presupuesto.version > 1 ? ` · versión ${presupuesto.version}` : ''
+              }`}
+            </Text>
+            {aprobado && (
+              <Badge color="green" variant="filled" leftSection={<IconCheck size={12} />}>
+                Aprobado
+              </Badge>
+            )}
+          </Group>
+        ) : (
+          ''
+        )
       }
       size="min(1100px, 92vw)"
     >
       {presupuesto && (
         <>
+          {aprobado && (
+            <Alert
+              color="green"
+              mb="md"
+              title="Presupuesto aprobado"
+              icon={<IconCheck size={16} />}
+            >
+              Este presupuesto ya fue aprobado y adjudicado.
+            </Alert>
+          )}
+
+          {presupuesto.motivo_estado && (
+            <Alert
+              color={presupuesto.estado === 'RECHAZADO' ? 'red' : 'orange'}
+              mb="md"
+              title={
+                presupuesto.estado === 'RECHAZADO' ? 'Motivo del rechazo' : 'Ajustes solicitados'
+              }
+            >
+              {presupuesto.motivo_estado}
+            </Alert>
+          )}
+
           {presupuesto.detalle_tarea && (
             <>
               <Text size="sm" fw={600} mb={4}>
@@ -156,11 +264,13 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
             items={presupuesto.items.filter((i) => i.tipo === 'MANO_OBRA')}
           />
 
+          {presupuesto.version > 1 && <VersionesAnteriores presupuestoId={presupuesto.id} />}
+
           <Divider mb="sm" />
 
           {cargando && <Loader size="sm" mb="sm" />}
 
-          {!cargando && informe && (
+          {mostrarAuditoria && !cargando && informe && (
             <Alert
               mb="sm"
               color={colorPorRecomendacion[informe.recomendacion] || 'gray'}
@@ -195,7 +305,7 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
             </Alert>
           )}
 
-          {!cargando && !informe && (
+          {mostrarAuditoria && !cargando && !informe && (
             <Alert color="yellow" mb="sm" title="Sin auditoría guardada">
               Al guardar el presupuesto se audita solo. Podés recalcular ahora.
             </Alert>
@@ -210,9 +320,11 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
               )}
             </Text>
             <Group>
-              <Button variant="subtle" size="xs" loading={recalculando} onClick={recalcular}>
-                Recalcular auditoría
-              </Button>
+              {mostrarAuditoria && (
+                <Button variant="subtle" size="xs" loading={recalculando} onClick={recalcular}>
+                  Recalcular auditoría
+                </Button>
+              )}
               {puedeDecidir && (
                 <Button
                   size="xs"
@@ -220,7 +332,7 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
                   leftSection={<IconGavel size={14} />}
                   onClick={() => setDecidirAbierto(true)}
                 >
-                  Aprobar / Rechazar
+                  Decidir
                 </Button>
               )}
               <Text fw={700} size="lg">

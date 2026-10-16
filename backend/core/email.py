@@ -1,4 +1,4 @@
-"""Envío de emails usando Gmail SMTP."""
+"""Envío de emails por SMTP: Gmail en producción, Mailpit en desarrollo."""
 
 import logging
 import os
@@ -17,7 +17,7 @@ APP_URL = os.getenv("APP_URL", "http://localhost:3000")
 
 def enviar_email(destinatario: str, asunto: str, html: str) -> bool:
     """Envía un email. Devuelve True si fue exitoso."""
-    if not SMTP_EMAIL or not SMTP_PASSWORD:
+    if not SMTP_EMAIL:
         logger.warning("Email no configurado. Asunto: %s → %s", asunto, destinatario)
         return False
 
@@ -29,8 +29,13 @@ def enviar_email(destinatario: str, asunto: str, html: str) -> bool:
 
     try:
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_EMAIL, SMTP_PASSWORD)
+            # Gmail exige TLS y login; Mailpit, el SMTP de desarrollo, no ofrece ninguno.
+            server.ehlo()
+            if server.has_extn("starttls"):
+                server.starttls()
+                server.ehlo()
+            if server.has_extn("auth"):
+                server.login(SMTP_EMAIL, SMTP_PASSWORD)
             server.sendmail(SMTP_EMAIL, destinatario, msg.as_string())
         logger.info("Email enviado a %s - Asunto: %s", destinatario, asunto)
         return True
@@ -116,3 +121,105 @@ def enviar_solicitud_presupuesto(
     </div>
     """
     return enviar_email(destinatario, f"Solicitud de presupuesto - Reclamo #{reclamo_id}", html)
+
+
+def enviar_rechazo_presupuesto(
+    destinatario: str,
+    reclamo_id: int,
+    nombre_escuela: str,
+    motivo: str | None,
+    link: str,
+) -> bool:
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #132a4d;">Presupuesto rechazado</h2>
+        <p>Tu presupuesto para el <strong>reclamo #{reclamo_id}</strong> ({nombre_escuela}) fue rechazado.</p>
+        <div style="background:#f4f6fb; border-radius:8px; padding:16px; margin:16px 0;">
+            <p style="margin:4px 0;"><strong>Motivo:</strong> {motivo or "—"}</p>
+        </div>
+        <p>Mientras la convocatoria siga abierta, podés enviar una nueva oferta desde el portal:</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{link}"
+               style="background-color: #1fa7b3; color: white; padding: 12px 30px;
+                      text-decoration: none; border-radius: 6px; font-weight: bold;">
+                Enviar una nueva oferta
+            </a>
+        </div>
+        <p style="color: #666; font-size: 13px;">
+            Si el botón no funciona, copiá y pegá este enlace en tu navegador:<br>
+            <a href="{link}">{link}</a>
+        </p>
+    </div>
+    """
+    return enviar_email(destinatario, f"Presupuesto rechazado - Reclamo #{reclamo_id}", html)
+
+
+def enviar_ajustes_presupuesto(
+    destinatario: str,
+    reclamo_id: int,
+    nombre_escuela: str,
+    ajustes: str | None,
+    link: str,
+) -> bool:
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #132a4d;">Ajustes solicitados</h2>
+        <p>Te pidieron ajustes en tu presupuesto para el <strong>reclamo #{reclamo_id}</strong> ({nombre_escuela}).</p>
+        <div style="background:#f4f6fb; border-radius:8px; padding:16px; margin:16px 0;">
+            <p style="margin:4px 0;"><strong>Qué corregir:</strong> {ajustes or "—"}</p>
+        </div>
+        <p>Podés enviar la versión corregida desde el portal:</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{link}"
+               style="background-color: #1fa7b3; color: white; padding: 12px 30px;
+                      text-decoration: none; border-radius: 6px; font-weight: bold;">
+                Ajustar presupuesto
+            </a>
+        </div>
+        <p style="color: #666; font-size: 13px;">
+            Si el botón no funciona, copiá y pegá este enlace en tu navegador:<br>
+            <a href="{link}">{link}</a>
+        </p>
+    </div>
+    """
+    return enviar_email(destinatario, f"Ajustes solicitados - Reclamo #{reclamo_id}", html)
+
+
+def enviar_no_seleccionado_presupuesto(
+    destinatario: str,
+    reclamo_id: int,
+    nombre_escuela: str,
+) -> bool:
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #132a4d;">Presupuesto no seleccionado</h2>
+        <p>Para el <strong>reclamo #{reclamo_id}</strong> ({nombre_escuela}) se eligió otra oferta,
+        así que tu presupuesto no fue seleccionado.</p>
+        <p style="color: #666; font-size: 13px;">
+            Gracias por tu participación. Si hiciera falta, podés volver a ser convocado.
+        </p>
+    </div>
+    """
+    return enviar_email(
+        destinatario, f"Presupuesto no seleccionado - Reclamo #{reclamo_id}", html
+    )
+
+
+def enviar_reclamo_cancelado_presupuesto(
+    destinatario: str,
+    reclamo_id: int,
+    nombre_escuela: str,
+    motivo: str | None,
+) -> bool:
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #132a4d;">Reclamo cancelado</h2>
+        <p>El <strong>reclamo #{reclamo_id}</strong> ({nombre_escuela}) se canceló, así que tu
+        presupuesto ya no se va a evaluar.</p>
+        <div style="background:#f4f6fb; border-radius:8px; padding:16px; margin:16px 0;">
+            <p style="margin:4px 0;"><strong>Motivo:</strong> {motivo or "—"}</p>
+        </div>
+        <p style="color: #666; font-size: 13px;">Gracias por tu participación.</p>
+    </div>
+    """
+    return enviar_email(destinatario, f"Reclamo cancelado - Reclamo #{reclamo_id}", html)
