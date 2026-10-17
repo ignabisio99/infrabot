@@ -227,3 +227,11 @@ def test_admin_puede_volver_a_ejecucion_desde_intervencion(
     assert reclamo.estado == EstadoReclamo.EN_EJECUCION
     fila = db.query(RecordatorioContratista).filter_by(reclamo_id=reclamo.id).one()
     assert fila.cantidad_envios == 0
+
+
+def test_seguimiento_horas_default_es_24(monkeypatch):
+    """Por defecto se pregunta al día siguiente a la misma hora (24 horas)."""
+    from services.seguimiento import seguimiento_horas
+
+    monkeypatch.delenv("SEGUIMIENTO_HORAS", raising=False)
+    assert seguimiento_horas() == 24.0

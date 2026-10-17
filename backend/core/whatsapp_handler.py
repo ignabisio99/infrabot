@@ -17,6 +17,7 @@ from core import reloj
 from core.ai import config as ai_config
 from models.foto_reclamo import FotoReclamo, TipoMedia
 from models.reclamo import EstadoReclamo, PrioridadReclamo, Reclamo
+from models.recordatorio_contratista import RecordatorioContratista
 from models.visita import Visita
 from models.recomendacion_ia import TipoRecomendacionIA
 from services import avance_contratista, estados_reclamo
@@ -129,6 +130,36 @@ def _es_confirmacion_no(texto: str) -> bool:
         texto, "no", "nop", "todavía no", "todavia no", "aún no", "aun no",
         "no pude", "no del todo",
     )
+
+
+def _es_reporte_termino(texto: str) -> bool:
+    """Detecta si el contratista indica que terminó o finalizó el trabajo."""
+    t = _normalizar_comando(texto or "")
+    if not t:
+        return False
+    # Negaciones explícitas no son término ("no terminé", "todavía no", etc.)
+    if re.search(r"\b(no|todav[ií]a no|a[uú]n no|no pude)\b", t):
+        return False
+
+    comandos_directos = {
+        "terminé", "termine", "terminamos", "terminado", "terminada",
+        "finalicé", "finalice", "finalizamos", "finalizado", "finalizada",
+        "listo", "lista",
+        "ya terminé", "ya termine", "ya terminamos", "ya finalicé", "ya finalice",
+        "ya está listo", "ya esta listo", "ya está", "ya esta",
+        "trabajo terminado", "trabajo listo", "obra terminada", "obra lista",
+        "cu05_termino_si",
+    }
+    if t in comandos_directos:
+        return True
+
+    # Patrones por regex para frases como "ya terminé el trabajo", "terminamos la obra"
+    if re.search(r"\b(termin[eé]|terminamos|terminado|finalic[eé]|finalizamos|finalizado)\b", t):
+        return True
+    if re.search(r"\b(ya est[aá] listo|trabajo listo|obra lista|qued[oó] listo)\b", t):
+        return True
+
+    return False
 
 
 def _sin_saludo_inicial(texto: str) -> str:
@@ -1417,14 +1448,28 @@ def _procesar_avance_ejecucion(db: Session, usuario: str, mensaje: str) -> str:
     texto = mensaje.strip()
     norma = _normalizar_comando(texto)
 
-    if _es_comando(texto, "terminé", "termine", "finalizado", "finalicé", "finalice"):
+    if _es_reporte_termino(texto):
+        fila = (
+            db.query(RecordatorioContratista)
+            .filter(RecordatorioContratista.reclamo_id == reclamo.id)
+            .first()
+        )
+        if fila and fila.consulto_escuela:
+            del _conversaciones[usuario]
+            return (
+                f"👍 Ya tenemos registrado que terminaste el reclamo #{reclamo.id}.\n"
+                "Estamos esperando la confirmación de la escuela para darlo por finalizado."
+            )
+        from services import seguimiento
+
         avance_contratista.registrar_avance_texto(
             db, reclamo, contratista, texto, termino=True
         )
+        seguimiento.preguntar_a_escuela_si_resuelto(db, reclamo, registrar_comentario=False)
         del _conversaciones[usuario]
         return (
-            f"✅ Anoté que el trabajo del reclamo #{reclamo.id} está *terminado*.\n"
-            "El consejo lo revisa y da por finalizado. No hace falta que hagas nada más."
+            f"✅ ¡Gracias! Registré que el trabajo del reclamo #{reclamo.id} está *terminado*.\n"
+            "Le pedimos a la escuela que confirme que quedó resuelto para cerrarlo."
         )
 
     if _es_comando_listo(texto) or norma in ("listo",):
@@ -1473,8 +1518,9 @@ def _procesar_cu05_inicio(db: Session, usuario: str, mensaje: str) -> str:
         coordinacion_visita.registrar_inicio_obra(db, reclamo, contratista)
         del _conversaciones[usuario]
         return (
-            f"🛠️ ¡Genial! El reclamo #{reclamo.id} quedó *en ejecución*.\n"
-            "Te vamos a consultar por este chat cómo viene el trabajo."
+            f"🛠️ ¡Genial! El reclamo #{reclamo.id} quedó *en ejecución*.\n\n"
+            "Te vamos a consultar mañana a esta misma hora para ver cómo viene el trabajo.\n\n"
+            "Si terminás antes, podés avisarnos directamente por acá enviando un mensaje que diga *terminé* o *listo* para confirmar que el trabajo está terminado."
         )
 
     return (
@@ -1492,9 +1538,21 @@ def _procesar_cu05_termino(db: Session, usuario: str, mensaje: str) -> str:
         del _conversaciones[usuario]
         return "⚠️ Ese reclamo ya no está en ejecución. Escribí *ayuda* para ver opciones."
 
+    fila = (
+        db.query(RecordatorioContratista)
+        .filter(RecordatorioContratista.reclamo_id == reclamo.id)
+        .first()
+    )
+    if fila and fila.consulto_escuela:
+        del _conversaciones[usuario]
+        return (
+            f"👍 Ya tenemos registrado que terminaste el reclamo #{reclamo.id}.\n"
+            "Estamos esperando la confirmación de la escuela para darlo por finalizado."
+        )
+
     # Esperando el tiempo estimado: salvo que diga explícitamente que sí terminó, se toma
     # el texto como el estimado restante.
-    if conv.get("paso") == "cu05_estimado" and not _es_confirmacion_si(mensaje):
+    if conv.get("paso") == "cu05_estimado" and not (_es_confirmacion_si(mensaje) or _es_reporte_termino(mensaje)):
         seguimiento.registrar_tiempo_estimado(db, reclamo, mensaje)
         del _conversaciones[usuario]
         return (
@@ -1502,11 +1560,16 @@ def _procesar_cu05_termino(db: Session, usuario: str, mensaje: str) -> str:
             "Si terminás antes, avisame por acá."
         )
 
-    if _es_confirmacion_si(mensaje):
-        seguimiento.preguntar_a_escuela_si_resuelto(db, reclamo)
+    if _es_confirmacion_si(mensaje) or _es_reporte_termino(mensaje):
+        hallado = avance_contratista.reclamo_en_ejecucion_de(db, usuario)
+        contratista = hallado[1] if hallado else None
+        avance_contratista.registrar_avance_texto(
+            db, reclamo, contratista, mensaje, termino=True
+        )
+        seguimiento.preguntar_a_escuela_si_resuelto(db, reclamo, registrar_comentario=False)
         del _conversaciones[usuario]
         return (
-            f"✅ ¡Gracias! Registré que terminaste el reclamo #{reclamo.id}.\n"
+            f"✅ ¡Gracias! Registré que el trabajo del reclamo #{reclamo.id} está *terminado*.\n"
             "Le pedimos a la escuela que confirme que quedó resuelto para cerrarlo."
         )
 
@@ -1517,7 +1580,7 @@ def _procesar_cu05_termino(db: Session, usuario: str, mensaje: str) -> str:
             "Por ejemplo: *2 días*, *5 horas*."
         )
 
-    # Texto libre que no es sí/no: lo tratamos como un avance normal y re-preguntamos.
+    # Texto libre que no es sí/no ni término: lo tratamos como un avance normal y re-preguntamos.
     hallado = avance_contratista.reclamo_en_ejecucion_de(db, usuario)
     contratista = hallado[1] if hallado else None
     avance_contratista.registrar_avance_texto(db, reclamo, contratista, mensaje)
@@ -1557,21 +1620,18 @@ def _procesar_cu05_resuelto(db: Session, usuario: str, mensaje: str) -> str:
 
 
 def _reconstruir_cu05(db: Session, usuario: str, mensaje: str) -> str | None:
-    """Reconstruye el paso de seguimiento CU-05 desde la base si se perdió en memoria.
-
-    Solo actúa si el mensaje parece una respuesta a una de las preguntas (botón o sí/no),
-    para no interferir con mensajes normales. Devuelve la respuesta del handler o None.
-    """
+    """Reconstruye el paso de seguimiento CU-05 desde la base si se perdió en memoria o reporte proactivo."""
     from services import cu05_botones, coordinacion_visita, resolucion_escuela
 
     raw = (mensaje or "").strip()
     es_boton = raw in cu05_botones.TODOS
     es_si_no = _es_confirmacion_si(mensaje) or _es_confirmacion_no(mensaje)
-    if not (es_boton or es_si_no):
+    es_termino = _es_reporte_termino(mensaje)
+    if not (es_boton or es_si_no or es_termino):
         return None
 
     # Botón de inicio o un sí/no mientras hay una visita coordinada con pregunta enviada.
-    if raw in (cu05_botones.INICIO_SI, cu05_botones.INICIO_NO) or es_si_no:
+    if raw in (cu05_botones.INICIO_SI, cu05_botones.INICIO_NO) or (es_si_no and not es_termino):
         hallado = coordinacion_visita.contratista_de_reclamo_coordinado(db, usuario)
         if hallado is not None:
             from models.visita import EstadoVisita, Visita
@@ -1596,14 +1656,14 @@ def _reconstruir_cu05(db: Session, usuario: str, mensaje: str) -> str | None:
                 return _procesar_cu05_inicio(db, usuario, mensaje)
 
     # Botón de resuelto (escuela) o sí/no de la escuela creadora de un reclamo en ejecución.
-    if raw in (cu05_botones.RESUELTO_SI, cu05_botones.RESUELTO_NO) or es_si_no:
+    if raw in (cu05_botones.RESUELTO_SI, cu05_botones.RESUELTO_NO) or (es_si_no and not es_termino):
         reclamo_r = resolucion_escuela.reclamo_en_ejecucion_del_creador(db, usuario)
         if reclamo_r is not None:
             _conversaciones[usuario] = {"paso": "cu05_resuelto", "reclamo_id": reclamo_r.id}
             return _procesar_cu05_resuelto(db, usuario, mensaje)
 
-    # Botón de terminó (contratista) o sí/no del contratista de un reclamo en ejecución.
-    if raw in (cu05_botones.TERMINO_SI, cu05_botones.TERMINO_NO) or es_si_no:
+    # Botón de terminó (contratista), sí/no, o reporte proactivo de término del contratista de un reclamo en ejecución.
+    if raw in (cu05_botones.TERMINO_SI, cu05_botones.TERMINO_NO) or es_si_no or es_termino:
         from services import avance_contratista
 
         hallado = avance_contratista.reclamo_en_ejecucion_de(db, usuario)

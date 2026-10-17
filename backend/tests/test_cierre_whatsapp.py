@@ -72,6 +72,8 @@ def test_contratista_confirma_inicio_pasa_a_ejecucion(
         r = procesar_mensaje(db, cu05_botones.INICIO_SI, usuario=telefono)
 
     assert "ejecución" in r.lower()
+    assert "mañana" in r.lower()
+    assert "terminé" in r.lower()
     assert reclamo.estado == EstadoReclamo.EN_EJECUCION
 
 
@@ -249,3 +251,75 @@ def test_servicio_resolucion_finaliza(
     destinos = {llamada.args[0] for llamada in enviar.call_args_list}
     assert "5491199998888" in destinos
     assert "5491122334455" in destinos
+
+
+def test_contratista_avisa_terminado_proactivamente(
+    db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista
+):
+    """El contratista manda 'terminé' por iniciativa propia (sin recordatorio activo)."""
+    contratista = crear_contratista()
+    contratista.telefono = "5491166778899"
+    reclamo = crear_reclamo(estado=EstadoReclamo.EN_EJECUCION, telefono_creador="5491100112233")
+    crear_presupuesto_aprobado(
+        reclamo, items=[(1, 100)], fecha_aprobacion=reclamo.fecha_creacion, contratista=contratista
+    )
+    telefono = "5491166778899"
+    reiniciar_conversacion(telefono)
+
+    with patch("core.whatsapp_client.enviar_mensaje"), patch("core.whatsapp_client.enviar_botones") as botones:
+        r = procesar_mensaje(db, "terminé", usuario=telefono)
+
+    assert "terminado" in r.lower()
+    assert "escuela" in r.lower()
+    assert reclamo.estado == EstadoReclamo.EN_EJECUCION
+    fila = db.query(RecordatorioContratista).filter_by(reclamo_id=reclamo.id).one()
+    assert fila.consulto_escuela is True
+    botones.assert_called_once()
+    assert botones.call_args.args[0] == "5491100112233"
+
+
+def test_contratista_avisa_ya_termine_el_trabajo(
+    db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista
+):
+    """Variación de frase libre: 'ya terminé el trabajo'."""
+    contratista = crear_contratista()
+    contratista.telefono = "5491177665544"
+    reclamo = crear_reclamo(estado=EstadoReclamo.EN_EJECUCION, telefono_creador="5491100223344")
+    crear_presupuesto_aprobado(
+        reclamo, items=[(1, 100)], fecha_aprobacion=reclamo.fecha_creacion, contratista=contratista
+    )
+    telefono = "5491177665544"
+    reiniciar_conversacion(telefono)
+
+    with patch("core.whatsapp_client.enviar_mensaje"), patch("core.whatsapp_client.enviar_botones") as botones:
+        r = procesar_mensaje(db, "ya terminé el trabajo", usuario=telefono)
+
+    assert "terminado" in r.lower()
+    fila = db.query(RecordatorioContratista).filter_by(reclamo_id=reclamo.id).one()
+    assert fila.consulto_escuela is True
+    botones.assert_called_once()
+
+
+def test_contratista_repite_termine_mientras_espera_escuela(
+    db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista
+):
+    """Si el contratista vuelve a escribir 'terminé' mientras espera a la escuela, no re-consulta."""
+    contratista = crear_contratista()
+    contratista.telefono = "5491188990011"
+    reclamo = crear_reclamo(estado=EstadoReclamo.EN_EJECUCION, telefono_creador="5491100334455")
+    crear_presupuesto_aprobado(
+        reclamo, items=[(1, 100)], fecha_aprobacion=reclamo.fecha_creacion, contratista=contratista
+    )
+    telefono = "5491188990011"
+    reiniciar_conversacion(telefono)
+
+    with patch("core.whatsapp_client.enviar_mensaje"), patch("core.whatsapp_client.enviar_botones") as botones:
+        r1 = procesar_mensaje(db, "terminé", usuario=telefono)
+        assert "terminado" in r1.lower()
+        assert botones.call_count == 1
+
+        r2 = procesar_mensaje(db, "terminé", usuario=telefono)
+        assert "ya tenemos registrado" in r2.lower()
+        # No volvió a llamar a la escuela
+        assert botones.call_count == 1
+

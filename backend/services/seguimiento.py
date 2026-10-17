@@ -42,12 +42,13 @@ class IntervencionNoForzable(Exception):
 
 
 def seguimiento_horas() -> float:
-    # 6 h: a las 6 horas de entrar en ejecución se pregunta por primera vez si terminó.
+    # 24 h: al día siguiente en la misma hora (24 horas después de entrar en ejecución)
+    # se pregunta por primera vez si terminó.
     # Después el ritmo lo marca el tiempo estimado que informa el contratista.
     try:
-        return float(os.getenv("SEGUIMIENTO_HORAS") or "6")
+        return float(os.getenv("SEGUIMIENTO_HORAS") or "24")
     except ValueError:
-        return 6.0
+        return 24.0
 
 
 def seguimiento_intervalo_segundos() -> int:
@@ -140,7 +141,7 @@ def _vencer(db: Session, reclamo: Reclamo, ahora: datetime, umbral: timedelta) -
     if fila and fila.consulto_escuela:
         return False
     # Si el contratista dio un tiempo estimado, la próxima pregunta se rige por esa fecha
-    # y no por el umbral fijo de 6 h.
+    # y no por el umbral fijo de 24 h.
     if fila and fila.proxima_pregunta is not None:
         prox = fila.proxima_pregunta
         if prox.tzinfo is None:
@@ -440,7 +441,9 @@ def registrar_tiempo_estimado(db: Session, reclamo: Reclamo, texto: str) -> floa
     return horas
 
 
-def preguntar_a_escuela_si_resuelto(db: Session, reclamo: Reclamo) -> bool:
+def preguntar_a_escuela_si_resuelto(
+    db: Session, reclamo: Reclamo, *, registrar_comentario: bool = True
+) -> bool:
     """El contratista confirmó que terminó: se le pregunta a la escuela si quedó resuelto.
 
     Marca consulto_escuela para no seguir molestando al contratista. El reclamo sigue en
@@ -460,13 +463,14 @@ def preguntar_a_escuela_si_resuelto(db: Session, reclamo: Reclamo) -> bool:
     fila.consulto_escuela = True
     fila.proxima_pregunta = None
 
-    db.add(
-        ComentarioReclamo(
-            reclamo_id=reclamo.id,
-            usuario_id=None,
-            texto="[WhatsApp — Contratista]\nEl contratista informó que terminó el trabajo.",
+    if registrar_comentario:
+        db.add(
+            ComentarioReclamo(
+                reclamo_id=reclamo.id,
+                usuario_id=None,
+                texto="[WhatsApp — Contratista]\nEl contratista informó que terminó el trabajo.",
+            )
         )
-    )
     db.commit()
 
     if not reclamo.telefono_creador:
