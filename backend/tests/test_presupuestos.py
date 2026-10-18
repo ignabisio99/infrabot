@@ -5,6 +5,7 @@ import services.avisos_presupuesto
 import services.coordinacion_visita
 from core.dependencies import get_current_user
 from main import app
+from models.presupuesto import EstadoPresupuesto
 from models.reclamo import EstadoReclamo
 from models.usuario import EstadoUsuario, TipoUsuario, Usuario
 
@@ -372,6 +373,28 @@ def test_se_avisa_por_mail_al_ganador(
     [mail] = sin_efectos_externos
     assert mail[:4] == ("ganadora@test.local", reclamo.id, reclamo.nombre_escuela, reclamo.ubicacion)
     assert mail[4].endswith("/portal/presupuestos")
+
+
+def test_editar_una_oferta_cerrada_explica_el_estado_con_su_etiqueta(
+    client, loguear_contratista, crear_reclamo
+):
+    reclamo = crear_reclamo(estado=EstadoReclamo.PENDIENTE_PRESUPUESTO)
+    perdedora = loguear_contratista("Perdedora")
+    presupuesto = _cargar(client, reclamo, perdedora).json()
+    ganador = _cargar(client, reclamo, loguear_contratista("Ganadora")).json()
+    _decidir(client, ganador["id"], "APROBADO")
+
+    loguear_contratista("Perdedora")
+    respuesta = _editar(client, presupuesto, perdedora)
+
+    assert respuesta.status_code == 409
+    assert respuesta.json()["detail"] == 'No se puede editar un presupuesto en estado "No seleccionado"'
+
+
+@pytest.mark.parametrize("enum", [EstadoPresupuesto, EstadoReclamo])
+def test_todos_los_estados_tienen_etiqueta(enum):
+    for estado in enum:
+        assert estado.etiqueta
 
 
 def test_el_reclamo_cuenta_las_ofertas_en_carrera(client, loguear_contratista, crear_reclamo):

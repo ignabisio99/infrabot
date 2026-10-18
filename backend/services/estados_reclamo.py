@@ -214,7 +214,7 @@ def validar_admite_presupuesto(reclamo: Reclamo) -> None:
     """Corta antes de cargarle o editarle un presupuesto a un reclamo que no lo admite."""
     if not admite_presupuesto(reclamo.estado):
         raise ReclamoNoAdmitePresupuesto(
-            f"El reclamo está en {reclamo.estado.value} y no admite presupuestos"
+            f'El reclamo está en estado "{reclamo.estado.etiqueta}" y no admite presupuestos'
         )
 
 
@@ -252,15 +252,15 @@ def cambiar_estado(
     if not puede_transicionar(estado_anterior, nuevo_estado, origen):
         if puede_transicionar(estado_anterior, nuevo_estado, OrigenCambioEstado.AUTOMATICO):
             raise TransicionInvalida(
-                f"Pasar de {estado_anterior.value} a {nuevo_estado.value} no se hace a "
+                f'Pasar de "{estado_anterior.etiqueta}" a "{nuevo_estado.etiqueta}" no se hace a '
                 "mano: lo dispara el sistema"
             )
         raise TransicionInvalida(
-            f"No se puede pasar de {estado_anterior.value} a {nuevo_estado.value}"
+            f'No se puede pasar de "{estado_anterior.etiqueta}" a "{nuevo_estado.etiqueta}"'
         )
 
     if nuevo_estado in ESTADOS_CON_MOTIVO_OBLIGATORIO and not (motivo or "").strip():
-        raise MotivoRequerido(f"Pasar a {nuevo_estado.value} requiere indicar un motivo")
+        raise MotivoRequerido(f'Pasar a "{nuevo_estado.etiqueta}" requiere indicar un motivo')
 
     reclamo.estado = nuevo_estado
     evento = HistorialEstadoReclamo(

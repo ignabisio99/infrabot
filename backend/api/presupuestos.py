@@ -73,7 +73,7 @@ def _validar_sin_decidir(presupuesto: Presupuesto, accion: str) -> None:
     if not estados_presupuesto.esta_vigente(presupuesto):
         raise HTTPException(
             status_code=409,
-            detail=f"No se puede {accion} un presupuesto en {presupuesto.estado.value}",
+            detail=f'No se puede {accion} un presupuesto en estado "{presupuesto.estado.etiqueta}"',
         )
 
 

@@ -153,7 +153,7 @@ def asignar_oferta_existente(
 def _exigir_aprobado(db: Session, reclamo: Reclamo) -> Presupuesto:
     if reclamo.estado not in ESTADOS_REABRIR:
         raise ReaperturaInvalida(
-            f"El reclamo está en {reclamo.estado.value} y no se puede volver a convocar así"
+            f'El reclamo está en estado "{reclamo.estado.etiqueta}" y no se puede volver a convocar así'
         )
     aprobado = (
         db.query(Presupuesto)

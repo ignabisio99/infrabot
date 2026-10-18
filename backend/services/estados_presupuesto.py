@@ -252,15 +252,15 @@ def cambiar_estado(
     if not puede_transicionar(estado_anterior, nuevo_estado, origen):
         if puede_transicionar(estado_anterior, nuevo_estado, OrigenCambioEstado.AUTOMATICO):
             raise TransicionInvalida(
-                f"Pasar de {estado_anterior.value} a {nuevo_estado.value} no se hace a "
+                f'Pasar de "{estado_anterior.etiqueta}" a "{nuevo_estado.etiqueta}" no se hace a '
                 "mano: lo dispara el sistema"
             )
         raise TransicionInvalida(
-            f"No se puede pasar de {estado_anterior.value} a {nuevo_estado.value}"
+            f'No se puede pasar de "{estado_anterior.etiqueta}" a "{nuevo_estado.etiqueta}"'
         )
 
     if nuevo_estado in ESTADOS_CON_MOTIVO_OBLIGATORIO and not (motivo or "").strip():
-        raise MotivoRequerido(f"Pasar a {nuevo_estado.value} requiere indicar un motivo")
+        raise MotivoRequerido(f'Pasar a "{nuevo_estado.etiqueta}" requiere indicar un motivo')
 
     presupuesto.estado = nuevo_estado
     evento = HistorialEstadoPresupuesto(
@@ -290,7 +290,7 @@ def decidir(
     reclamo = presupuesto.reclamo
     if not hay_evaluacion_abierta(presupuesto):
         raise EvaluacionNoAbierta(
-            f"El reclamo está en {reclamo.estado.value}: no hay una evaluación abierta "
+            f'El reclamo está en estado "{reclamo.estado.etiqueta}": no hay una evaluación abierta '
             "en la que decidir"
         )
 

@@ -18,6 +18,20 @@ class EstadoPresupuesto(str, enum.Enum):
     # hubo un juicio sobre esta oferta: simplemente se eligió otra.
     NO_SELECCIONADO = "NO_SELECCIONADO"
 
+    @property
+    def etiqueta(self) -> str:
+        """Para los mensajes que ve una persona. Igual que en el frontend (budgets/estados.js)."""
+        return _ETIQUETAS_ESTADO_PRESUPUESTO[self]
+
+
+_ETIQUETAS_ESTADO_PRESUPUESTO = {
+    EstadoPresupuesto.RECIBIDO: "Recibido",
+    EstadoPresupuesto.AJUSTES_SOLICITADOS: "Ajustes solicitados",
+    EstadoPresupuesto.APROBADO: "Aprobado",
+    EstadoPresupuesto.RECHAZADO: "Rechazado",
+    EstadoPresupuesto.NO_SELECCIONADO: "No seleccionado",
+}
+
 
 # Mismo motivo que `estado_reclamo_enum` en models/reclamo.py: el tipo lo usan dos
 # tablas (presupuesto e historial_estado_presupuesto) y asociarlo a la MetaData hace que

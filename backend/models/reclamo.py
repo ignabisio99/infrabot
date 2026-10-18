@@ -27,6 +27,27 @@ class EstadoReclamo(str, enum.Enum):
     RECHAZADO = "RECHAZADO"
     CANCELADO = "CANCELADO"
 
+    @property
+    def etiqueta(self) -> str:
+        """Para los mensajes que ve una persona. Igual que en el frontend (claims/estados.js)."""
+        return _ETIQUETAS_ESTADO_RECLAMO[self]
+
+
+_ETIQUETAS_ESTADO_RECLAMO = {
+    EstadoReclamo.PENDIENTE_REVISION: "Pendiente de revisión",
+    EstadoReclamo.PENDIENTE_PRESUPUESTO: "Pendiente de presupuesto",
+    EstadoReclamo.EN_EVALUACION: "En evaluación",
+    EstadoReclamo.APROBADO: "Aprobado",
+    EstadoReclamo.PENDIENTE_COORDINACION: "Pendiente de coordinación",
+    EstadoReclamo.VISITA_COORDINADA: "Visita coordinada",
+    EstadoReclamo.EN_EJECUCION: "En ejecución",
+    EstadoReclamo.PENDIENTE_INTERVENCION: "Pendiente de intervención",
+    EstadoReclamo.FINALIZADO: "Finalizado",
+    EstadoReclamo.DESIERTO: "Desierto",
+    EstadoReclamo.RECHAZADO: "Rechazado",
+    EstadoReclamo.CANCELADO: "Cancelado",
+}
+
 
 # El tipo enum de Postgres lo usan dos tablas (reclamo e historial_estado_reclamo). Al
 # asociarlo a la MetaData, SQLAlchemy lo crea una sola vez en `create_all` en vez de

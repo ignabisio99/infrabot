@@ -275,7 +275,7 @@ def crear_comentario_reclamo(
     if reclamo.estado in estados_reclamo.ESTADOS_FINALES:
         raise HTTPException(
             status_code=409,
-            detail=f"No se puede comentar un reclamo en {reclamo.estado.value}",
+            detail=f'No se puede comentar un reclamo en estado "{reclamo.estado.etiqueta}"',
         )
 
     comentario = ComentarioReclamo(
@@ -320,7 +320,7 @@ def subir_foto(
     if usuario.es_inspector and reclamo.estado in estados_reclamo.ESTADOS_FINALES:
         raise HTTPException(
             status_code=409,
-            detail=f"No se pueden agregar fotos a un reclamo en {reclamo.estado.value}",
+            detail=f'No se pueden agregar fotos a un reclamo en estado "{reclamo.estado.etiqueta}"',
         )
 
     if archivo.content_type not in TIPOS_MEDIA_PERMITIDOS:
@@ -377,7 +377,7 @@ def eliminar_foto(
         if foto.reclamo.estado in estados_reclamo.ESTADOS_FINALES:
             raise HTTPException(
                 status_code=409,
-                detail=f"No se pueden quitar fotos de un reclamo en {foto.reclamo.estado.value}",
+                detail=f'No se pueden quitar fotos de un reclamo en estado "{foto.reclamo.estado.etiqueta}"',
             )
         # Los contratistas presupuestan mirando las fotos: si el inspector quita una, queda
         # constancia en los comentarios del reclamo.
