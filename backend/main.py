@@ -16,6 +16,7 @@ from api.configuracion import router as configuracion_router
 from api.conversaciones import router as conversaciones_router
 from api.contratistas import router as contratistas_router
 from api.dashboard import router as dashboard_router
+from api.instituciones import router as instituciones_router
 from api.reportes import router as reportes_router
 from api.listas_contratistas import router as listas_contratistas_router
 from api.notificaciones import router as notificaciones_router
@@ -167,6 +168,7 @@ app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR, check_dir=False), name=
 
 app.include_router(auth_router)
 app.include_router(reclamos_router)
+app.include_router(instituciones_router)
 app.include_router(contratistas_router)
 app.include_router(dashboard_router)
 app.include_router(listas_contratistas_router)

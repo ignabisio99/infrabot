@@ -37,6 +37,7 @@ from models import (
     EstadoUsuario,
     HistorialEstadoReclamo,
     IndiceInflacion,
+    Institucion,
     ItemPresupuesto,
     OrigenCambioEstado,
     Presupuesto,
@@ -110,8 +111,7 @@ CONTRATISTAS = [
 # va a disparar el sistema y no una persona.
 RECLAMOS = [
     dict(
-        nombre_escuela="Escuela N°12 - Manuel Belgrano",
-        ubicacion="Tablero principal, ala norte",
+        institucion="060584200",  # EP Nº10 Estados Unidos de Norteamérica
         prioridad=PrioridadReclamo.ALTA,
         categoria="Electricidad",
         descripcion="Cortocircuito en el tablero principal del ala norte del edificio.",
@@ -151,8 +151,7 @@ RECLAMOS = [
         ],
     ),
     dict(
-        nombre_escuela="Escuela N°5 - Domingo Sarmiento",
-        ubicacion="Baño, planta baja",
+        institucion="060829300",  # EP Nº5 Ingeniero Jorge Newbery
         prioridad=PrioridadReclamo.MEDIA,
         categoria="Plomería",
         descripcion="Pérdida de agua en el baño de planta baja.",
@@ -184,8 +183,7 @@ RECLAMOS = [
         ],
     ),
     dict(
-        nombre_escuela="Escuela N°8 - José de San Martín",
-        ubicacion="Patio interno",
+        institucion="060746900",  # ES Nº1 Perito Moreno
         prioridad=PrioridadReclamo.BAJA,
         categoria="Albañilería",
         descripcion="Grieta en la pared del patio interno.",
@@ -193,8 +191,7 @@ RECLAMOS = [
         camino=[],
     ),
     dict(
-        nombre_escuela="Escuela N°3 - Bernardino Rivadavia",
-        ubicacion="Aula 7, primer piso",
+        institucion="060480000",  # EP Nº3 Bartolomé Mitre
         prioridad=PrioridadReclamo.BAJA,
         categoria="Carpintería",
         descripcion="Pizarrón flojo en el aula 7 del primer piso.",
@@ -204,8 +201,7 @@ RECLAMOS = [
         ],
     ),
     dict(
-        nombre_escuela="Escuela N°21 - Juana Azurduy",
-        ubicacion="Techo del SUM",
+        institucion="061154700",  # EEST Nº5 Galileo Galilei
         prioridad=PrioridadReclamo.ALTA,
         categoria="Techos",
         descripcion="Filtraciones en el techo del salón de usos múltiples.",
@@ -309,13 +305,24 @@ def crear_inspector(db):
 
 
 CAMPOS_DEL_RECLAMO = (
-    "nombre_escuela",
-    "ubicacion",
     "prioridad",
     "categoria",
     "descripcion",
     "observaciones",
 )
+
+
+def _escuela_del_padron(db, identificador):
+    """Nombre y ubicación tal como los deja el bot al elegir una escuela del padrón.
+
+    La ubicación del reclamo es la dirección de la escuela; el aula o sector va en la
+    descripción. `identificador` es el oficial del CSV, que no cambia entre cargas.
+    """
+    institucion = db.query(Institucion).filter_by(identificador=identificador).one()
+    return {
+        "nombre_escuela": " ".join(institucion.nombre.split()),
+        "ubicacion": " ".join((institucion.domicilio or "").split()),
+    }
 
 
 def _recorrer(db, reclamo, pasos):
@@ -342,6 +349,7 @@ def crear_reclamos(db, contratistas):
     for data in RECLAMOS:
         reclamo = Reclamo(
             **{campo: data[campo] for campo in CAMPOS_DEL_RECLAMO},
+            **_escuela_del_padron(db, data["institucion"]),
             estado=estados_reclamo.ESTADO_INICIAL,
         )
         db.add(reclamo)
@@ -387,19 +395,19 @@ def crear_reclamos(db, contratistas):
 # `dias_resolucion` cuántos días tardó en finalizar (None = sigue abierto en `estado_final`).
 RECLAMOS_REPORTE = [
     # Finalizados en distintos meses (alimentan tasa de resolución y días promedio).
-    dict(escuela="Escuela N°15 - Rosario Vera", categoria="Plomería", prioridad=PrioridadReclamo.MEDIA, dias_atras=150, dias_resolucion=20),
-    dict(escuela="Escuela N°7 - Mariano Moreno", categoria="Electricidad", prioridad=PrioridadReclamo.ALTA, dias_atras=130, dias_resolucion=12),
-    dict(escuela="Escuela N°30 - Hipólito Yrigoyen", categoria="Techos", prioridad=PrioridadReclamo.ALTA, dias_atras=110, dias_resolucion=35),
-    dict(escuela="Escuela N°9 - Nicolás Avellaneda", categoria="Pintura", prioridad=PrioridadReclamo.BAJA, dias_atras=95, dias_resolucion=8),
-    dict(escuela="Escuela N°18 - Esteban Echeverría", categoria="Pisos", prioridad=PrioridadReclamo.MEDIA, dias_atras=80, dias_resolucion=25),
-    dict(escuela="Escuela N°2 - Guillermo Rawson", categoria="Plomería", prioridad=PrioridadReclamo.MEDIA, dias_atras=60, dias_resolucion=15),
-    dict(escuela="Escuela N°11 - Cornelio Saavedra", categoria="Gas", prioridad=PrioridadReclamo.ALTA, dias_atras=45, dias_resolucion=18),
-    dict(escuela="Escuela N°25 - Juan B. Justo", categoria="Aberturas", prioridad=PrioridadReclamo.BAJA, dias_atras=30, dias_resolucion=10),
+    dict(institucion="060045200", categoria="Plomería", prioridad=PrioridadReclamo.MEDIA, dias_atras=150, dias_resolucion=20),
+    dict(institucion="060356600", categoria="Electricidad", prioridad=PrioridadReclamo.ALTA, dias_atras=130, dias_resolucion=12),
+    dict(institucion="060608600", categoria="Techos", prioridad=PrioridadReclamo.ALTA, dias_atras=110, dias_resolucion=35),
+    dict(institucion="060943600", categoria="Pintura", prioridad=PrioridadReclamo.BAJA, dias_atras=95, dias_resolucion=8),
+    dict(institucion="060979400", categoria="Pisos", prioridad=PrioridadReclamo.MEDIA, dias_atras=80, dias_resolucion=25),
+    dict(institucion="060980500", categoria="Plomería", prioridad=PrioridadReclamo.MEDIA, dias_atras=60, dias_resolucion=15),
+    dict(institucion="060996500", categoria="Gas", prioridad=PrioridadReclamo.ALTA, dias_atras=45, dias_resolucion=18),
+    dict(institucion="061071700", categoria="Aberturas", prioridad=PrioridadReclamo.BAJA, dias_atras=30, dias_resolucion=10),
     # Abiertos (sin resolver), repartidos en el tiempo.
-    dict(escuela="Escuela N°14 - Bartolomé Mitre", categoria="Electricidad", prioridad=PrioridadReclamo.ALTA, dias_atras=20, dias_resolucion=None, estado_final=EstadoReclamo.PENDIENTE_PRESUPUESTO),
-    dict(escuela="Escuela N°6 - Dalmacio Vélez", categoria="Infraestructura", prioridad=PrioridadReclamo.MEDIA, dias_atras=10, dias_resolucion=None, estado_final=EstadoReclamo.PENDIENTE_REVISION),
-    dict(escuela="Escuela N°19 - Juana Manso", categoria="Techos", prioridad=PrioridadReclamo.ALTA, dias_atras=5, dias_resolucion=None, estado_final=EstadoReclamo.PENDIENTE_REVISION),
-    dict(escuela="Escuela N°1 - Manuel Dorrego", categoria="Pintura", prioridad=PrioridadReclamo.BAJA, dias_atras=2, dias_resolucion=None, estado_final=EstadoReclamo.PENDIENTE_REVISION),
+    dict(institucion="061147800", categoria="Electricidad", prioridad=PrioridadReclamo.ALTA, dias_atras=20, dias_resolucion=None, estado_final=EstadoReclamo.PENDIENTE_PRESUPUESTO),
+    dict(institucion="061377900", categoria="Infraestructura", prioridad=PrioridadReclamo.MEDIA, dias_atras=10, dias_resolucion=None, estado_final=EstadoReclamo.PENDIENTE_REVISION),
+    dict(institucion="061813000", categoria="Techos", prioridad=PrioridadReclamo.ALTA, dias_atras=5, dias_resolucion=None, estado_final=EstadoReclamo.PENDIENTE_REVISION),
+    dict(institucion="061865100", categoria="Pintura", prioridad=PrioridadReclamo.BAJA, dias_atras=2, dias_resolucion=None, estado_final=EstadoReclamo.PENDIENTE_REVISION),
 ]
 
 
@@ -416,8 +424,7 @@ def _seed_reclamos_reporte(db):
     for data in RECLAMOS_REPORTE:
         creado = ahora - timedelta(days=data["dias_atras"])
         reclamo = Reclamo(
-            nombre_escuela=data["escuela"],
-            ubicacion="Sector a definir",
+            **_escuela_del_padron(db, data["institucion"]),
             prioridad=data["prioridad"],
             categoria=data["categoria"],
             descripcion=f"Reclamo de {data['categoria'].lower()} para reporte de prueba.",

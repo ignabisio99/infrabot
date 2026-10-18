@@ -1,9 +1,20 @@
-import { useState } from 'react';
-import { TextInput, Textarea, Button, Stack, Select, Group, Text } from '@mantine/core';
+import { useEffect, useState } from 'react';
+import {
+  Autocomplete,
+  TextInput,
+  Textarea,
+  Button,
+  Stack,
+  Select,
+  Group,
+  Text,
+} from '@mantine/core';
 import { useForm } from '@mantine/form';
+import { useDebouncedValue } from '@mantine/hooks';
 import { IconMicrophone } from '@tabler/icons-react';
 
 import { transcribirAudio } from '../../api/ai';
+import { buscarInstituciones } from '../../api/instituciones';
 import { useGrabarAudio } from '../../hooks/useGrabarAudio';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 
@@ -29,12 +40,38 @@ export function SchoolClaimForm({
     initialValues,
     validate: {
       schoolName: (value) => (value.length < 3 ? 'Ingrese el nombre de la escuela' : null),
-      sector: (value) => (value.length < 2 ? 'Ingrese la ubicación' : null),
+      sector: (value) => (value.length < 2 ? 'Ingrese la dirección de la escuela' : null),
       priority: (value) => (value === '' ? 'Seleccione una prioridad' : null),
       category: (value) => (value === '' ? 'Ingrese una categoría' : null),
       description: (value) => (value.length < 10 ? 'Describa el problema en detalle' : null),
     },
   });
+
+  const [escuelas, setEscuelas] = useState([]);
+  const [consultaEscuela, setConsultaEscuela] = useState(initialValues.schoolName);
+  const [consultaDebounced] = useDebouncedValue(consultaEscuela, 300);
+
+  useEffect(() => {
+    const consulta = consultaDebounced.trim();
+    if (consulta.length < 2) return undefined;
+    let vigente = true;
+    // Si el padrón no responde se sigue pudiendo escribir la escuela a mano.
+    buscarInstituciones(consulta)
+      .then((resultado) => vigente && setEscuelas(resultado))
+      .catch(() => vigente && setEscuelas([]));
+    return () => {
+      vigente = false;
+    };
+  }, [consultaDebounced]);
+
+  const escuelaInputProps = form.getInputProps('schoolName');
+
+  // Igual que en WhatsApp: la ubicación del reclamo es la dirección de la escuela en el
+  // padrón; el aula o sector va en la descripción.
+  const elegirEscuela = (nombre) => {
+    const escuela = escuelas.find((e) => e.nombre === nombre);
+    if (escuela?.domicilio) form.setFieldValue('sector', escuela.domicilio);
+  };
 
   const aplicarTranscripcion = async (archivo) => {
     if (!archivo) return;
@@ -42,10 +79,7 @@ export function SchoolClaimForm({
     try {
       const resultado = await transcribirAudio(archivo);
       const actual = (form.values.description || '').trim();
-      form.setFieldValue(
-        'description',
-        actual ? `${actual}\n${resultado.texto}` : resultado.texto,
-      );
+      form.setFieldValue('description', actual ? `${actual}\n${resultado.texto}` : resultado.texto);
       notifySuccess('Audio transcrito. Revisá el texto antes de enviar.');
     } catch (error) {
       notifyError(error?.message || 'No se pudo transcribir el audio.');
@@ -82,16 +116,26 @@ export function SchoolClaimForm({
   return (
     <form onSubmit={form.onSubmit(handleSubmit)}>
       <Stack>
-        <TextInput
-          label="Nombre de escuela"
-          placeholder="Ejemplo: Escuela N° 123"
+        <Autocomplete
+          label="Escuela"
+          placeholder="Buscá por número o nombre, ej: Primaria 10"
+          data={
+            consultaEscuela.trim().length < 2 ? [] : [...new Set(escuelas.map((e) => e.nombre))]
+          }
+          filter={({ options }) => options}
           key={form.key('schoolName')}
-          {...form.getInputProps('schoolName')}
+          {...escuelaInputProps}
+          onChange={(valor) => {
+            escuelaInputProps.onChange(valor);
+            setConsultaEscuela(valor);
+          }}
+          onOptionSubmit={elegirEscuela}
         />
 
         <TextInput
           label="Ubicación"
-          placeholder="Ejemplo: Cocina, Baño, Aula 10"
+          description="Dirección de la escuela. Se completa al elegirla del padrón; si no está, escribila."
+          placeholder="Ejemplo: Mitre 5110"
           key={form.key('sector')}
           {...form.getInputProps('sector')}
         />
@@ -118,7 +162,7 @@ export function SchoolClaimForm({
         <div>
           <Textarea
             label="Descripción"
-            placeholder="Describa detalladamente la situación o problema detectado..."
+            placeholder="Describa el problema y en qué parte de la escuela está (aula, piso, sector)..."
             minRows={4}
             autosize
             key={form.key('description')}
