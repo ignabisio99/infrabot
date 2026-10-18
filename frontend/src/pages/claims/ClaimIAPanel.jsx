@@ -1,15 +1,5 @@
 import { useEffect, useState } from 'react';
-import {
-  Alert,
-  Anchor,
-  Badge,
-  Button,
-  Group,
-  List,
-  Paper,
-  Stack,
-  Text,
-} from '@mantine/core';
+import { Alert, Anchor, Badge, Button, Group, List, Paper, Stack, Text } from '@mantine/core';
 
 import {
   analizarMediaReclamo,
@@ -77,7 +67,7 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
   const [aplicando, setAplicando] = useState(false);
 
   const [duplicados, setDuplicados] = useState(null);
-  const [buscandoDups, setBuscandoDups] = useState(false);
+  const [buscandoDups, setBuscandoDups] = useState(true);
 
   const [estimacion, setEstimacion] = useState(null);
   const [cargandoEst, setCargandoEst] = useState(true);
@@ -88,6 +78,18 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
   const [orquestando, setOrquestando] = useState(false);
   const [pipeline, setPipeline] = useState(null);
 
+  const [reclamoCargado, setReclamoCargado] = useState(reclamo.id);
+  if (reclamoCargado !== reclamo.id) {
+    setReclamoCargado(reclamo.id);
+    setClasificacion(null);
+    setDuplicados(null);
+    setEstimacion(null);
+    setVision(null);
+    setPipeline(null);
+    setCargandoEst(true);
+    setBuscandoDups(true);
+  }
+
   const hayFotos = (reclamo.fotos || []).some((foto) => foto.tipo === 'IMAGEN');
   const metaEstimacion = estimacion ? leerDetalleEstimacion(estimacion.detalle) : null;
   const sinPrecedencias = Boolean(estimacion?.sin_precedentes || metaEstimacion?.sinPrecedencias);
@@ -95,12 +97,6 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
 
   useEffect(() => {
     let vigente = true;
-    setClasificacion(null);
-    setDuplicados(null);
-    setVision(null);
-    setPipeline(null);
-    setCargandoEst(true);
-    setBuscandoDups(true);
 
     Promise.all([
       obtenerEstimacion(reclamo.id),
@@ -235,8 +231,8 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
   return (
     <Stack gap="md">
       <Alert color="blue" title="Análisis automático">
-        La IA corre sola al registrar el reclamo y al subir fotos. Acá se ven los
-        resultados; los botones de abajo solo regeneran si hace falta.
+        La IA corre sola al registrar el reclamo y al subir fotos. Acá se ven los resultados; los
+        botones de abajo solo regeneran si hace falta.
       </Alert>
 
       {pipeline && (
@@ -247,7 +243,8 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
 
       <Bloque titulo="Clasificación">
         <Text size="sm" c="dimmed" mb="xs">
-          En el reclamo: {reclamo.categoria} · <PriorityBadge prioridad={reclamo.prioridad} size="xs" />
+          En el reclamo: {reclamo.categoria} ·{' '}
+          <PriorityBadge prioridad={reclamo.prioridad} size="xs" />
         </Text>
         {clasificacion && (
           <Paper radius="sm" p="xs" mb="xs" bg="gray.0">
@@ -256,13 +253,15 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
                 {clasificacion.categoria}
               </Text>
               <PriorityBadge prioridad={clasificacion.prioridad} size="xs" />
-              <Badge size="xs" variant="light">
+              <Badge
+                size="xs"
+                variant="light"
+                color={Math.round((clasificacion.confianza || 0) * 100) < 50 ? 'yellow' : undefined}
+              >
                 {Math.round((clasificacion.confianza || 0) * 100)}%
               </Badge>
             </Group>
-            {clasificacion.justificacion && (
-              <Text size="sm">{clasificacion.justificacion}</Text>
-            )}
+            {clasificacion.justificacion && <Text size="sm">{clasificacion.justificacion}</Text>}
             {clasificacion.razonamiento && (
               <Text size="xs" c="dimmed" mt={4} fs="italic">
                 🧠 Razonamiento: {clasificacion.razonamiento}
@@ -290,11 +289,7 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
           <Paper key={candidato.reclamo_id} withBorder p="xs" mb={6}>
             <Group justify="space-between" wrap="nowrap">
               <div>
-                <Anchor
-                  size="sm"
-                  fw={500}
-                  onClick={() => onAbrirReclamo?.(candidato.reclamo_id)}
-                >
+                <Anchor size="sm" fw={500} onClick={() => onAbrirReclamo?.(candidato.reclamo_id)}>
                   {formatearIdReclamo(candidato.reclamo_id)} · {candidato.nombre_escuela}
                 </Anchor>
                 <Text size="xs" c="dimmed" lineClamp={2}>
@@ -305,7 +300,13 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
             </Group>
           </Paper>
         ))}
-        <Button size="xs" variant="subtle" loading={buscandoDups} onClick={regenerarDuplicados} mt="xs">
+        <Button
+          size="xs"
+          variant="subtle"
+          loading={buscandoDups}
+          onClick={regenerarDuplicados}
+          mt="xs"
+        >
           Volver a buscar
         </Button>
       </Bloque>
@@ -337,19 +338,21 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
                   Sin precedentes históricos
                 </Badge>
               ) : (
-                <Badge size="xs" variant="light">
+                <Badge
+                  size="xs"
+                  variant="light"
+                  color={Math.round(estimacion.confianza * 100) < 50 ? 'yellow' : undefined}
+                >
                   {Math.round(estimacion.confianza * 100)}% confianza
                 </Badge>
               )}
             </Group>
-            {estimacion.justificacion && (
-              <Text size="sm">{estimacion.justificacion}</Text>
-            )}
             {aviso && (
               <Text size="xs" c="dimmed">
                 {aviso}
               </Text>
             )}
+            {estimacion.justificacion && <Text size="sm">{estimacion.justificacion}</Text>}
           </Stack>
         )}
         <Button size="xs" variant="subtle" loading={generandoEst} onClick={generar}>
