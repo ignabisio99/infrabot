@@ -62,6 +62,7 @@ import { ClaimPhotosManager } from './ClaimPhotosManager';
 import { NotifyContractorsModal } from './NotifyContractorsModal';
 import { PriorityBadge } from './PriorityBadge';
 import { StatusBadge } from './StatusBadge';
+import tabsClasses from './ClaimDetailTabs.module.css';
 import { colorPorEstado, estadosFinales, etiquetaPorEstado, proximoPasoPorEstado } from './estados';
 
 const iconoPorEstado = {
@@ -605,7 +606,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
             )}
           </Paper>
 
-          <Tabs defaultValue="avance">
+          <Tabs defaultValue="avance" classNames={tabsClasses}>
             <Tabs.List>
               <Tabs.Tab value="avance" leftSection={<IconHistory size={16} />}>
                 Avance

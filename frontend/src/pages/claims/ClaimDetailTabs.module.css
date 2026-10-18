@@ -1,0 +1,27 @@
+/* En celular los tabs no entran en una fila: el ícono pasa arriba del texto y la letra
+   se achica, así entran todos sin cambiar el estilo de los tabs. */
+@mixin smaller-than $mantine-breakpoint-sm {
+  .list {
+    flex-wrap: nowrap;
+  }
+
+  .tab {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 4px;
+    font-size: var(--mantine-font-size-xs);
+  }
+
+  .tabSection {
+    margin: 0;
+
+    &[data-position='right'] {
+      position: absolute;
+      top: 6px;
+      right: 4px;
+    }
+  }
+}
