@@ -42,6 +42,7 @@ from models import (
     Presupuesto,
     PrioridadReclamo,
     Reclamo,
+    SolicitudPresupuesto,
     TipoItemPresupuesto,
     TipoUsuario,
     Usuario,
@@ -347,11 +348,16 @@ def crear_reclamos(db, contratistas):
         estados_reclamo.registrar_estado_inicial(db, reclamo)
         _recorrer(db, reclamo, data["camino"])
 
+        # La pestaña Presupuestos del reclamo y "Mis solicitudes" del portal listan
+        # solicitudes, no presupuestos: sin la solicitud, la oferta no aparece en ninguna.
+        db.flush()
         presupuestos = []
         for datos_presupuesto in data.get("presupuestos", []):
+            contratista = contratistas[datos_presupuesto["contratista"]]
+            db.add(SolicitudPresupuesto(reclamo_id=reclamo.id, contratista_id=contratista.id))
             presupuesto = Presupuesto(
                 reclamo=reclamo,
-                contratista=contratistas[datos_presupuesto["contratista"]],
+                contratista=contratista,
                 detalle_tarea=datos_presupuesto.get("detalle_tarea"),
                 observaciones=datos_presupuesto["observaciones"],
                 items=[ItemPresupuesto(**item) for item in datos_presupuesto["items"]],
