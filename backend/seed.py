@@ -14,9 +14,11 @@ desarrollo listo para entrar (ver ADMIN_EMAIL / ADMIN_PASSWORD).
 
 import logging
 import sys
+from datetime import timedelta
 from decimal import Decimal
 
 import models  # noqa: F401 - registra TODOS los modelos en la metadata antes de create_all
+from core import reloj, whatsapp_client
 from core.auth import hash_password
 from core.database import (
     Base,
@@ -47,9 +49,10 @@ from models import (
     TipoItemPresupuesto,
     TipoUsuario,
     Usuario,
+    Visita,
 )
 from models.rol_mano_obra import asegurar_roles_iniciales
-from services import estados_presupuesto, estados_reclamo
+from services import coordinacion_visita, estados_presupuesto, estados_reclamo
 from services.referencias_costo import cargar_referencias_si_faltan
 
 # Usuario administrador para poder entrar a la app en un entorno recién creado.
@@ -175,12 +178,12 @@ RECLAMOS = [
                 decision=dict(estado=EstadoPresupuesto.APROBADO),
             ),
         ],
-        # Al aprobar el presupuesto, el bot ya dejó el reclamo en PENDIENTE_COORDINACION.
-        # Para el ejemplo simulamos que se coordinó la visita y arrancó la ejecución.
-        camino_posterior=[
-            dict(estado=EstadoReclamo.VISITA_COORDINADA, origen=OrigenCambioEstado.AUTOMATICO),
-            dict(estado=EstadoReclamo.EN_EJECUCION),
-        ],
+        # A este número (simulado, nunca sale a Meta) el bot le manda los horarios para
+        # elegir. Sirve también para seguir la charla desde el simulador de WhatsApp.
+        telefono_creador="sim5491100000002",
+        # La visita queda acordada para dentro de 3 días a las 10: los recordatorios y la
+        # pregunta de inicio de obra se pueden ver adelantando el simulador de tiempo.
+        visita=dict(dias_adelante=3, hora=10),
     ),
     dict(
         institucion="060746900",  # ES Nº1 Perito Moreno
@@ -325,6 +328,25 @@ def _escuela_del_padron(db, identificador):
     }
 
 
+def _coordinar_visita(db, reclamo, dias_adelante, hora):
+    """Coordina la visita por el mismo camino que el bot: el contratista propone dos
+    horarios y la escuela elige el primero. El reclamo queda en VISITA_COORDINADA.
+    """
+    visita = db.query(Visita).filter_by(reclamo_id=reclamo.id).one()
+    # En hora argentina, como la escribe el contratista y la interpreta el bot.
+    primera = (reloj.ahora_art() + timedelta(days=dias_adelante)).replace(
+        hour=hora, minute=0, second=0, microsecond=0
+    )
+    opciones = [primera, primera + timedelta(days=1)]
+    coordinacion_visita.agregar_disponibilidad(
+        db, visita, ", ".join(f.strftime("%d/%m %H:%M") for f in opciones)
+    )
+    enviada, motivo = coordinacion_visita.finalizar_disponibilidad(db, visita)
+    if not enviada:
+        raise RuntimeError(f"No se pudo coordinar la visita del reclamo {reclamo.id}: {motivo}")
+    coordinacion_visita.confirmar_eleccion(db, visita, 1)
+
+
 def _recorrer(db, reclamo, pasos):
     for paso in pasos:
         estados_reclamo.cambiar_estado(
@@ -339,17 +361,18 @@ def _recorrer(db, reclamo, pasos):
 def crear_reclamos(db, contratistas):
     """Arma los reclamos de ejemplo dejando que los estados los decidan los servicios.
 
-    Los pasos manuales están en `camino` (antes de los presupuestos) y `camino_posterior`
-    (después). Lo del medio no se escribe: pasar a EN_EVALUACION y a APROBADO lo deduce
-    `sincronizar_por_presupuestos` de los presupuestos cargados, igual que en la app. Si
-    se escribieran a mano, el seed podría contradecir a las máquinas de estado sin que
-    nada avise.
+    Los pasos manuales están en `camino` (antes de los presupuestos) y, después de
+    aprobar, `visita`. Lo del medio no se escribe: pasar a EN_EVALUACION y a
+    APROBADO lo deduce `sincronizar_por_presupuestos` de los presupuestos cargados, igual
+    que en la app. Si se escribieran a mano, el seed podría contradecir a las máquinas de
+    estado sin que nada avise.
     """
     reclamos = []
     for data in RECLAMOS:
         reclamo = Reclamo(
             **{campo: data[campo] for campo in CAMPOS_DEL_RECLAMO},
             **_escuela_del_padron(db, data["institucion"]),
+            telefono_creador=data.get("telefono_creador"),
             estado=estados_reclamo.ESTADO_INICIAL,
         )
         db.add(reclamo)
@@ -385,7 +408,8 @@ def crear_reclamos(db, contratistas):
                     db, presupuesto, decision["estado"], motivo=decision.get("motivo")
                 )
 
-        _recorrer(db, reclamo, data.get("camino_posterior", []))
+        if "visita" in data:
+            _coordinar_visita(db, reclamo, **data["visita"])
         reclamos.append(reclamo)
     return reclamos
 
@@ -555,6 +579,10 @@ def reaplicar_permisos_solo_lectura(db):
 
 
 def main():
+    # Los servicios que usa el seed avisan por WhatsApp (al aprobar un presupuesto se le
+    # escribe al contratista). Sin token, el cliente simula el envío en vez de escribirle
+    # a los números del seed.
+    whatsapp_client.WHATSAPP_TOKEN = ""
     reiniciar = "--reset" in sys.argv
     if reiniciar:
         logger.info("Recreando el schema desde los modelos...")
