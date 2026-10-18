@@ -259,6 +259,8 @@ def decidir_presupuesto(
     db.refresh(presupuesto)
     if datos.estado in estados_presupuesto.ESTADOS_CON_MOTIVO_OBLIGATORIO:
         avisos_presupuesto.avisar_decision(db, presupuesto)
+    elif datos.estado is EstadoPresupuesto.APROBADO:
+        avisos_presupuesto.avisar_aprobacion(db, presupuesto)
     for hermano in hermanos_vigentes:
         if hermano.estado is EstadoPresupuesto.NO_SELECCIONADO:
             avisos_presupuesto.avisar_decision(db, hermano)

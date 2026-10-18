@@ -20,6 +20,7 @@ def sin_efectos_externos(monkeypatch):
         services.avisos_presupuesto, "enviar_mensaje", lambda telefono, texto: avisos.append(texto)
     )
     for envio in (
+        "enviar_aprobado_presupuesto",
         "enviar_rechazo_presupuesto",
         "enviar_ajustes_presupuesto",
         "enviar_no_seleccionado_presupuesto",
@@ -356,8 +357,21 @@ def test_se_avisa_a_las_ofertas_que_quedan_sin_seleccionar(
 
     _decidir(client, ganador["id"], "APROBADO")
 
-    assert "no fue seleccionado" in sin_efectos_externos[0]
-    assert sin_efectos_externos[1] == ("ajustes@test.local", reclamo.id, reclamo.nombre_escuela)
+    assert any("no fue seleccionado" in str(aviso) for aviso in sin_efectos_externos)
+    assert ("ajustes@test.local", reclamo.id, reclamo.nombre_escuela) in sin_efectos_externos
+
+
+def test_se_avisa_por_mail_al_ganador(
+    client, loguear_contratista, crear_reclamo, sin_efectos_externos
+):
+    reclamo = crear_reclamo(estado=EstadoReclamo.PENDIENTE_PRESUPUESTO)
+    ganador = _cargar(client, reclamo, loguear_contratista("Ganadora")).json()
+
+    _decidir(client, ganador["id"], "APROBADO")
+
+    [mail] = sin_efectos_externos
+    assert mail[:4] == ("ganadora@test.local", reclamo.id, reclamo.nombre_escuela, reclamo.ubicacion)
+    assert mail[4].endswith("/portal/presupuestos")
 
 
 def test_cancelar_el_reclamo_avisa_a_las_ofertas_en_carrera(

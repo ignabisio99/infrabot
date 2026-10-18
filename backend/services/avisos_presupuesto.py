@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from core.email import (
     APP_URL,
     enviar_ajustes_presupuesto,
+    enviar_aprobado_presupuesto,
     enviar_no_seleccionado_presupuesto,
     enviar_rechazo_presupuesto,
     enviar_reclamo_cancelado_presupuesto,
@@ -25,16 +26,18 @@ logger = logging.getLogger(__name__)
 def _enviar(
     db: Session, presupuesto: Presupuesto, mensaje: str, mail: Callable[[str], object]
 ) -> None:
+    try:
+        enviar_mensaje(presupuesto.contratista.telefono, mensaje)
+    except Exception:
+        logger.exception("No se pudo avisar por WhatsApp sobre el presupuesto %s", presupuesto.id)
+    _enviar_mail(db, presupuesto, mail)
+
+
+def _enviar_mail(db: Session, presupuesto: Presupuesto, mail: Callable[[str], object]) -> None:
     # Import local: api.reclamos usa este módulo para avisar cancelaciones.
     from api.reclamos import _email_del_contratista
 
-    contratista = presupuesto.contratista
-    try:
-        enviar_mensaje(contratista.telefono, mensaje)
-    except Exception:
-        logger.exception("No se pudo avisar por WhatsApp sobre el presupuesto %s", presupuesto.id)
-
-    email = _email_del_contratista(db, contratista)
+    email = _email_del_contratista(db, presupuesto.contratista)
     if email:
         try:
             mail(email)
@@ -85,6 +88,19 @@ def avisar_decision(db: Session, presupuesto: Presupuesto) -> None:
             mensaje,
             lambda email: enviar_no_seleccionado_presupuesto(email, reclamo.id, escuela),
         )
+
+
+def avisar_aprobacion(db: Session, presupuesto: Presupuesto) -> None:
+    """Sólo el mail: el WhatsApp sale con el pedido de disponibilidad para la visita."""
+    reclamo = presupuesto.reclamo
+    link = f"{APP_URL}/portal/presupuestos"
+    _enviar_mail(
+        db,
+        presupuesto,
+        lambda email: enviar_aprobado_presupuesto(
+            email, reclamo.id, reclamo.nombre_escuela, reclamo.ubicacion, link
+        ),
+    )
 
 
 def avisar_reclamo_cancelado(db: Session, presupuesto: Presupuesto, motivo: str | None) -> None:
