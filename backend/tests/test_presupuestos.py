@@ -374,6 +374,17 @@ def test_se_avisa_por_mail_al_ganador(
     assert mail[4].endswith("/portal/presupuestos")
 
 
+def test_el_reclamo_cuenta_las_ofertas_en_carrera(client, loguear_contratista, crear_reclamo):
+    reclamo = crear_reclamo(estado=EstadoReclamo.PENDIENTE_PRESUPUESTO)
+    _cargar(client, reclamo, loguear_contratista("Recibida"))
+    en_ajustes = _cargar(client, reclamo, loguear_contratista("Ajustes")).json()
+    rechazado = _cargar(client, reclamo, loguear_contratista("Rechazada")).json()
+    _pedir_ajustes(client, en_ajustes["id"])
+    _rechazar(client, rechazado["id"])
+
+    assert client.get(f"/reclamos/{reclamo.id}").json()["ofertas_en_carrera"] == 2
+
+
 def test_cancelar_el_reclamo_avisa_a_las_ofertas_en_carrera(
     client, loguear_contratista, crear_reclamo, sin_efectos_externos
 ):

@@ -2,7 +2,7 @@ import logging
 import os
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from core.database import get_db
 from core.dependencies import (
@@ -62,7 +62,11 @@ TIPOS_MEDIA_PERMITIDOS = TIPOS_IMAGEN_PERMITIDOS | TIPOS_VIDEO_PERMITIDOS
 
 
 def _con_fotos(query):
-    return query.options(joinedload(Reclamo.fotos).joinedload(FotoReclamo.usuario))
+    return query.options(
+        joinedload(Reclamo.fotos).joinedload(FotoReclamo.usuario),
+        # Para `ofertas_en_carrera`: sin esto, el listado hace una consulta por reclamo.
+        selectinload(Reclamo.presupuestos),
+    )
 
 
 def _email_del_contratista(db: Session, contratista: Contratista) -> str | None:

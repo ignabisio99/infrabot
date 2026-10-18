@@ -104,3 +104,10 @@ class Reclamo(Base):
         from services.estados_reclamo import admite_presupuesto as estado_admite_presupuesto
 
         return estado_admite_presupuesto(self.estado)
+
+    @property
+    def ofertas_en_carrera(self) -> int:
+        """Las que todavía esperan una decisión: si el reclamo se cancela, se les avisa."""
+        from services.estados_presupuesto import esta_vigente
+
+        return sum(1 for p in self.presupuestos if esta_vigente(p))

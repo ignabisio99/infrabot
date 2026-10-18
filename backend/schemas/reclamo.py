@@ -70,6 +70,7 @@ class ReclamoOut(ReclamoCreate):
     estados_posibles: list[EstadoReclamo]
     # Si el reclamo se puede cotizar; lo usa el formulario de presupuestos.
     admite_presupuesto: bool
+    ofertas_en_carrera: int
 
 
 class CambioEstadoReclamo(BaseModel):

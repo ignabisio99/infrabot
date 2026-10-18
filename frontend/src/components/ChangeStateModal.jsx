@@ -44,7 +44,7 @@ export function ChangeStateModal({ entidad, config, onSubmit, onClose, onCambiad
   const textoMotivo = config.textoMotivoPorEstado[estado];
   // Para los destinos que arrastran cosas fuera de la entidad: conviene decirlo antes
   // de guardar, no después.
-  const aviso = config.avisoPorEstado?.[estado];
+  const aviso = config.avisoPorEstado?.[estado]?.(entidad);
   const Badge = config.Badge;
 
   const handleGuardar = async () => {
