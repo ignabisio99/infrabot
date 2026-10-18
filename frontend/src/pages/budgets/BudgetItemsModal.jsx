@@ -3,12 +3,12 @@ import {
   Accordion,
   Alert,
   Badge,
+  Box,
   Button,
   Divider,
   Group,
   Loader,
   Modal,
-  ScrollArea,
   Table,
   Text,
 } from '@mantine/core';
@@ -43,8 +43,8 @@ function GrupoItems({ titulo, items }) {
       <Text size="sm" fw={600} mb={4}>
         {titulo}
       </Text>
-      <ScrollArea.Autosize mah={280} mb="md">
-        <Table withColumnBorders striped miw={500}>
+      <Table.ScrollContainer minWidth={500} mb="md">
+        <Table withColumnBorders striped>
           <Table.Thead>
             <Table.Tr>
               <Table.Th w="45%">Descripción</Table.Th>
@@ -66,7 +66,7 @@ function GrupoItems({ titulo, items }) {
             ))}
           </Table.Tbody>
         </Table>
-      </ScrollArea.Autosize>
+      </Table.ScrollContainer>
     </>
   );
 }
@@ -134,7 +134,7 @@ function VersionesAnteriores({ presupuestoId }) {
   );
 }
 
-export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
+export function BudgetItemsModal({ presupuesto, onClose, onDecidido, acciones }) {
   const [informe, setInforme] = useState(null);
   const [cargadoPara, setCargadoPara] = useState(null);
   const [recalculando, setRecalculando] = useState(false);
@@ -207,111 +207,119 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
         )
       }
       size="min(1100px, 92vw)"
+      // El scroll queda sólo en el contenido para que el pie no tenga nada pasando por
+      // detrás: con un pie sticky, iOS pintaba encima la barra horizontal de las tablas.
+      styles={{
+        content: { display: 'flex', flexDirection: 'column' },
+        body: { display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 },
+      }}
     >
       {presupuesto && (
         <>
-          {aprobado && (
-            <Alert
-              color="green"
-              mb="md"
-              title="Presupuesto aprobado"
-              icon={<IconCheck size={16} />}
-            >
-              Este presupuesto ya fue aprobado y adjudicado.
-            </Alert>
-          )}
+          <Box style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+            {aprobado && (
+              <Alert
+                color="green"
+                mb="md"
+                title="Presupuesto aprobado"
+                icon={<IconCheck size={16} />}
+              >
+                Este presupuesto ya fue aprobado y adjudicado.
+              </Alert>
+            )}
 
-          {presupuesto.motivo_estado && (
-            <Alert
-              color={presupuesto.estado === 'RECHAZADO' ? 'red' : 'orange'}
-              mb="md"
-              title={
-                presupuesto.estado === 'RECHAZADO' ? 'Motivo del rechazo' : 'Ajustes solicitados'
-              }
-            >
-              {presupuesto.motivo_estado}
-            </Alert>
-          )}
+            {presupuesto.motivo_estado && (
+              <Alert
+                color={presupuesto.estado === 'RECHAZADO' ? 'red' : 'orange'}
+                mb="md"
+                title={
+                  presupuesto.estado === 'RECHAZADO' ? 'Motivo del rechazo' : 'Ajustes solicitados'
+                }
+              >
+                {presupuesto.motivo_estado}
+              </Alert>
+            )}
 
-          {presupuesto.detalle_tarea && (
-            <>
-              <Text size="sm" fw={600} mb={4}>
-                Detalle de la tarea
-              </Text>
-              <Text size="sm" c="dimmed" mb="md" style={{ whiteSpace: 'pre-wrap' }}>
-                {presupuesto.detalle_tarea}
-              </Text>
-            </>
-          )}
-
-          {presupuesto.observaciones && (
-            <>
-              <Text size="sm" fw={600} mb={4}>
-                Observaciones
-              </Text>
-              <Text size="sm" c="dimmed" mb="md" style={{ whiteSpace: 'pre-wrap' }}>
-                {presupuesto.observaciones}
-              </Text>
-            </>
-          )}
-
-          <GrupoItems
-            titulo="Materiales"
-            items={presupuesto.items.filter((i) => i.tipo !== 'MANO_OBRA')}
-          />
-          <GrupoItems
-            titulo="Mano de obra"
-            items={presupuesto.items.filter((i) => i.tipo === 'MANO_OBRA')}
-          />
-
-          {presupuesto.version > 1 && <VersionesAnteriores presupuestoId={presupuesto.id} />}
-
-          <Divider mb="sm" />
-
-          {cargando && <Loader size="sm" mb="sm" />}
-
-          {mostrarAuditoria && !cargando && informe && (
-            <Alert
-              mb="sm"
-              color={colorPorRecomendacion[informe.recomendacion] || 'gray'}
-              title={
-                <Group gap="xs">
-                  <Text span>Auditoría automática</Text>
-                  <Badge color={colorPorRecomendacion[informe.recomendacion] || 'gray'} tt="none">
-                    {informe.recomendacion}
-                  </Badge>
-                </Group>
-              }
-            >
-              {informe.sin_precedentes && (
-                <Text size="sm" mb={4}>
-                  Sin precedentes históricos: no se compara contra una estimación en $0.
+            {presupuesto.detalle_tarea && (
+              <>
+                <Text size="sm" fw={600} mb={4}>
+                  Detalle de la tarea
                 </Text>
-              )}
-              <Text size="sm">
-                Presupuesto {formatoMoneda.format(Number(informe.total_presupuesto))}
-                {informe.total_estimacion != null && !informe.sin_precedentes
-                  ? ` · Estimación ${formatoMoneda.format(Number(informe.total_estimacion))}`
-                  : ''}
-                {desvioPct != null
-                  ? ` · Desvío ${desvioPct.toFixed(1)}%${desvioPct < 0 ? ' por debajo' : ''}`
-                  : ''}
-              </Text>
-              {informe.notas_tecnicas && (
-                <Text size="sm" mt={4}>
-                  {informe.notas_tecnicas}
+                <Text size="sm" c="dimmed" mb="md" style={{ whiteSpace: 'pre-wrap' }}>
+                  {presupuesto.detalle_tarea}
                 </Text>
-              )}
-            </Alert>
-          )}
+              </>
+            )}
 
-          {mostrarAuditoria && !cargando && !informe && (
-            <Alert color="yellow" mb="sm" title="Sin auditoría guardada">
-              Al guardar el presupuesto se audita solo. Podés recalcular ahora.
-            </Alert>
-          )}
+            {presupuesto.observaciones && (
+              <>
+                <Text size="sm" fw={600} mb={4}>
+                  Observaciones
+                </Text>
+                <Text size="sm" c="dimmed" mb="md" style={{ whiteSpace: 'pre-wrap' }}>
+                  {presupuesto.observaciones}
+                </Text>
+              </>
+            )}
 
-          <Group justify="space-between">
+            <GrupoItems
+              titulo="Materiales"
+              items={presupuesto.items.filter((i) => i.tipo !== 'MANO_OBRA')}
+            />
+            <GrupoItems
+              titulo="Mano de obra"
+              items={presupuesto.items.filter((i) => i.tipo === 'MANO_OBRA')}
+            />
+
+            {presupuesto.version > 1 && <VersionesAnteriores presupuestoId={presupuesto.id} />}
+
+            <Divider mb="sm" />
+
+            {cargando && <Loader size="sm" mb="sm" />}
+
+            {mostrarAuditoria && !cargando && informe && (
+              <Alert
+                mb="sm"
+                color={colorPorRecomendacion[informe.recomendacion] || 'gray'}
+                title={
+                  <Group gap="xs">
+                    <Text span>Auditoría automática</Text>
+                    <Badge color={colorPorRecomendacion[informe.recomendacion] || 'gray'} tt="none">
+                      {informe.recomendacion}
+                    </Badge>
+                  </Group>
+                }
+              >
+                {informe.sin_precedentes && (
+                  <Text size="sm" mb={4}>
+                    Sin precedentes históricos: no se compara contra una estimación en $0.
+                  </Text>
+                )}
+                <Text size="sm">
+                  Presupuesto {formatoMoneda.format(Number(informe.total_presupuesto))}
+                  {informe.total_estimacion != null && !informe.sin_precedentes
+                    ? ` · Estimación ${formatoMoneda.format(Number(informe.total_estimacion))}`
+                    : ''}
+                  {desvioPct != null
+                    ? ` · Desvío ${desvioPct.toFixed(1)}%${desvioPct < 0 ? ' por debajo' : ''}`
+                    : ''}
+                </Text>
+                {informe.notas_tecnicas && (
+                  <Text size="sm" mt={4}>
+                    {informe.notas_tecnicas}
+                  </Text>
+                )}
+              </Alert>
+            )}
+
+            {mostrarAuditoria && !cargando && !informe && (
+              <Alert color="yellow" mb="sm" title="Sin auditoría guardada">
+                Al guardar el presupuesto se audita solo. Podés recalcular ahora.
+              </Alert>
+            )}
+          </Box>
+
+          <Group justify="space-between" pt="sm">
             <Text size="sm" c="dimmed">
               {presupuesto.items.length} {presupuesto.items.length === 1 ? 'ítem' : 'ítems'} ·
               cantidad total:{' '}
@@ -335,6 +343,7 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido }) {
                   Decidir
                 </Button>
               )}
+              {acciones}
               <Text fw={700} size="lg">
                 Total: {formatoMoneda.format(Number(presupuesto.monto))}
               </Text>

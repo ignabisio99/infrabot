@@ -9,8 +9,23 @@ import { BudgetItemsModal } from '../budgets/BudgetItemsModal';
 import { BudgetStatusBadge } from '../budgets/BudgetStatusBadge';
 import { estaVigente } from '../budgets/estados';
 
-export function MyPresupuestosPage() {
+function BotonEditar({ presupuesto }) {
   const navigate = useNavigate();
+  if (!presupuesto.editable) return null;
+  const ajustar = presupuesto.estado === 'AJUSTES_SOLICITADOS';
+  return (
+    <Button
+      size="xs"
+      variant={ajustar ? 'filled' : 'light'}
+      color={ajustar ? 'orange' : undefined}
+      onClick={() => navigate(`/portal/reclamos/${presupuesto.reclamo.id}/presupuestar`)}
+    >
+      {ajustar ? 'Ajustar' : 'Editar'}
+    </Button>
+  );
+}
+
+export function MyPresupuestosPage() {
   const [presupuestos, setPresupuestos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
@@ -86,16 +101,7 @@ export function MyPresupuestosPage() {
                   </Table.Td>
                   <Table.Td>{p.items.length}</Table.Td>
                   <Table.Td onClick={(e) => e.stopPropagation()}>
-                    {p.editable && (
-                      <Button
-                        size="xs"
-                        variant={p.estado === 'AJUSTES_SOLICITADOS' ? 'filled' : 'light'}
-                        color={p.estado === 'AJUSTES_SOLICITADOS' ? 'orange' : undefined}
-                        onClick={() => navigate(`/portal/reclamos/${p.reclamo.id}/presupuestar`)}
-                      >
-                        {p.estado === 'AJUSTES_SOLICITADOS' ? 'Ajustar' : 'Editar'}
-                      </Button>
-                    )}
+                    <BotonEditar presupuesto={p} />
                   </Table.Td>
                 </Table.Tr>
               ))}
@@ -104,7 +110,11 @@ export function MyPresupuestosPage() {
         </Table.ScrollContainer>
       )}
 
-      <BudgetItemsModal presupuesto={seleccionado} onClose={() => setSeleccionado(null)} />
+      <BudgetItemsModal
+        presupuesto={seleccionado}
+        onClose={() => setSeleccionado(null)}
+        acciones={seleccionado && <BotonEditar presupuesto={seleccionado} />}
+      />
     </Container>
   );
 }
