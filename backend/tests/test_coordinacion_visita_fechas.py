@@ -96,3 +96,61 @@ def test_escuela_no_puede_elegir_opcion_que_ya_paso(
         assert visita.estado == EstadoVisita.CONFIRMADA
         assert visita.horario_confirmado == opcion_futura
 
+
+
+def _contratista_cargando(db, crear_reclamo, crear_contratista, crear_visita, telefono):
+    from core.whatsapp_handler import reiniciar_conversacion
+
+    contratista = crear_contratista()
+    contratista.telefono = telefono
+    reclamo = crear_reclamo(
+        estado=EstadoReclamo.PENDIENTE_COORDINACION, telefono_creador="5491199990000"
+    )
+    visita = crear_visita(
+        reclamo,
+        fecha_visita=None,
+        estado=EstadoVisita.ESPERANDO_DISPONIBILIDAD,
+        contratista=contratista,
+    )
+    reiniciar_conversacion(telefono)
+    registrar_estado_conversacion(telefono, {"paso": "visita_disponibilidad", "visita_id": visita.id})
+    return reclamo, visita
+
+
+def test_cancelar_la_carga_de_horario_no_lo_vuelve_a_meter_hasta_retomarla(
+    db, crear_reclamo, crear_contratista, crear_visita
+):
+    tel = "5491100003333"
+    reclamo, visita = _contratista_cargando(
+        db, crear_reclamo, crear_contratista, crear_visita, tel
+    )
+
+    with patch("services.coordinacion_visita._enviar"):
+        r = procesar_mensaje(db, "cancelar", usuario=tel)
+        assert "cancelaste la carga del horario" in r
+        assert f"cargar horario {reclamo.id}" in r
+        assert visita.disponibilidad_pausada is True
+
+        # Aunque se pierda el estado en memoria, no se reconstruye la carga pausada.
+        _conversaciones.pop(tel, None)
+        r = procesar_mensaje(db, "hola", usuario=tel)
+        assert tel not in _conversaciones or _conversaciones[tel].get("paso") != "visita_disponibilidad"
+
+        r = procesar_mensaje(db, f"cargar horario {reclamo.id}", usuario=tel)
+        assert f"reclamo #{reclamo.id}" in r
+        assert visita.disponibilidad_pausada is False
+        assert _conversaciones[tel] == {"paso": "visita_disponibilidad", "visita_id": visita.id}
+
+
+def test_cargar_horario_de_un_reclamo_ajeno_no_lo_retoma(
+    db, crear_reclamo, crear_contratista, crear_visita
+):
+    reclamo, visita = _contratista_cargando(
+        db, crear_reclamo, crear_contratista, crear_visita, "5491100004444"
+    )
+    coordinacion_visita.pausar_disponibilidad(db, visita)
+
+    r = procesar_mensaje(db, f"cargar horario {reclamo.id}", usuario="5491100005555")
+
+    assert "No tenés una visita pendiente" in r
+    assert visita.disponibilidad_pausada is True

@@ -89,7 +89,10 @@ def asegurar_columna_autor_foto(bind=engine):
 def asegurar_columnas_seguimiento(bind=engine):
     """Agrega las columnas del seguimiento de obra si las tablas ya existían sin ellas."""
     faltantes = {
-        "visita": {"pregunta_inicio_enviada": "TIMESTAMP WITH TIME ZONE"},
+        "visita": {
+            "pregunta_inicio_enviada": "TIMESTAMP WITH TIME ZONE",
+            "disponibilidad_pausada": "BOOLEAN NOT NULL DEFAULT FALSE",
+        },
         "recordatorio_contratista": {
             "proxima_pregunta": "TIMESTAMP WITH TIME ZONE",
             "consulto_escuela": "BOOLEAN NOT NULL DEFAULT FALSE",

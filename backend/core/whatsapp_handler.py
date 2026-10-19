@@ -1373,6 +1373,16 @@ def _procesar_visita_disponibilidad(db: Session, usuario: str, mensaje: str) -> 
 
     texto = mensaje.strip()
 
+    if _es_comando(texto, "cancelar"):
+        coordinacion_visita.pausar_disponibilidad(db, visita)
+        del _conversaciones[usuario]
+        return (
+            "👌 Ok, cancelaste la carga del horario de la visita del reclamo "
+            f"#{visita.reclamo_id}.\n\n"
+            "Cuando quieras retomarla, escribí "
+            f"*cargar horario {visita.reclamo_id}*."
+        )
+
     if _es_comando(texto, "listo", "terminar", "fin", "ok"):
         ok, motivo = coordinacion_visita.finalizar_disponibilidad(db, visita)
         if ok:
@@ -1425,6 +1435,34 @@ def _procesar_visita_disponibilidad(db: Session, usuario: str, mensaje: str) -> 
     )
 
 
+def _retomar_carga_horario(db: Session, usuario: str, texto: str) -> str:
+    from services import coordinacion_visita
+
+    m = re.search(r"(\d+)", texto)
+    if not m:
+        return "⚠️ Indicá el número del reclamo. Por ejemplo: *cargar horario 12*."
+    reclamo_id = int(m.group(1))
+    visita = coordinacion_visita.retomar_disponibilidad(db, usuario, reclamo_id)
+    if visita is None:
+        return f"❌ No tenés una visita pendiente de horario para el reclamo #{reclamo_id}."
+
+    _conversaciones[usuario] = {"paso": "visita_disponibilidad", "visita_id": visita.id}
+    f1, f2 = coordinacion_visita.ejemplo_formato_fecha()
+    cargadas = coordinacion_visita._opciones_lista(visita)
+    ya_cargadas = (
+        "Ya tenías cargadas:\n" + "\n".join(f"• {op}" for op in cargadas) + "\n\n"
+        if cargadas
+        else ""
+    )
+    return (
+        f"📅 *Retomamos la visita del reclamo #{reclamo_id}*\n\n"
+        f"{ya_cargadas}"
+        "Mandá tus opciones de día y horario en formato *DD/MM HH:MM* "
+        f"(ej: _{f1}_, _{f2}_).\n"
+        "Cuando termines, escribí *listo*. Para salir, escribí *cancelar*."
+    )
+
+
 def _procesar_visita_eleccion(db: Session, usuario: str, mensaje: str) -> str:
     """El creador del reclamo elige uno de los horarios propuestos."""
     from models.contratista import Contratista
@@ -1467,6 +1505,7 @@ def _procesar_visita_eleccion(db: Session, usuario: str, mensaje: str) -> str:
         # Si todas las opciones de la visita ya pasaron, se le pide nueva disponibilidad al contratista
         del _conversaciones[usuario]
         visita.estado = EstadoVisita.ESPERANDO_DISPONIBILIDAD
+        visita.disponibilidad_pausada = False
         visita.disponibilidades = None
         db.commit()
 
@@ -1861,9 +1900,18 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
         _ultima_actividad[usuario] = datetime.now(timezone.utc)
 
     # Cancelar siempre funciona
-    if texto == "cancelar" and usuario in _conversaciones:
+    if (
+        texto == "cancelar"
+        and usuario in _conversaciones
+        and _conversaciones[usuario].get("paso") != "visita_disponibilidad"
+    ):
         del _conversaciones[usuario]
         return "❌ Operación cancelada. Escribí *ayuda* para ver los comandos."
+
+    # Contratista retomando la carga de horarios que había cancelado. Va antes que los
+    # pasos en curso: puede tener varias coordinaciones y querer pasar a otra.
+    if texto.startswith("cargar horario"):
+        return _retomar_carga_horario(db, usuario, texto)
 
     if usuario and pedir_operador(texto):
         from services.configuracion_atencion import dentro_de_atencion, mensaje_fuera_horario

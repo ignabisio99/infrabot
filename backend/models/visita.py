@@ -7,7 +7,7 @@ el creador elige un horario, y se envían recordatorios el día antes y el mismo
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, Text
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, Text
 from sqlalchemy.orm import relationship
 
 from core.database import Base
@@ -47,6 +47,9 @@ class Visita(Base):
     # Cuándo se le preguntó al contratista si pudo empezar (en el horario pactado). Se
     # pregunta una sola vez; si responde "no pude" se reprograma la visita.
     pregunta_inicio_enviada = Column(DateTime(timezone=True), nullable=True)
+    # El contratista escribió *cancelar* mientras cargaba disponibilidad: el bot no lo
+    # vuelve a meter en la carga hasta que escriba *cargar horario <id del reclamo>*.
+    disponibilidad_pausada = Column(Boolean, nullable=False, default=False)
 
     fecha_creacion = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

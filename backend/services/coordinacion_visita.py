@@ -126,6 +126,8 @@ def estado_conversacion_pendiente(db: Session, telefono: str) -> dict | None:
         .all()
     )
     for visita in visitas_disp:
+        if visita.disponibilidad_pausada:
+            continue
         reclamo = db.get(Reclamo, visita.reclamo_id)
         if reclamo and reclamo.estado == EstadoReclamo.EN_EJECUCION:
             continue
@@ -145,6 +147,35 @@ def estado_conversacion_pendiente(db: Session, telefono: str) -> dict | None:
         if reclamo and _mismo_numero(reclamo.telefono_creador, telefono):
             return {"paso": "visita_eleccion", "visita_id": visita.id}
 
+    return None
+
+
+def pausar_disponibilidad(db: Session, visita: Visita) -> None:
+    """El contratista canceló la carga: se la deja en pausa hasta que la retome."""
+    visita.disponibilidad_pausada = True
+    db.commit()
+
+
+def retomar_disponibilidad(db: Session, telefono: str, reclamo_id: int) -> Visita | None:
+    """*cargar horario <id>*: vuelve a la carga de la visita de ese reclamo.
+
+    Solo si la visita es de este contratista y sigue esperando su disponibilidad.
+    """
+    visitas = (
+        db.query(Visita)
+        .filter(
+            Visita.reclamo_id == reclamo_id,
+            Visita.estado == EstadoVisita.ESPERANDO_DISPONIBILIDAD,
+        )
+        .order_by(Visita.id.desc())
+        .all()
+    )
+    for visita in visitas:
+        contratista = db.get(Contratista, visita.contratista_id)
+        if contratista and _mismo_numero(contratista.telefono, telefono):
+            visita.disponibilidad_pausada = False
+            db.commit()
+            return visita
     return None
 
 
@@ -528,6 +559,7 @@ def reprogramar_visita(db: Session, visita: Visita) -> bool:
 
     # Volver a dejar la visita pidiendo disponibilidad y limpiar lo coordinado.
     visita.estado = EstadoVisita.ESPERANDO_DISPONIBILIDAD
+    visita.disponibilidad_pausada = False
     visita.disponibilidades = None
     visita.horario_confirmado = None
     visita.fecha_visita = None
