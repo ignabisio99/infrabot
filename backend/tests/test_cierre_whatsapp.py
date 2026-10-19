@@ -137,7 +137,7 @@ def test_contratista_termino_consulta_a_la_escuela(
     assert "escuela" in r.lower()
 
 
-def test_contratista_todavia_no_pide_estimado_y_lo_registra(
+def test_contratista_todavia_no_pide_reporte_y_estimado(
     db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista
 ):
     contratista = crear_contratista()
@@ -163,8 +163,10 @@ def test_contratista_todavia_no_pide_estimado_y_lo_registra(
         r5 = procesar_mensaje(db, "2 días", usuario=telefono)
 
     assert "anotado" in r5.lower()
-    fila = db.query(RecordatorioContratista).filter_by(reclamo_id=reclamo.id).one()
-    assert fila.proxima_pregunta is not None
+    assert db.query(ComentarioReclamo).filter(
+        ComentarioReclamo.reclamo_id == reclamo.id,
+        ComentarioReclamo.texto.contains("Tiempo estimado restante informado: 2 días"),
+    ).count() == 1
     assert db.query(FotoReclamo).filter_by(reclamo_id=reclamo.id).count() == 1
     reporte = (
         db.query(ComentarioReclamo)

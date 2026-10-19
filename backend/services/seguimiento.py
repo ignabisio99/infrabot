@@ -42,9 +42,9 @@ class IntervencionNoForzable(Exception):
 
 
 def seguimiento_horas() -> float:
-    # 24 h: al día siguiente en la misma hora (24 horas después de entrar en ejecución)
-    # se pregunta por primera vez si terminó.
-    # Después el ritmo lo marca el tiempo estimado que informa el contratista.
+    # 24 h: se pregunta si terminó a las 24 h de entrar en ejecución y después cada 24 h
+    # desde la última respuesta, para tener un reporte de avance periódico. El tiempo
+    # estimado que informa el contratista queda como dato, no cambia este ritmo.
     try:
         return float(os.getenv("SEGUIMIENTO_HORAS") or "24")
     except ValueError:
@@ -140,13 +140,6 @@ def _vencer(db: Session, reclamo: Reclamo, ahora: datetime, umbral: timedelta) -
     # Si ya se le preguntó a la escuela si quedó resuelto, el contratista no se molesta.
     if fila and fila.consulto_escuela:
         return False
-    # Si el contratista dio un tiempo estimado, la próxima pregunta se rige por esa fecha
-    # y no por el umbral fijo de 24 h.
-    if fila and fila.proxima_pregunta is not None:
-        prox = fila.proxima_pregunta
-        if prox.tzinfo is None:
-            prox = prox.replace(tzinfo=timezone.utc)
-        return ahora >= prox
     referencia = fila.ultimo_envio if fila else _fecha_en_ejecucion(reclamo)
     if referencia is None:
         referencia = reclamo.fecha_creacion
@@ -223,8 +216,6 @@ def _enviar(db: Session, reclamo: Reclamo, ahora: datetime) -> bool:
     else:
         fila.ultimo_envio = ahora
         fila.cantidad_envios = (fila.cantidad_envios or 0) + 1
-        # Al re-preguntar se consume el estimado anterior: vuelve a regir el umbral/estimado nuevo.
-        fila.proxima_pregunta = None
     db.flush()
     return True
 
@@ -382,54 +373,9 @@ def _escalar_desierto(db: Session, reclamo: Reclamo) -> bool:
 # --- CU-05 pieza 2: respuestas del contratista a la pregunta "¿terminaste?" ------------
 
 
-def _horas_estimadas(texto: str) -> float | None:
-    """Interpreta un tiempo estimado libre a horas. Ej: '2 días' -> 48, '5 horas' -> 5.
-
-    Si no encuentra número, devuelve None (se usa un fallback). Reconoce días/horas/minutos
-    y 'semana(s)'. Si hay número sin unidad, se asume en horas.
-    """
-    t = (texto or "").strip().lower()
-    m = re.search(r"(\d+(?:[.,]\d+)?)", t)
-    if not m:
-        return None
-    valor = float(m.group(1).replace(",", "."))
-    if re.search(r"semana", t):
-        return valor * 24 * 7
-    if re.search(r"d[ií]a", t):
-        return valor * 24
-    if re.search(r"min", t):
-        return valor / 60
-    # "hora", "hs", "h" o sin unidad: horas.
-    return valor
-
-
-def registrar_tiempo_estimado(db: Session, reclamo: Reclamo, texto: str) -> float:
-    """El contratista dijo cuánto le falta. Programa la próxima pregunta a esa altura.
-
-    Devuelve las horas estimadas (interpretadas). Si no se pudo interpretar, usa el
-    umbral por defecto de seguimiento como fallback.
-    """
-    ahora = reloj.ahora()
-    horas = _horas_estimadas(texto)
-    if horas is None or horas <= 0:
-        horas = seguimiento_horas()
-    fila = (
-        db.query(RecordatorioContratista)
-        .filter(RecordatorioContratista.reclamo_id == reclamo.id)
-        .first()
-    )
-    proxima = ahora + timedelta(hours=horas)
-    if fila is None:
-        db.add(
-            RecordatorioContratista(
-                reclamo_id=reclamo.id,
-                ultimo_envio=ahora,
-                cantidad_envios=1,
-                proxima_pregunta=proxima,
-            )
-        )
-    else:
-        fila.proxima_pregunta = proxima
+def registrar_tiempo_estimado(db: Session, reclamo: Reclamo, texto: str) -> None:
+    """El contratista dijo cuánto le falta. Queda como dato en el reclamo; la próxima
+    pregunta sigue saliendo a las SEGUIMIENTO_HORAS."""
     db.add(
         ComentarioReclamo(
             reclamo_id=reclamo.id,
@@ -438,7 +384,6 @@ def registrar_tiempo_estimado(db: Session, reclamo: Reclamo, texto: str) -> floa
         )
     )
     db.commit()
-    return horas
 
 
 def preguntar_a_escuela_si_resuelto(
@@ -461,7 +406,6 @@ def preguntar_a_escuela_si_resuelto(
         )
         db.add(fila)
     fila.consulto_escuela = True
-    fila.proxima_pregunta = None
 
     if registrar_comentario:
         db.add(
@@ -519,7 +463,6 @@ def reactivar_seguimiento(db: Session, reclamo: Reclamo) -> None:
     fila.consulto_escuela = False
     fila.cantidad_envios = 0
     fila.ultimo_envio = ahora
-    fila.proxima_pregunta = None
 
 
 def _normalizar_telefono(valor: str) -> str:

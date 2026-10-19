@@ -127,8 +127,9 @@ sequenceDiagram
      > *"¿Terminaste el trabajo?"*  
      > Botones: **[Sí, terminé]** | **[Todavía no]**
 3. **Si responde "Todavía no":**
-   - El bot consulta: *"¿Cuánto tiempo estimás que te falta?"* (ej: *"2 días"*, *"5 horas"*).
-   - El sistema calcula y agenda la próxima pregunta para esa fecha (`proxima_pregunta`), pausando preguntas intermedias.
+   - El bot pide un reporte de avance: porcentaje (0–99), una breve descripción de la etapa en la que está el trabajo y, opcionalmente, fotos/videos (*listo* u *omitir* para seguir).
+   - Después consulta: *"¿Cuánto tiempo estimás que te falta?"* (ej: *"2 días"*, *"5 horas"*). El estimado queda como comentario en el reclamo, pero no cambia el ritmo de las preguntas.
+   - La próxima pregunta sale a las 24 h (`SEGUIMIENTO_HORAS`) de su última respuesta, así hay un reporte de avance por día.
 4. **Si el contratista deja de responder:**
    - Se reitera el recordatorio hasta un máximo de 5 intentos.
    - Si no hay respuesta tras el 5° intento, el reclamo escala automáticamente a **`DESIERTO`** para reconvocar contratistas.

@@ -85,35 +85,31 @@ def test_una_respuesta_reinicia_los_intentos(
 
 
 @patch("core.whatsapp_client.enviar_botones")
-def test_tiempo_estimado_difiere_la_proxima_pregunta(
+def test_tiempo_estimado_no_cambia_el_ritmo_de_24_horas(
     mock_botones,
     db,
     crear_reclamo,
     crear_presupuesto_aprobado,
     crear_contratista,
-    monkeypatch,
 ):
-    """Si el contratista da un estimado, no se le vuelve a preguntar hasta que se cumpla."""
+    """Aunque el contratista diga que le faltan 2 días, se le vuelve a preguntar a las 24 h."""
     from services.seguimiento import registrar_tiempo_estimado
 
-    monkeypatch.setenv("SEGUIMIENTO_HORAS", "0")
     reclamo = _reclamo_en_obra(db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista)
     mock_botones.return_value = {}
-
-    ejecutar_seguimiento(db)  # primera pregunta
-    horas = registrar_tiempo_estimado(db, reclamo, "2 días")
-    assert horas == 48
-
-    # Aunque el umbral sea 0, no vuelve a preguntar porque proxima_pregunta está en el futuro.
-    r = ejecutar_seguimiento(db)
-    assert r.enviados == 0
-
-    # Si la próxima pregunta ya venció, sí vuelve a preguntar.
-    fila = db.query(RecordatorioContratista).filter_by(reclamo_id=reclamo.id).one()
-    fila.proxima_pregunta = datetime.now(timezone.utc) - timedelta(hours=1)
+    fila = RecordatorioContratista(
+        reclamo_id=reclamo.id,
+        ultimo_envio=datetime.now(timezone.utc) - timedelta(hours=25),
+        cantidad_envios=1,
+    )
+    db.add(fila)
     db.flush()
-    r2 = ejecutar_seguimiento(db)
-    assert r2.enviados == 1
+
+    registrar_tiempo_estimado(db, reclamo, "2 días")
+
+    assert ejecutar_seguimiento(db).enviados == 1
+    # Recién preguntado: no se repite hasta que pasen otras 24 h.
+    assert ejecutar_seguimiento(db).enviados == 0
 
 
 @patch("core.whatsapp_client.enviar_botones")

@@ -1563,8 +1563,8 @@ def _procesar_cu05_termino(db: Session, usuario: str, mensaje: str) -> str:
         seguimiento.registrar_tiempo_estimado(db, reclamo, mensaje)
         del _conversaciones[usuario]
         return (
-            "👍 Anotado. Te vuelvo a consultar más cerca de ese momento. "
-            "Si terminás antes, avisame por acá."
+            f"👍 Anotado. Te vuelvo a consultar en {seguimiento.seguimiento_horas():g} horas "
+            "para ver cómo viene. Si terminás antes, avisame por acá."
         )
 
     if _es_confirmacion_si(mensaje) or _es_reporte_termino(mensaje):
