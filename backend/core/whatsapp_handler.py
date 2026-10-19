@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from core import reloj
 from core.ai import config as ai_config
+from models.busqueda_reclamo import BusquedaReclamo
 from models.foto_reclamo import FotoReclamo, TipoMedia
 from models.reclamo import EstadoReclamo, PrioridadReclamo, Reclamo
 from models.recordatorio_contratista import RecordatorioContratista
@@ -550,6 +551,9 @@ def _formatear_reclamo(r: Reclamo) -> str:
     )
 
 
+MAX_BUSQUEDAS_RECIENTES = 5
+
+
 def _buscar_por_id(db: Session, reclamo_id: int, usuario: str = "") -> str:
     reclamo = (
         db.query(Reclamo)
@@ -560,7 +564,61 @@ def _buscar_por_id(db: Session, reclamo_id: int, usuario: str = "") -> str:
     # Sólo se muestra si el reclamo es de este número (no espiar reclamos ajenos).
     if not reclamo or (usuario and reclamo.telefono_creador != usuario):
         return f"❌ No encontré un reclamo tuyo con ID #{reclamo_id}."
+    if usuario:
+        _registrar_busqueda(db, usuario, reclamo.id)
     return _formatear_reclamo(reclamo)
+
+
+def _registrar_busqueda(db: Session, usuario: str, reclamo_id: int) -> None:
+    fila = (
+        db.query(BusquedaReclamo)
+        .filter(BusquedaReclamo.telefono == usuario, BusquedaReclamo.reclamo_id == reclamo_id)
+        .first()
+    )
+    if fila is None:
+        db.add(BusquedaReclamo(telefono=usuario, reclamo_id=reclamo_id))
+    else:
+        fila.fecha = datetime.now(timezone.utc)
+    db.commit()
+
+
+def _mensaje_buscar_reclamo(db: Session, usuario: str) -> str:
+    """Al tocar *Buscar reclamo*: sus últimas consultas y cómo ver el estado de uno."""
+    buscados = (
+        db.query(Reclamo)
+        .join(BusquedaReclamo, BusquedaReclamo.reclamo_id == Reclamo.id)
+        .filter(BusquedaReclamo.telefono == usuario, Reclamo.telefono_creador == usuario)
+        .order_by(BusquedaReclamo.fecha.desc())
+        .limit(MAX_BUSQUEDAS_RECIENTES)
+        .all()
+    )
+    if buscados:
+        titulo = "Tus últimas consultas:"
+        reclamos = buscados
+    else:
+        # Todavía no buscó ninguno: le mostramos los últimos que cargó.
+        titulo = "Todavía no consultaste reclamos. Estos son los últimos que cargaste:"
+        reclamos = (
+            db.query(Reclamo)
+            .filter(Reclamo.telefono_creador == usuario)
+            .order_by(Reclamo.fecha_creacion.desc())
+            .limit(MAX_BUSQUEDAS_RECIENTES)
+            .all()
+        )
+
+    cuerpo = "🔍 *Buscar reclamo*\n\n"
+    if reclamos:
+        cuerpo += f"{titulo}\n"
+        cuerpo += "".join(
+            f"• *#{r.id}* | {r.nombre_escuela} — {_etiqueta_estado(r)}\n" for r in reclamos
+        )
+        cuerpo += "\n"
+    return cuerpo + (
+        "Para ver el estado y el detalle de cualquiera de tus reclamos, escribí su número "
+        "(ID). Por ejemplo: *12*\n"
+        "Más adelante también podés escribir *ver #12* en cualquier momento.\n\n"
+        "Escribí *cancelar* para volver."
+    )
 
 
 def _procesar_buscar_id(db: Session, usuario: str, mensaje: str) -> str:
@@ -644,20 +702,14 @@ def _mostrar_ayuda(variante: str = "menu"):
     else:
         body = "🤖 *InfraBot*\n\n¿Qué querés hacer?"
 
-    # WhatsApp admite 3 botones. El tercero es siempre pasar a un humano;
-    # buscar/recientes siguen por texto (*ver #<id>*, *recientes*).
-    if ai_config.ai_whatsapp_enabled():
-        botones = [
-            {"id": "libre", "title": "💬 Contame el problema"},
-            {"id": "nuevo", "title": "📝 Nuevo reclamo"},
-            {"id": "operador", "title": "🙋 Hablar con humano"},
-        ]
-    else:
-        botones = [
-            {"id": "nuevo", "title": "📝 Nuevo reclamo"},
-            {"id": "recientes", "title": "📋 Ver recientes"},
-            {"id": "operador", "title": "🙋 Hablar con humano"},
-        ]
+    # WhatsApp admite 3 botones: cargar, buscar y pasar a un humano. El resto sigue por
+    # texto (*recientes*, *ver #<id>*). Con IA, "Nuevo reclamo" arranca el modo asistido
+    # (contar el problema con sus palabras); el paso a paso sigue con *nuevo*.
+    botones = [
+        {"id": "libre" if ai_config.ai_whatsapp_enabled() else "nuevo", "title": "📝 Nuevo reclamo"},
+        {"id": "buscar_reclamo", "title": "🔍 Buscar reclamo"},
+        {"id": "operador", "title": "🙋 Hablar con humano"},
+    ]
 
     return {
         "tipo": "botones",
@@ -1929,13 +1981,9 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
         return _iniciar_libre(usuario)
 
     # Botón: buscar reclamo → pedir el ID
-    if texto == "buscar_reclamo":
+    if texto in ("buscar_reclamo", "buscar", "buscar reclamo"):
         _conversaciones[usuario] = {"paso": "buscar_id"}
-        return (
-            "🔍 Escribí el número (ID) del reclamo que querés ver.\n"
-            "Por ejemplo: *3*\n\n"
-            "Escribí *cancelar* para volver."
-        )
+        return _mensaje_buscar_reclamo(db, usuario)
 
     # Comando: ver #<id>
     if texto.startswith("ver #") or texto.startswith("ver#"):
