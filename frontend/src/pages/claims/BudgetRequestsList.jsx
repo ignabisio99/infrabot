@@ -53,8 +53,14 @@ export function BudgetRequestsList({ reclamoId }) {
       <Stack gap="xs">
         {solicitudes.map((s) => {
           const cargado = s.presupuesto_cargado;
+          const rechazado = s.presupuesto_estado === 'RECHAZADO';
           const contenido = (
-            <Card withBorder radius="md" padding="sm">
+            <Card
+              withBorder
+              radius="md"
+              padding="sm"
+              style={rechazado ? { borderColor: 'var(--mantine-color-red-6)' } : undefined}
+            >
               <Group justify="space-between" wrap="nowrap">
                 <div style={{ minWidth: 0 }}>
                   <Text fw={600} size="sm" truncate>
@@ -63,6 +69,11 @@ export function BudgetRequestsList({ reclamoId }) {
                   <Text size="xs" c="dimmed">
                     {s.especialidad}
                   </Text>
+                  {cargado && s.presupuesto_fecha && (
+                    <Text size="xs" c={rechazado ? 'red' : 'dimmed'}>
+                      Oferta del {new Date(s.presupuesto_fecha).toLocaleDateString('es-AR')}
+                    </Text>
+                  )}
                 </div>
                 <Group gap="xs" wrap="nowrap">
                   {cargado && s.version > 1 && (
@@ -85,13 +96,13 @@ export function BudgetRequestsList({ reclamoId }) {
 
           return cargado ? (
             <UnstyledButton
-              key={s.contratista_id}
+              key={s.presupuesto_id}
               onClick={() => handleVerPresupuesto(s.presupuesto_id)}
             >
               {contenido}
             </UnstyledButton>
           ) : (
-            <div key={s.contratista_id}>{contenido}</div>
+            <div key={`pendiente-${s.contratista_id}`}>{contenido}</div>
           );
         })}
       </Stack>

@@ -1,8 +1,10 @@
 """Botón *Buscar reclamo* del menú de WhatsApp: últimas consultas y búsqueda por ID."""
 
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 from core.whatsapp_handler import _mostrar_ayuda, procesar_mensaje, reiniciar_conversacion
+from models.reclamo import EstadoReclamo
 
 TELEFONO = "5491155550001"
 OTRO = "5491155550002"
@@ -75,3 +77,46 @@ def test_buscar_por_id_desde_el_boton_muestra_el_estado(db, crear_reclamo):
 
     assert f"Reclamo #{propio.id}" in r
     assert "Estado:" in r
+
+
+def test_estado_muestra_fecha_de_inicio_en_hora_argentina(db, crear_reclamo):
+    reiniciar_conversacion(TELEFONO)
+    # 02:30 UTC = 23:30 del día anterior en Argentina.
+    propio = crear_reclamo(
+        telefono_creador=TELEFONO, fecha_creacion=datetime(2026, 10, 10, 2, 30, tzinfo=UTC)
+    )
+
+    r = _buscar(db, f"ver #{propio.id}")
+
+    assert "Fecha de inicio: 09/10/2026 23:30" in r
+    assert "finalización" not in r
+
+
+def test_reclamo_finalizado_muestra_la_fecha_en_que_termino(db, crear_reclamo, crear_historial):
+    reiniciar_conversacion(TELEFONO)
+    propio = crear_reclamo(
+        estado=EstadoReclamo.FINALIZADO,
+        telefono_creador=TELEFONO,
+        fecha_creacion=datetime(2026, 10, 1, 13, 0, tzinfo=UTC),
+    )
+    crear_historial(propio, EstadoReclamo.FINALIZADO, datetime(2026, 10, 15, 18, 45, tzinfo=UTC))
+    db.refresh(propio)
+
+    r = _buscar(db, f"ver #{propio.id}")
+
+    assert "Fecha de inicio: 01/10/2026 10:00" in r
+    assert "Fecha de finalización: 15/10/2026 15:45" in r
+
+
+def test_rechazado_muestra_fecha_de_cierre_y_desierto_no(db, crear_reclamo, crear_historial):
+    reiniciar_conversacion(TELEFONO)
+    rechazado = crear_reclamo(estado=EstadoReclamo.RECHAZADO, telefono_creador=TELEFONO)
+    crear_historial(rechazado, EstadoReclamo.RECHAZADO, datetime(2026, 10, 5, 12, 0, tzinfo=UTC))
+    desierto = crear_reclamo(estado=EstadoReclamo.DESIERTO, telefono_creador=TELEFONO)
+    crear_historial(desierto, EstadoReclamo.DESIERTO, datetime(2026, 10, 5, 12, 0, tzinfo=UTC))
+    db.refresh(rechazado)
+    db.refresh(desierto)
+
+    assert "Fecha de cierre: 05/10/2026 09:00" in _buscar(db, f"ver #{rechazado.id}")
+    r = _buscar(db, f"ver #{desierto.id}")
+    assert "cierre" not in r and "finalización" not in r

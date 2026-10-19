@@ -547,8 +547,27 @@ def _formatear_reclamo(r: Reclamo) -> str:
         f"🏷️ Categoría: {r.categoria}\n"
         f"📝 Descripción: {r.descripcion}\n"
         f"📎 Fotos: {fotos_count}\n"
-        f"📅 Fecha: {r.fecha_creacion.strftime('%d/%m/%Y %H:%M')}"
+        f"📅 Fecha de inicio: {reloj.formatear_art(r.fecha_creacion)}"
+        + _linea_fecha_finalizacion(r)
     )
+
+
+# Estados cerrados que muestran cuándo se cerraron. DESIERTO no: se reconvoca.
+_ETIQUETA_FECHA_CIERRE = {
+    EstadoReclamo.FINALIZADO: "Fecha de finalización",
+    EstadoReclamo.RECHAZADO: "Fecha de cierre",
+}
+
+
+def _linea_fecha_finalizacion(r: Reclamo) -> str:
+    """Para un reclamo cerrado, cuándo pasó a ese estado (el último, por si se reabrió)."""
+    etiqueta = _ETIQUETA_FECHA_CIERRE.get(r.estado)
+    if etiqueta is None:
+        return ""
+    fechas = [h.fecha for h in r.historial_estados or [] if h.estado_nuevo == r.estado]
+    if not fechas:
+        return ""
+    return f"\n🏁 {etiqueta}: {reloj.formatear_art(max(fechas))}"
 
 
 MAX_BUSQUEDAS_RECIENTES = 5
@@ -672,7 +691,7 @@ def _listar_recientes(db: Session, usuario: str = "") -> str:
         resultado += (
             f"• #{r.id} | {r.nombre_escuela}\n"
             f"   📊 {_etiqueta_estado(r)} | 🚦 {r.prioridad.value} | "
-            f"{r.categoria} | {r.fecha_creacion.strftime('%d/%m/%Y')}\n"
+            f"{r.categoria} | {reloj.formatear_art(r.fecha_creacion)[:10]}\n"
         )
     resultado += "\nPara ver el detalle, escribí: *ver #<id>*"
     return resultado

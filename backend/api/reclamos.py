@@ -523,8 +523,12 @@ def listar_solicitudes_presupuesto(
     db: Session = Depends(get_db),
     _admin: Usuario = Depends(get_current_admin),
 ):
-    """Lista los contratistas a los que se les solicitó presupuesto para el reclamo,
-    indicando si ya lo cargaron y el id del presupuesto en ese caso. Solo admins.
+    """Lista los contratistas a los que se les solicitó presupuesto para el reclamo y
+    todas las ofertas que mandó cada uno. Solo admins.
+
+    Un contratista rechazado puede mandar otra oferta: se devuelve una fila por oferta
+    (la más nueva primero) para que las rechazadas no desaparezcan. Si todavía no cargó
+    ninguna, va una sola fila pendiente.
     """
     if db.get(Reclamo, reclamo_id) is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
@@ -536,33 +540,40 @@ def listar_solicitudes_presupuesto(
         .all()
     )
 
-    # Presupuestos ya cargados para este reclamo, indexados por contratista
-    # Ordenados por id para que, si cargó más de uno, quede el último.
     presupuestos = (
         db.query(Presupuesto)
         .filter(Presupuesto.reclamo_id == reclamo_id)
-        .order_by(Presupuesto.id)
+        .order_by(Presupuesto.id.desc())
         .all()
     )
-    presupuesto_por_contratista = {p.contratista_id: p for p in presupuestos}
+    presupuestos_por_contratista: dict[int, list[Presupuesto]] = {}
+    for p in presupuestos:
+        presupuestos_por_contratista.setdefault(p.contratista_id, []).append(p)
 
     resultado = []
     for s in solicitudes:
         c = s.contratista
-        presupuesto = presupuesto_por_contratista.get(s.contratista_id)
-        resultado.append(
-            SolicitudPresupuestoOut(
-                contratista_id=s.contratista_id,
-                nombre_empresa=c.nombre_empresa if c else "—",
-                especialidad=c.especialidad if c else "—",
-                telefono=c.telefono if c else "—",
-                fecha_solicitud=s.fecha_solicitud,
-                presupuesto_cargado=presupuesto is not None,
-                presupuesto_id=presupuesto.id if presupuesto else None,
-                presupuesto_estado=presupuesto.estado.value if presupuesto else None,
-                version=presupuesto.version if presupuesto else 0,
-            )
+        base = dict(
+            contratista_id=s.contratista_id,
+            nombre_empresa=c.nombre_empresa if c else "—",
+            especialidad=c.especialidad if c else "—",
+            telefono=c.telefono if c else "—",
+            fecha_solicitud=s.fecha_solicitud,
         )
+        ofertas = presupuestos_por_contratista.get(s.contratista_id, [])
+        if not ofertas:
+            resultado.append(SolicitudPresupuestoOut(**base, presupuesto_cargado=False))
+        for presupuesto in ofertas:
+            resultado.append(
+                SolicitudPresupuestoOut(
+                    **base,
+                    presupuesto_cargado=True,
+                    presupuesto_id=presupuesto.id,
+                    presupuesto_estado=presupuesto.estado.value,
+                    presupuesto_fecha=presupuesto.fecha,
+                    version=presupuesto.version,
+                )
+            )
     return resultado
 
 

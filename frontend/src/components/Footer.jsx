@@ -14,12 +14,14 @@ export function Footer() {
               Gestión inteligente de reclamos y presupuestos
             </Text>
           </Stack>
-          <Text size="xs" c="dimmed">
-            Desarrollado por{' '}
-            <Anchor href="https://www.utn.edu.ar/" target="_blank" rel="noreferrer" size="xs">
-              UTN
+          <Stack gap={2}>
+            <Text size="xs" c="dimmed">
+              Desarrollado por Grupo 205 - Proyecto Final 2026
+            </Text>
+            <Anchor href="https://frba.utn.edu.ar/" target="_blank" rel="noreferrer" size="xs">
+              UTN FRBA
             </Anchor>
-          </Text>
+          </Stack>
         </Group>
       </Container>
     </Box>

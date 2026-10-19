@@ -57,7 +57,9 @@ class NotificarContratistasOut(BaseModel):
 
 
 class SolicitudPresupuestoOut(BaseModel):
-    """Estado de una solicitud de presupuesto a un contratista para un reclamo."""
+    """Una oferta de un contratista convocado para un reclamo, o la solicitud pendiente
+    si todavía no mandó ninguna. Un contratista puede tener varias filas (ej. una
+    rechazada y la que mandó después)."""
     contratista_id: int
     nombre_empresa: str
     especialidad: str
@@ -66,6 +68,7 @@ class SolicitudPresupuestoOut(BaseModel):
     presupuesto_cargado: bool
     presupuesto_id: int | None = None
     presupuesto_estado: str | None = None
+    presupuesto_fecha: datetime | None = None
     version: int = 0
 
 

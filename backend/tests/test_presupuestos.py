@@ -7,6 +7,7 @@ from core.dependencies import get_current_user
 from main import app
 from models.presupuesto import EstadoPresupuesto
 from models.reclamo import EstadoReclamo
+from models.solicitud_presupuesto import SolicitudPresupuesto
 from models.usuario import EstadoUsuario, TipoUsuario, Usuario
 
 ITEMS = [{"descripcion": "Membrana", "cantidad": "2", "costo_unitario": "1000"}]
@@ -323,6 +324,32 @@ def test_queda_convocado_si_le_llega_el_mail_aunque_falle_el_whatsapp(
     [solicitud] = client.get(f"/reclamos/{reclamo.id}/solicitudes-presupuesto").json()
     assert solicitud["contratista_id"] == ficha.id
 
+
+
+def test_solicitudes_del_reclamo_muestran_tambien_las_ofertas_rechazadas(
+    client, db, loguear_contratista, crear_reclamo
+):
+    reclamo = crear_reclamo(estado=EstadoReclamo.PENDIENTE_PRESUPUESTO)
+    ficha = loguear_contratista()
+    pendiente = loguear_contratista("Sin oferta")
+    for c in (ficha, pendiente):
+        db.add(SolicitudPresupuesto(reclamo_id=reclamo.id, contratista_id=c.id))
+    db.flush()
+    loguear_contratista()
+    primera = _cargar(client, reclamo, ficha).json()
+    _rechazar(client, primera["id"])
+    segunda = _cargar(client, reclamo, ficha).json()
+
+    filas = client.get(f"/reclamos/{reclamo.id}/solicitudes-presupuesto").json()
+
+    de_ficha = [f for f in filas if f["contratista_id"] == ficha.id]
+    assert [(f["presupuesto_id"], f["presupuesto_estado"]) for f in de_ficha] == [
+        (segunda["id"], "RECIBIDO"),
+        (primera["id"], "RECHAZADO"),
+    ]
+    assert all(f["presupuesto_fecha"] for f in de_ficha)
+    [sin_oferta] = [f for f in filas if f["contratista_id"] == pendiente.id]
+    assert sin_oferta["presupuesto_cargado"] is False
 
 
 def test_guardar_sin_cambios_no_crea_una_version(client, loguear_contratista, crear_reclamo):

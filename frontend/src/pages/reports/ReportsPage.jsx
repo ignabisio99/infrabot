@@ -14,6 +14,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import { DatePickerInput } from '@mantine/dates';
 import { IconDownload, IconFileTypePdf } from '@tabler/icons-react';
 
 import { descargarReporteCsv, descargarReportePdf, obtenerReporte } from '../../api/reportes';
@@ -43,7 +44,8 @@ function TarjetasResumen({ tipo, resumen }) {
       {
         label: 'Días promedio',
         value:
-          resumen.dias_promedio_resolucion === null || resumen.dias_promedio_resolucion === undefined
+          resumen.dias_promedio_resolucion === null ||
+          resumen.dias_promedio_resolucion === undefined
             ? '—'
             : resumen.dias_promedio_resolucion,
       },
@@ -94,9 +96,14 @@ function DesglosePorEstado({ resumen }) {
 
 export function ReportsPage() {
   const [tipo, setTipo] = useState('reclamos');
-  const [desde, setDesde] = useState('');
-  const [hasta, setHasta] = useState('');
-  const [reporte, setReporte] = useState(null);
+  // Mismo selector de rango que el listado de reclamos. Mantine devuelve 'YYYY-MM-DD',
+  // que es lo que espera la API.
+  const [rangoFechas, setRangoFechas] = useState([null, null]);
+  const desde = rangoFechas[0] ?? '';
+  const hasta = rangoFechas[1] ?? '';
+  const [reporteGenerado, setReporte] = useState(null);
+  // Sin el rango completo no se muestra nada (ni el último reporte generado).
+  const reporte = desde && hasta ? reporteGenerado : null;
   const [cargando, setCargando] = useState(false);
   const [descargando, setDescargando] = useState(null); // 'csv' | 'pdf' | null
 
@@ -119,10 +126,7 @@ export function ReportsPage() {
   // una vez elegido el rango, cambiar de tipo (métricas/reclamos/presupuestos) o de
   // fechas regenera solo, sin apretar un botón. Debounce para no disparar al tipear.
   useEffect(() => {
-    if (!desde || !hasta) {
-      setReporte(null);
-      return;
-    }
+    if (!desde || !hasta) return;
     const timer = setTimeout(generar, 300);
     return () => clearTimeout(timer);
   }, [generar, desde, hasta]);
@@ -153,28 +157,17 @@ export function ReportsPage() {
           <SegmentedControl data={TIPOS} value={tipo} onChange={setTipo} />
 
           <Group align="flex-end" gap="md" wrap="wrap">
-            <div>
-              <Text size="sm" fw={500} mb={4}>
-                Desde
-              </Text>
-              <input
-                type="date"
-                value={desde}
-                onChange={(e) => setDesde(e.target.value)}
-                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #ced4da' }}
-              />
-            </div>
-            <div>
-              <Text size="sm" fw={500} mb={4}>
-                Hasta
-              </Text>
-              <input
-                type="date"
-                value={hasta}
-                onChange={(e) => setHasta(e.target.value)}
-                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #ced4da' }}
-              />
-            </div>
+            <DatePickerInput
+              type="range"
+              allowSingleDateInRange
+              label="Fecha"
+              placeholder="Seleccioná un rango"
+              value={rangoFechas}
+              onChange={setRangoFechas}
+              valueFormat="DD/MM/YYYY"
+              clearable
+              w={260}
+            />
             <Button
               variant="light"
               leftSection={<IconDownload size={16} />}
@@ -196,14 +189,15 @@ export function ReportsPage() {
             </Button>
           </Group>
           <Text size="xs" c="dimmed">
-            Elegí un rango de fechas (desde y hasta) para generar el reporte.
+            Elegí un rango de fechas (desde y hasta) para generar el reporte. Para un solo día, tocá
+            la misma fecha dos veces.
           </Text>
         </Stack>
       </Paper>
 
       {(!desde || !hasta) && (
         <Alert color="gray" variant="light">
-          Seleccioná las fechas <strong>Desde</strong> y <strong>Hasta</strong> para ver el reporte.
+          Seleccioná un rango de fechas para ver el reporte.
         </Alert>
       )}
 
