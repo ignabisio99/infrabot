@@ -143,6 +143,25 @@ def registrar_avance_texto(
     return comentario
 
 
+def registrar_reporte_avance(
+    db: Session,
+    reclamo: Reclamo,
+    contratista,
+    *,
+    porcentaje: int,
+    descripcion: str,
+    cantidad_media: int,
+) -> ComentarioReclamo:
+    """El contratista dijo que todavía no terminó: deja asentado el reporte que se le pidió."""
+    texto = (
+        "Reporte de avance (trabajo todavía no terminado)\n"
+        f"Avance: {porcentaje}%\n"
+        f"Estado actual: {descripcion.strip()}\n"
+        f"Fotos/videos enviados: {cantidad_media}"
+    )
+    return registrar_avance_texto(db, reclamo, contratista, texto)
+
+
 def registrar_avance_media(
     db: Session, reclamo: Reclamo, url_local: str, mime_type: str
 ) -> FotoReclamo:

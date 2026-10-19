@@ -1550,6 +1550,13 @@ def _procesar_cu05_termino(db: Session, usuario: str, mensaje: str) -> str:
             "Estamos esperando la confirmación de la escuela para darlo por finalizado."
         )
 
+    # En el porcentaje todavía puede decir que sí terminó; en la descripción no se mira,
+    # porque frases como "terminé la parte eléctrica" son avance, no término.
+    if conv.get("paso") in PASOS_REPORTE_AVANCE and not (
+        conv["paso"] == "cu05_porcentaje" and _es_reporte_termino(mensaje)
+    ):
+        return _procesar_cu05_reporte_avance(db, usuario, reclamo, mensaje)
+
     # Esperando el tiempo estimado: salvo que diga explícitamente que sí terminó, se toma
     # el texto como el estimado restante.
     if conv.get("paso") == "cu05_estimado" and not (_es_confirmacion_si(mensaje) or _es_reporte_termino(mensaje)):
@@ -1574,10 +1581,12 @@ def _procesar_cu05_termino(db: Session, usuario: str, mensaje: str) -> str:
         )
 
     if _es_confirmacion_no(mensaje):
-        conv["paso"] = "cu05_estimado"
+        # Antes del estimado se pide un reporte: porcentaje, descripción y fotos/videos (opcional).
+        conv["paso"] = "cu05_porcentaje"
+        conv["media_avance"] = 0
         return (
-            "Dale. ¿Cuánto tiempo estimás que te falta para terminar?\n"
-            "Por ejemplo: *2 días*, *5 horas*."
+            "Dale. Antes de seguir necesito un breve reporte del avance.\n\n"
+            "📊 *1/3:* ¿Qué porcentaje del trabajo tenés hecho? (ej: *40%*)"
         )
 
     # Texto libre que no es sí/no ni término: lo tratamos como un avance normal y re-preguntamos.
@@ -1586,6 +1595,71 @@ def _procesar_cu05_termino(db: Session, usuario: str, mensaje: str) -> str:
     avance_contratista.registrar_avance_texto(db, reclamo, contratista, mensaje)
     return (
         "📝 Anoté el avance. ¿Terminaste el trabajo? Respondé *sí* o *no*."
+    )
+
+
+# CU-05: el contratista respondió que todavía no terminó. Se le pide el porcentaje de
+# avance, una descripción breve y, opcionalmente, fotos/videos; después sigue la pregunta
+# del estimado.
+PASOS_REPORTE_AVANCE = ("cu05_porcentaje", "cu05_descripcion", "cu05_fotos")
+
+
+def _porcentaje_avance(texto: str) -> int | None:
+    m = re.search(r"\d{1,3}", texto or "")
+    if not m:
+        return None
+    valor = int(m.group(0))
+    return valor if 0 <= valor <= 100 else None
+
+
+def _procesar_cu05_reporte_avance(db: Session, usuario: str, reclamo: Reclamo, mensaje: str) -> str:
+    from services import avance_contratista
+
+    conv = _conversaciones[usuario]
+    texto = (mensaje or "").strip()
+
+    if conv["paso"] == "cu05_porcentaje":
+        porcentaje = _porcentaje_avance(texto)
+        if porcentaje is None:
+            return "⚠️ Decime un número del 0 al 100. Por ejemplo: *40%*."
+        if porcentaje == 100:
+            return (
+                "Si el trabajo ya está al 100%, escribí *terminé*. "
+                "Si no, decime el porcentaje que llevás hecho."
+            )
+        conv["porcentaje"] = porcentaje
+        conv["paso"] = "cu05_descripcion"
+        return "📝 *2/3:* Contame brevemente en qué etapa está el trabajo."
+
+    if conv["paso"] == "cu05_descripcion":
+        if len(texto) < 10:
+            return "⚠️ Contame un poco más (mínimo 10 caracteres) en qué etapa está el trabajo."
+        conv["descripcion"] = texto
+        conv["paso"] = "cu05_fotos"
+        return (
+            "📷 *3/3 (opcional):* Si querés, mandame fotos o videos del trabajo realizado "
+            "hasta ahora y escribí *listo* cuando termines.\n"
+            "Si no tenés, escribí *omitir*."
+        )
+
+    # cu05_fotos: opcional, se cierra con "listo" o "omitir".
+    if not (_es_comando_listo(texto) or _es_comando(texto, "omitir", "saltar", "no tengo", "no")):
+        return "📷 Mandame fotos o videos y escribí *listo*, o escribí *omitir* para seguir sin fotos."
+    hallado = avance_contratista.reclamo_en_ejecucion_de(db, usuario)
+    contratista = hallado[1] if hallado else None
+    avance_contratista.registrar_reporte_avance(
+        db,
+        reclamo,
+        contratista,
+        porcentaje=conv["porcentaje"],
+        descripcion=conv["descripcion"],
+        cantidad_media=conv.get("media_avance", 0),
+    )
+    _conversaciones[usuario] = {"paso": "cu05_estimado", "reclamo_id": reclamo.id}
+    return (
+        f"✅ Gracias, registré el avance del reclamo #{reclamo.id}.\n\n"
+        "¿Cuánto tiempo estimás que te falta para terminar?\n"
+        "Por ejemplo: *2 días*, *5 horas*."
     )
 
 
@@ -1778,7 +1852,7 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
 
     # CU-05 pieza 2: contratista responde si terminó (o informa tiempo estimado)
     if usuario in _conversaciones and _conversaciones[usuario].get("paso") in (
-        "cu05_termino", "cu05_estimado"
+        "cu05_termino", "cu05_estimado", *PASOS_REPORTE_AVANCE
     ):
         return _procesar_cu05_termino(db, usuario, mensaje)
 
@@ -1940,6 +2014,23 @@ def procesar_media(db: Session, usuario: str, url_local: str, mime_type: str, ca
 
     if usuario and conv_activa(db, usuario) is not None:
         return ""
+
+    # Reporte de avance pedido tras "todavía no terminé": las fotos/videos van al reclamo.
+    if usuario in _conversaciones and _conversaciones[usuario].get("paso") in PASOS_REPORTE_AVANCE:
+        conv = _conversaciones[usuario]
+        reclamo = db.get(Reclamo, conv.get("reclamo_id"))
+        if reclamo is None:
+            del _conversaciones[usuario]
+            return "⚠️ No encontré el reclamo. Escribí *ayuda* para ver los comandos."
+        avance_contratista.registrar_avance_media(db, reclamo, url_local, mime_type)
+        conv["media_avance"] = conv.get("media_avance", 0) + 1
+        tipo_str = "📹 Video" if "video" in (mime_type or "") else "📷 Foto"
+        if conv["paso"] == "cu05_fotos":
+            return (
+                f"{tipo_str} recibida ✅ (total: {conv['media_avance']})\n"
+                "Podés seguir enviando o escribí *listo* para continuar."
+            )
+        return f"{tipo_str} recibida ✅. La guardé en el reclamo; seguí con el paso actual."
 
     if usuario not in _conversaciones or _conversaciones[usuario].get("paso") != "avance_ejecucion":
         estado_av = avance_contratista.estado_conversacion_avance(db, usuario)

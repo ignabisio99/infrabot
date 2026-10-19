@@ -10,8 +10,14 @@ que importan localmente los servicios y schedulers.
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-from core.whatsapp_handler import procesar_mensaje, reiniciar_conversacion, registrar_estado_conversacion
+from core.whatsapp_handler import (
+    procesar_media,
+    procesar_mensaje,
+    registrar_estado_conversacion,
+    reiniciar_conversacion,
+)
 from models.comentario_reclamo import ComentarioReclamo
+from models.foto_reclamo import FotoReclamo
 from models.historial_estado_reclamo import OrigenCambioEstado
 from models.recordatorio_contratista import RecordatorioContratista
 from models.reclamo import EstadoReclamo
@@ -146,12 +152,88 @@ def test_contratista_todavia_no_pide_estimado_y_lo_registra(
 
     with patch("core.whatsapp_client.enviar_mensaje"), patch("core.whatsapp_client.enviar_botones"):
         r1 = procesar_mensaje(db, cu05_botones.TERMINO_NO, usuario=telefono)
-        assert "cuánto" in r1.lower() or "cuanto" in r1.lower()
-        r2 = procesar_mensaje(db, "2 días", usuario=telefono)
+        assert "porcentaje" in r1.lower()
+        r2 = procesar_mensaje(db, "40%", usuario=telefono)
+        assert "etapa" in r2.lower()
+        r3 = procesar_mensaje(db, "Falta pintar y colocar las aberturas", usuario=telefono)
+        assert "opcional" in r3.lower()
+        procesar_media(db, telefono, "/uploads/avance.jpg", "image/jpeg")
+        r4 = procesar_mensaje(db, "listo", usuario=telefono)
+        assert "cuánto" in r4.lower()
+        r5 = procesar_mensaje(db, "2 días", usuario=telefono)
 
-    assert "anotado" in r2.lower()
+    assert "anotado" in r5.lower()
     fila = db.query(RecordatorioContratista).filter_by(reclamo_id=reclamo.id).one()
     assert fila.proxima_pregunta is not None
+    assert db.query(FotoReclamo).filter_by(reclamo_id=reclamo.id).count() == 1
+    reporte = (
+        db.query(ComentarioReclamo)
+        .filter(
+            ComentarioReclamo.reclamo_id == reclamo.id,
+            ComentarioReclamo.texto.contains("Reporte de avance"),
+        )
+        .one()
+    )
+    assert "Avance: 40%" in reporte.texto
+    assert "Falta pintar y colocar las aberturas" in reporte.texto
+    assert "Fotos/videos enviados: 1" in reporte.texto
+
+
+def test_reporte_de_avance_valida_porcentaje_y_las_fotos_son_opcionales(
+    db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista
+):
+    contratista = crear_contratista()
+    contratista.telefono = "5491177889911"
+    reclamo = crear_reclamo(estado=EstadoReclamo.EN_EJECUCION)
+    crear_presupuesto_aprobado(
+        reclamo, items=[(1, 100)], fecha_aprobacion=reclamo.fecha_creacion, contratista=contratista
+    )
+    telefono = "5491177889911"
+    reiniciar_conversacion(telefono)
+    registrar_estado_conversacion(telefono, {"paso": "cu05_termino", "reclamo_id": reclamo.id})
+
+    with patch("core.whatsapp_client.enviar_mensaje"), patch("core.whatsapp_client.enviar_botones"):
+        procesar_mensaje(db, cu05_botones.TERMINO_NO, usuario=telefono)
+        assert "0 al 100" in procesar_mensaje(db, "bastante", usuario=telefono)
+        assert "0 al 100" in procesar_mensaje(db, "150", usuario=telefono)
+        procesar_mensaje(db, "60", usuario=telefono)
+        procesar_mensaje(db, "Ya está hecha la instalación eléctrica", usuario=telefono)
+        r = procesar_mensaje(db, "omitir", usuario=telefono)
+
+    assert "cuánto" in r.lower()
+    reporte = (
+        db.query(ComentarioReclamo)
+        .filter(
+            ComentarioReclamo.reclamo_id == reclamo.id,
+            ComentarioReclamo.texto.contains("Reporte de avance"),
+        )
+        .one()
+    )
+    assert "Avance: 60%" in reporte.texto
+    assert "Fotos/videos enviados: 0" in reporte.texto
+
+
+def test_reporte_de_avance_100_por_ciento_y_termine_cierra(
+    db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista
+):
+    contratista = crear_contratista()
+    contratista.telefono = "5491177889922"
+    reclamo = crear_reclamo(estado=EstadoReclamo.EN_EJECUCION, telefono_creador="5491100112244")
+    crear_presupuesto_aprobado(
+        reclamo, items=[(1, 100)], fecha_aprobacion=reclamo.fecha_creacion, contratista=contratista
+    )
+    telefono = "5491177889922"
+    reiniciar_conversacion(telefono)
+    registrar_estado_conversacion(telefono, {"paso": "cu05_termino", "reclamo_id": reclamo.id})
+
+    with patch("core.whatsapp_client.enviar_mensaje"), patch("core.whatsapp_client.enviar_botones"):
+        procesar_mensaje(db, cu05_botones.TERMINO_NO, usuario=telefono)
+        assert "terminé" in procesar_mensaje(db, "100%", usuario=telefono)
+        r = procesar_mensaje(db, "terminé", usuario=telefono)
+
+    assert "terminado" in r.lower()
+    fila = db.query(RecordatorioContratista).filter_by(reclamo_id=reclamo.id).one()
+    assert fila.consulto_escuela is True
 
 
 # --- Pieza 3: resolución de la escuela --------------------------------------------------
