@@ -57,6 +57,7 @@ import { HiloChat } from '../conversaciones/HiloChat';
 import { BudgetRequestsList } from './BudgetRequestsList';
 import { ChangeStatusModal } from './ChangeStatusModal';
 import { ClaimCommentsThread } from './ClaimComments';
+import { esComentarioContratista, partesComentarioContratista } from './comentariosContratista';
 import { ClaimIAPanel } from './ClaimIAPanel';
 import { ClaimPhotosManager } from './ClaimPhotosManager';
 import { NotifyContractorsModal } from './NotifyContractorsModal';
@@ -258,6 +259,46 @@ function ChatDelReclamo({ telefono }) {
   );
 }
 
+/**
+ * Cuelga cada comentario del contratista del último cambio de estado anterior a su fecha
+ * (en obra, "Pasó a En ejecución"). Devuelve un array paralelo a `historial`.
+ */
+function comentariosPorEvento(historial, comentariosContratista) {
+  const porEvento = historial.map(() => []);
+  if (historial.length === 0) return porEvento;
+  for (const comentario of comentariosContratista) {
+    const fecha = new Date(comentario.fecha);
+    let indice = 0;
+    historial.forEach((evento, i) => {
+      if (new Date(evento.fecha) <= fecha) indice = i;
+    });
+    porEvento[indice].push(comentario);
+  }
+  return porEvento;
+}
+
+function ComentarioContratista({ comentario }) {
+  const { empresa, texto } = partesComentarioContratista(comentario);
+  return (
+    <Paper withBorder radius="md" p="xs">
+      <Group justify="space-between" gap="xs" mb={2} wrap="nowrap">
+        <Group gap={4} wrap="nowrap" c="dimmed">
+          <IconBrandWhatsapp size={14} />
+          <Text size="xs" fw={600}>
+            {empresa}
+          </Text>
+        </Group>
+        <Text size="xs" c="dimmed">
+          {new Date(comentario.fecha).toLocaleString('es-AR')}
+        </Text>
+      </Group>
+      <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+        {texto}
+      </Text>
+    </Paper>
+  );
+}
+
 const SIN_CARGAR = {
   id: null,
   reclamo: null,
@@ -316,7 +357,12 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
   const reclamo = cargadoCoincide ? ultimoCargado.reclamo : null;
   const historial = cargadoCoincide ? ultimoCargado.historial : [];
   const visita = cargadoCoincide ? ultimoCargado.visita : null;
-  const comentarios = cargadoCoincide ? ultimoCargado.comentarios : [];
+  const todosComentarios = cargadoCoincide ? ultimoCargado.comentarios : [];
+  const comentarios = todosComentarios.filter((c) => !esComentarioContratista(c));
+  const avancesPorEvento = comentariosPorEvento(
+    historial,
+    todosComentarios.filter(esComentarioContratista),
+  );
   const cargando = reclamoId !== null && reclamo === null;
 
   const proximoPaso = reclamo ? proximoPasoPorEstado[reclamo.estado] : null;
@@ -644,7 +690,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
                 </Text>
               ) : (
                 <Timeline active={historial.length} bulletSize={24} lineWidth={2}>
-                  {historial.map((evento) => {
+                  {historial.map((evento, i) => {
                     const Icono = iconoPorEstado[evento.estado_nuevo] ?? IconClipboardList;
                     return (
                       <Timeline.Item
@@ -661,6 +707,13 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
                         <Text size="xs" c="dimmed" mt={4}>
                           {new Date(evento.fecha).toLocaleString('es-AR')}
                         </Text>
+                        {avancesPorEvento[i].length > 0 && (
+                          <Stack gap="xs" mt="sm">
+                            {avancesPorEvento[i].map((comentario) => (
+                              <ComentarioContratista key={comentario.id} comentario={comentario} />
+                            ))}
+                          </Stack>
+                        )}
                       </Timeline.Item>
                     );
                   })}
