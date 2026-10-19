@@ -45,7 +45,8 @@ export function ChangeStateModal({ entidad, config, onSubmit, onClose, onCambiad
   // Para los destinos que arrastran cosas fuera de la entidad: conviene decirlo antes
   // de guardar, no después.
   const avisoConfig = config.avisoPorEstado?.[estado];
-  const aviso = typeof avisoConfig === 'function' ? avisoConfig(entidad) : avisoConfig;
+  // Al cerrar, `entidad` pasa a null antes de que se resetee `estado`.
+  const aviso = typeof avisoConfig === 'function' ? entidad && avisoConfig(entidad) : avisoConfig;
   const Badge = config.Badge;
 
   const handleGuardar = async () => {
