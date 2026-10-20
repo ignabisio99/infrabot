@@ -7,6 +7,7 @@ import {
   Container,
   Group,
   Loader,
+  Stack,
   Table,
   Text,
   TextInput,
@@ -20,6 +21,8 @@ import { listarPresupuestos } from '../../api/presupuestos';
 import { formatearIdReclamo } from '../../utils/ids';
 import { fechaEnRango, idCoincideConBusqueda } from '../../utils/filtros';
 import { formatoMoneda } from '../../utils/formatters';
+import { TarjetaMovil } from '../../components/TarjetaMovil';
+import { useEsMobile } from '../../hooks/useEsMobile';
 import { StatusFilterPopover } from '../claims/StatusFilterPopover';
 import { BudgetAuditModal } from './BudgetAuditModal';
 import { BudgetItemsModal } from './BudgetItemsModal';
@@ -92,6 +95,61 @@ export function BudgetsListPage() {
     cargar();
   }, [cargar]);
 
+  const esMobile = useEsMobile();
+
+  const badgesOferta = (presupuesto, anteriores) => (
+    <>
+      {presupuesto.version > 1 && (
+        <Badge ml={6} size="xs" color="gray" variant="outline" tt="none">
+          Versión {presupuesto.version}
+        </Badge>
+      )}
+      {anteriores.length > 0 && (
+        <Tooltip
+          multiline
+          w={260}
+          label={anteriores
+            .map(
+              (p) =>
+                `Oferta anterior: ${formatoMoneda.format(Number(p.monto))}, ${(
+                  etiquetaPorEstado[p.estado] ?? p.estado
+                ).toLowerCase()}`,
+            )
+            .join('\n')}
+        >
+          <Badge ml={6} size="xs" color="violet" variant="light" tt="none">
+            {anteriores.length + 1}.ª oferta
+          </Badge>
+        </Tooltip>
+      )}
+    </>
+  );
+
+  const botonesPresupuesto = (presupuesto) => (
+    <>
+      {presupuesto.estado !== 'APROBADO' && (
+        <Button
+          size="xs"
+          variant="light"
+          color="gray"
+          leftSection={<IconShieldCheck size={14} />}
+          onClick={() => setPresupuestoAAuditar(presupuesto)}
+        >
+          Auditoría
+        </Button>
+      )}
+      <Button
+        size="xs"
+        color="teal"
+        leftSection={<IconGavel size={14} />}
+        onClick={() => setPresupuestoADecidir(presupuesto)}
+        disabled={presupuesto.estados_posibles.length === 0}
+      >
+        Decidir
+      </Button>
+    </>
+  );
+
   return (
     <Container fluid px={0}>
       <Group justify="space-between" mb="md">
@@ -105,7 +163,7 @@ export function BudgetsListPage() {
             placeholder="Ej: REC-00000034 o 34"
             value={busquedaReclamo}
             onChange={(event) => setBusquedaReclamo(event.currentTarget.value)}
-            w={180}
+            w={{ base: '100%', sm: 180 }}
           />
           <StatusFilterPopover
             value={estadosFiltro}
@@ -122,7 +180,7 @@ export function BudgetsListPage() {
             onChange={setRangoFechas}
             valueFormat="DD/MM/YYYY"
             clearable
-            w={260}
+            w={{ base: '100%', sm: 260 }}
           />
           {hayFiltrosActivos && (
             <Button variant="subtle" onClick={limpiarFiltros}>
@@ -148,7 +206,42 @@ export function BudgetsListPage() {
         <Text c="dimmed">Ningún presupuesto coincide con los filtros seleccionados.</Text>
       )}
 
-      {!cargando && presupuestosFiltrados.length > 0 && (
+      {!cargando && presupuestosFiltrados.length > 0 && esMobile && (
+        <Stack gap="sm">
+          {presupuestosFiltrados.map((presupuesto) => {
+            const anteriores = ofertasAnteriores.get(presupuesto.id) ?? [];
+            return (
+              <TarjetaMovil
+                key={presupuesto.id}
+                onClick={() => setPresupuestoSeleccionado(presupuesto)}
+                titulo={`${formatearIdReclamo(presupuesto.reclamo.id)} · ${presupuesto.reclamo.nombre_escuela}`}
+                badges={
+                  <>
+                    <BudgetStatusBadge estado={presupuesto.estado} />
+                    {badgesOferta(presupuesto, anteriores)}
+                  </>
+                }
+                campos={[
+                  { etiqueta: 'Contratista', valor: presupuesto.contratista.nombre_empresa },
+                  { etiqueta: 'Monto', valor: formatoMoneda.format(Number(presupuesto.monto)) },
+                  { etiqueta: 'Fecha', valor: new Date(presupuesto.fecha).toLocaleString('es-AR') },
+                  {
+                    etiqueta: 'Observaciones',
+                    valor: presupuesto.observaciones && (
+                      <Text size="sm" lineClamp={2}>
+                        {presupuesto.observaciones}
+                      </Text>
+                    ),
+                  },
+                ]}
+                pie={botonesPresupuesto(presupuesto)}
+              />
+            );
+          })}
+        </Stack>
+      )}
+
+      {!cargando && presupuestosFiltrados.length > 0 && !esMobile && (
         <Table.ScrollContainer minWidth={900}>
           <Table striped highlightOnHover>
             <Table.Thead>
@@ -182,29 +275,7 @@ export function BudgetsListPage() {
                     <Table.Td>{presupuesto.reclamo.nombre_escuela}</Table.Td>
                     <Table.Td>
                       {presupuesto.contratista.nombre_empresa}
-                      {presupuesto.version > 1 && (
-                        <Badge ml={6} size="xs" color="gray" variant="outline" tt="none">
-                          Versión {presupuesto.version}
-                        </Badge>
-                      )}
-                      {anteriores.length > 0 && (
-                        <Tooltip
-                          multiline
-                          w={260}
-                          label={anteriores
-                            .map(
-                              (p) =>
-                                `Oferta anterior: ${formatoMoneda.format(Number(p.monto))}, ${(
-                                  etiquetaPorEstado[p.estado] ?? p.estado
-                                ).toLowerCase()}`,
-                            )
-                            .join('\n')}
-                        >
-                          <Badge ml={6} size="xs" color="violet" variant="light" tt="none">
-                            {anteriores.length + 1}.ª oferta
-                          </Badge>
-                        </Tooltip>
-                      )}
+                      {badgesOferta(presupuesto, anteriores)}
                     </Table.Td>
                     <Table.Td>{formatoMoneda.format(Number(presupuesto.monto))}</Table.Td>
                     <Table.Td miw={130}>
@@ -222,26 +293,7 @@ export function BudgetsListPage() {
                     </Table.Td>
                     <Table.Td onClick={(e) => e.stopPropagation()}>
                       <Group gap="xs" wrap="nowrap" justify="flex-end">
-                        {presupuesto.estado !== 'APROBADO' && (
-                          <Button
-                            size="xs"
-                            variant="light"
-                            color="gray"
-                            leftSection={<IconShieldCheck size={14} />}
-                            onClick={() => setPresupuestoAAuditar(presupuesto)}
-                          >
-                            Auditoría
-                          </Button>
-                        )}
-                        <Button
-                          size="xs"
-                          color="teal"
-                          leftSection={<IconGavel size={14} />}
-                          onClick={() => setPresupuestoADecidir(presupuesto)}
-                          disabled={presupuesto.estados_posibles.length === 0}
-                        >
-                          Decidir
-                        </Button>
+                        {botonesPresupuesto(presupuesto)}
                       </Group>
                     </Table.Td>
                   </Table.Tr>

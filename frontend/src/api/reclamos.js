@@ -35,6 +35,17 @@ export async function obtenerHistorialReclamo(reclamoId) {
   return response.json();
 }
 
+/** Cambios de estado de los presupuestos del reclamo, para la línea de tiempo. Solo admins. */
+export async function obtenerMovimientosPresupuestos(reclamoId) {
+  const response = await fetchConAuth(`${API_URL}/reclamos/${reclamoId}/movimientos-presupuestos`);
+
+  if (!response.ok) {
+    throw new Error('No se pudieron obtener los movimientos de los presupuestos del reclamo.');
+  }
+
+  return response.json();
+}
+
 export async function listarComentariosReclamo(reclamoId) {
   const response = await fetchConAuth(`${API_URL}/reclamos/${reclamoId}/comentarios`);
 
@@ -119,9 +130,7 @@ export async function asignarOfertaExistente(reclamoId, presupuestoId) {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => null);
-    throw new Error(
-      extraerMensajeError(error?.detail, 'No se pudo asignar esa oferta.'),
-    );
+    throw new Error(extraerMensajeError(error?.detail, 'No se pudo asignar esa oferta.'));
   }
   return response.json();
 }

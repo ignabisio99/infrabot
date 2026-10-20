@@ -30,14 +30,154 @@ import {
 } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 
-import {
-  avanzarTiempo,
-  obtenerEstadoSimulador,
-  resetearTiempo,
-} from '../api/simuladorTiempo';
+import { avanzarTiempo, obtenerEstadoSimulador, resetearTiempo } from '../api/simuladorTiempo';
+import { useEsMobile } from '../hooks/useEsMobile';
 import { notifyError, notifySuccess } from '../utils/notifications';
+import { TarjetaMovil } from './TarjetaMovil';
+
+function celdasVisita(v, irAWhatsAppConNumero) {
+  const yaPaso = v.horas_faltantes <= 0;
+  return {
+    reclamo: (
+      <>
+        <Text fw={600} size="xs">
+          #{v.reclamo_id}
+        </Text>
+        <Text size="xs" c="dimmed">
+          {v.escuela}
+        </Text>
+      </>
+    ),
+    contratista: (
+      <>
+        <Text size="xs">{v.contratista}</Text>
+        <Text size="xs" c="dimmed">
+          {v.contratista_telefono || 'Sin tel'}
+        </Text>
+      </>
+    ),
+    fecha: (
+      <>
+        <Text size="xs" fw={500}>
+          {v.fecha_visita_art || v.horario_confirmado}
+        </Text>
+      </>
+    ),
+    faltante: (
+      <>
+        {yaPaso ? (
+          <Badge color="orange" size="xs" variant="light">
+            Hora cumplida
+          </Badge>
+        ) : (
+          <Badge color="blue" size="xs" variant="light">
+            En {v.horas_faltantes} h
+          </Badge>
+        )}
+      </>
+    ),
+    recordatorios: (
+      <>
+        <Stack gap={2}>
+          <Badge size="xs" variant="dot" color={v.dia_antes_enviado ? 'green' : 'gray'}>
+            24h antes: {v.dia_antes_enviado ? 'Enviado' : 'Pendiente'}
+          </Badge>
+          <Badge size="xs" variant="dot" color={v.mismo_dia_enviado ? 'green' : 'gray'}>
+            Mismo día: {v.mismo_dia_enviado ? 'Enviado' : 'Pendiente'}
+          </Badge>
+          <Badge size="xs" variant="dot" color={v.pregunta_inicio_enviada ? 'green' : 'gray'}>
+            Preg. inicio: {v.pregunta_inicio_enviada ? 'Enviada' : 'Pendiente'}
+          </Badge>
+        </Stack>
+      </>
+    ),
+    accion: (
+      <>
+        {v.contratista_telefono && (
+          <Button
+            size="compact-xs"
+            variant="light"
+            color="teal"
+            leftSection={<IconMessageDots size={12} />}
+            onClick={() => irAWhatsAppConNumero(v.contratista_telefono)}
+          >
+            Simular contratista
+          </Button>
+        )}
+      </>
+    ),
+  };
+}
+
+function celdasEjecucion(r, irAWhatsAppConNumero) {
+  return {
+    reclamo: (
+      <>
+        <Text fw={600} size="xs">
+          #{r.id} - {r.escuela}
+        </Text>
+      </>
+    ),
+    contratista: (
+      <>
+        <Text size="xs">{r.contratista || 'Sin asignar'}</Text>
+        <Text size="xs" c="dimmed">
+          {r.contratista_telefono || ''}
+        </Text>
+      </>
+    ),
+    seguimiento: (
+      <>
+        <Stack gap={2}>
+          <Badge size="xs" color="blue" variant="light">
+            Envíos: {r.cantidad_envios}
+          </Badge>
+          {r.consulto_escuela && (
+            <Badge size="xs" color="green" variant="light">
+              Consultando a escuela
+            </Badge>
+          )}
+        </Stack>
+      </>
+    ),
+    proxima: (
+      <>
+        <Text size="xs">{r.proxima_pregunta_art || 'Por umbral estándar (6 h)'}</Text>
+      </>
+    ),
+    acciones: (
+      <>
+        <Group gap={6}>
+          {r.contratista_telefono && (
+            <Button
+              size="compact-xs"
+              variant="light"
+              color="teal"
+              leftSection={<IconMessageDots size={12} />}
+              onClick={() => irAWhatsAppConNumero(r.contratista_telefono)}
+            >
+              Simular contratista
+            </Button>
+          )}
+          {r.creador_telefono && r.consulto_escuela && (
+            <Button
+              size="compact-xs"
+              variant="light"
+              color="blue"
+              leftSection={<IconMessageDots size={12} />}
+              onClick={() => irAWhatsAppConNumero(r.creador_telefono)}
+            >
+              Simular escuela
+            </Button>
+          )}
+        </Group>
+      </>
+    ),
+  };
+}
 
 export function SimuladorTiempoModal({ opened, onClose, onTiempoActualizado }) {
+  const esMobile = useEsMobile();
   const navigate = useNavigate();
   const [cargando, setCargando] = useState(false);
   const [estado, setEstado] = useState(null);
@@ -131,6 +271,7 @@ export function SimuladorTiempoModal({ opened, onClose, onTiempoActualizado }) {
         </Group>
       }
       size="xl"
+      fullScreen={esMobile}
       centered
       padding="lg"
     >
@@ -156,11 +297,7 @@ export function SimuladorTiempoModal({ opened, onClose, onTiempoActualizado }) {
                 <Title order={2} style={{ letterSpacing: -0.5 }}>
                   {estado?.ahora_art || 'Cargando...'}
                 </Title>
-                <Badge
-                  color={estado?.es_simulado ? 'orange' : 'teal'}
-                  variant="light"
-                  size="md"
-                >
+                <Badge color={estado?.es_simulado ? 'orange' : 'teal'} variant="light" size="md">
                   {estado?.offset_descripcion || 'Tiempo real'}
                 </Badge>
               </Group>
@@ -329,12 +466,31 @@ export function SimuladorTiempoModal({ opened, onClose, onTiempoActualizado }) {
             </Group>
           </Group>
 
-          {(!estado?.proximas_visitas || estado.proximas_visitas.length === 0) ? (
+          {!estado?.proximas_visitas || estado.proximas_visitas.length === 0 ? (
             <Paper p="sm" withBorder radius="md">
               <Text size="xs" c="dimmed" ta="center">
                 No hay visitas confirmadas pendientes en este momento.
               </Text>
             </Paper>
+          ) : esMobile ? (
+            <Stack gap="xs">
+              {estado.proximas_visitas.map((v) => {
+                const c = celdasVisita(v, irAWhatsAppConNumero);
+                return (
+                  <TarjetaMovil
+                    key={v.id}
+                    titulo={c.reclamo}
+                    campos={[
+                      { etiqueta: 'Contratista', valor: c.contratista },
+                      { etiqueta: 'Visita', valor: c.fecha },
+                      { etiqueta: 'Faltante', valor: c.faltante },
+                      { etiqueta: 'Recordatorios', valor: c.recordatorios },
+                    ]}
+                    pie={v.contratista_telefono && c.accion}
+                  />
+                );
+              })}
+            </Stack>
           ) : (
             <Table striped highlightOnHover withTableBorder withColumnBorders fz="xs">
               <Table.Thead>
@@ -349,77 +505,15 @@ export function SimuladorTiempoModal({ opened, onClose, onTiempoActualizado }) {
               </Table.Thead>
               <Table.Tbody>
                 {estado.proximas_visitas.map((v) => {
-                  const yaPaso = v.horas_faltantes <= 0;
+                  const c = celdasVisita(v, irAWhatsAppConNumero);
                   return (
                     <Table.Tr key={v.id}>
-                      <Table.Td>
-                        <Text fw={600} size="xs">
-                          #{v.reclamo_id}
-                        </Text>
-                        <Text size="xs" c="dimmed">
-                          {v.escuela}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="xs">{v.contratista}</Text>
-                        <Text size="xs" c="dimmed">
-                          {v.contratista_telefono || 'Sin tel'}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="xs" fw={500}>
-                          {v.fecha_visita_art || v.horario_confirmado}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        {yaPaso ? (
-                          <Badge color="orange" size="xs" variant="light">
-                            Hora cumplida
-                          </Badge>
-                        ) : (
-                          <Badge color="blue" size="xs" variant="light">
-                            En {v.horas_faltantes} h
-                          </Badge>
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        <Stack gap={2}>
-                          <Badge
-                            size="xs"
-                            variant="dot"
-                            color={v.dia_antes_enviado ? 'green' : 'gray'}
-                          >
-                            24h antes: {v.dia_antes_enviado ? 'Enviado' : 'Pendiente'}
-                          </Badge>
-                          <Badge
-                            size="xs"
-                            variant="dot"
-                            color={v.mismo_dia_enviado ? 'green' : 'gray'}
-                          >
-                            Mismo día: {v.mismo_dia_enviado ? 'Enviado' : 'Pendiente'}
-                          </Badge>
-                          <Badge
-                            size="xs"
-                            variant="dot"
-                            color={v.pregunta_inicio_enviada ? 'green' : 'gray'}
-                          >
-                            Preg. inicio: {v.pregunta_inicio_enviada ? 'Enviada' : 'Pendiente'}
-                          </Badge>
-                        </Stack>
-                      </Table.Td>
-                      <Table.Td>
-                        {v.contratista_telefono && (
-                          <Button
-                            size="compact-xs"
-                            variant="light"
-                            color="teal"
-                            leftSection={<IconMessageDots size={12} />}
-                            onClick={() => irAWhatsAppConNumero(v.contratista_telefono)}
-                          >
-                            Simular contratista
-                          </Button>
-                        )}
-                      </Table.Td>
+                      <Table.Td>{c.reclamo}</Table.Td>
+                      <Table.Td>{c.contratista}</Table.Td>
+                      <Table.Td>{c.fecha}</Table.Td>
+                      <Table.Td>{c.faltante}</Table.Td>
+                      <Table.Td>{c.recordatorios}</Table.Td>
+                      <Table.Td>{c.accion}</Table.Td>
                     </Table.Tr>
                   );
                 })}
@@ -439,12 +533,30 @@ export function SimuladorTiempoModal({ opened, onClose, onTiempoActualizado }) {
             </Group>
           </Group>
 
-          {(!estado?.reclamos_en_ejecucion || estado.reclamos_en_ejecucion.length === 0) ? (
+          {!estado?.reclamos_en_ejecucion || estado.reclamos_en_ejecucion.length === 0 ? (
             <Paper p="sm" withBorder radius="md">
               <Text size="xs" c="dimmed" ta="center">
                 No hay reclamos actualmente en ejecución.
               </Text>
             </Paper>
+          ) : esMobile ? (
+            <Stack gap="xs">
+              {estado.reclamos_en_ejecucion.map((r) => {
+                const c = celdasEjecucion(r, irAWhatsAppConNumero);
+                return (
+                  <TarjetaMovil
+                    key={r.id}
+                    titulo={c.reclamo}
+                    campos={[
+                      { etiqueta: 'Contratista', valor: c.contratista },
+                      { etiqueta: 'Seguimiento', valor: c.seguimiento },
+                      { etiqueta: 'Próxima consulta', valor: c.proxima },
+                    ]}
+                    pie={(r.contratista_telefono || r.creador_telefono) && c.acciones}
+                  />
+                );
+              })}
+            </Stack>
           ) : (
             <Table striped highlightOnHover withTableBorder withColumnBorders fz="xs">
               <Table.Thead>
@@ -457,62 +569,18 @@ export function SimuladorTiempoModal({ opened, onClose, onTiempoActualizado }) {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {estado.reclamos_en_ejecucion.map((r) => (
-                  <Table.Tr key={r.id}>
-                    <Table.Td>
-                      <Text fw={600} size="xs">
-                        #{r.id} - {r.escuela}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="xs">{r.contratista || 'Sin asignar'}</Text>
-                      <Text size="xs" c="dimmed">
-                        {r.contratista_telefono || ''}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Stack gap={2}>
-                        <Badge size="xs" color="blue" variant="light">
-                          Envíos: {r.cantidad_envios}
-                        </Badge>
-                        {r.consulto_escuela && (
-                          <Badge size="xs" color="green" variant="light">
-                            Consultando a escuela
-                          </Badge>
-                        )}
-                      </Stack>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="xs">{r.proxima_pregunta_art || 'Por umbral estándar (6 h)'}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Group gap={6}>
-                        {r.contratista_telefono && (
-                          <Button
-                            size="compact-xs"
-                            variant="light"
-                            color="teal"
-                            leftSection={<IconMessageDots size={12} />}
-                            onClick={() => irAWhatsAppConNumero(r.contratista_telefono)}
-                          >
-                            Simular contratista
-                          </Button>
-                        )}
-                        {r.creador_telefono && r.consulto_escuela && (
-                          <Button
-                            size="compact-xs"
-                            variant="light"
-                            color="blue"
-                            leftSection={<IconMessageDots size={12} />}
-                            onClick={() => irAWhatsAppConNumero(r.creador_telefono)}
-                          >
-                            Simular escuela
-                          </Button>
-                        )}
-                      </Group>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
+                {estado.reclamos_en_ejecucion.map((r) => {
+                  const c = celdasEjecucion(r, irAWhatsAppConNumero);
+                  return (
+                    <Table.Tr key={r.id}>
+                      <Table.Td>{c.reclamo}</Table.Td>
+                      <Table.Td>{c.contratista}</Table.Td>
+                      <Table.Td>{c.seguimiento}</Table.Td>
+                      <Table.Td>{c.proxima}</Table.Td>
+                      <Table.Td>{c.acciones}</Table.Td>
+                    </Table.Tr>
+                  );
+                })}
               </Table.Tbody>
             </Table>
           )}
@@ -563,4 +631,3 @@ export function SimuladorTiempoModal({ opened, onClose, onTiempoActualizado }) {
     </Modal>
   );
 }
-

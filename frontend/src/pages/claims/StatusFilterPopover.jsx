@@ -40,6 +40,8 @@ export function StatusFilterPopover({
     <Input.Wrapper
       label="Estado"
       id={id}
+      // En celular los filtros van uno abajo del otro, a todo el ancho.
+      w={{ base: '100%', sm: 'auto' }}
       // Div y no <label>: Input.Wrapper le pone `htmlFor` apuntando al input que espera
       // como hijo, pero acá el hijo es un Button y encima Popover.Target le sobreescribe
       // el id con el suyo, así que el `for` quedaría colgado. El nombre accesible se lo
@@ -68,7 +70,7 @@ export function StatusFilterPopover({
             justify="space-between"
             rightSection={<IconChevronDown size={16} stroke={1.5} />}
             onClick={toggle}
-            w={ANCHO}
+            w={{ base: '100%', sm: ANCHO }}
           >
             {resumen(value, etiquetaPorEstado)}
           </Button>

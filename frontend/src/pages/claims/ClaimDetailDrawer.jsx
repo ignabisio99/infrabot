@@ -19,7 +19,6 @@ import {
   IconAlertTriangle,
   IconArrowRight,
   IconBan,
-  IconBolt,
   IconBrandWhatsapp,
   IconCalendarEvent,
   IconChecks,
@@ -40,6 +39,7 @@ import {
 import {
   listarComentariosReclamo,
   obtenerHistorialReclamo,
+  obtenerMovimientosPresupuestos,
   obtenerReclamo,
   obtenerVisitaReclamo,
   asignarOfertaExistente,
@@ -56,6 +56,10 @@ import { notifyError, notifySuccess } from '../../utils/notifications';
 import { HiloChat } from '../conversaciones/HiloChat';
 import { BudgetRequestsList } from './BudgetRequestsList';
 import { ChangeStatusModal } from './ChangeStatusModal';
+import {
+  colorPorEstado as colorPresupuesto,
+  etiquetaPorEstado as etiquetaPresupuesto,
+} from '../budgets/estados';
 import { ClaimCommentsThread } from './ClaimComments';
 import { esComentarioContratista, partesComentarioContratista } from './comentariosContratista';
 import { ClaimIAPanel } from './ClaimIAPanel';
@@ -96,22 +100,9 @@ function tituloEvento(evento) {
 // TODO: cuando existan roles, mostrar el nombre del usuario en los cambios MANUAL.
 function TituloEvento({ evento }) {
   return (
-    <Group gap={6} wrap="nowrap">
-      <Text size="sm" fw={500}>
-        {tituloEvento(evento)}
-      </Text>
-      {evento.origen === 'AUTOMATICO' && (
-        <Badge
-          size="xs"
-          variant="light"
-          color="grape"
-          leftSection={<IconBolt size={10} />}
-          tt="none"
-        >
-          Automático
-        </Badge>
-      )}
-    </Group>
+    <Text size="sm" fw={500}>
+      {tituloEvento(evento)}
+    </Text>
   );
 }
 
@@ -260,21 +251,98 @@ function ChatDelReclamo({ telefono }) {
 }
 
 /**
- * Cuelga cada comentario del contratista del último cambio de estado anterior a su fecha
- * (en obra, "Pasó a En ejecución"). Devuelve un array paralelo a `historial`.
+ * Saca de la línea de tiempo el ida y vuelta que genera un rechazo: si se rechaza la
+ * última oferta vigente el reclamo vuelve solo a "Pendiente de presupuesto", y con la
+ * oferta siguiente vuelve a "En evaluación". Para quien mira es una sola evaluación con
+ * los movimientos de los presupuestos adentro. Si todavía no llegó otra oferta, el
+ * "Pendiente" queda: es el estado real.
  */
-function comentariosPorEvento(historial, comentariosContratista) {
-  const porEvento = historial.map(() => []);
-  if (historial.length === 0) return porEvento;
-  for (const comentario of comentariosContratista) {
-    const fecha = new Date(comentario.fecha);
+function eventosVisibles(historial) {
+  const visibles = [];
+  for (let i = 0; i < historial.length; i++) {
+    const evento = historial[i];
+    const siguiente = historial[i + 1];
+    const vueltaPorRechazo =
+      evento.estado_anterior === 'EN_EVALUACION' &&
+      evento.estado_nuevo === 'PENDIENTE_PRESUPUESTO' &&
+      evento.origen === 'AUTOMATICO' &&
+      siguiente?.estado_nuevo === 'EN_EVALUACION';
+    if (vueltaPorRechazo) {
+      i++; // también el regreso a "En evaluación"
+      continue;
+    }
+    visibles.push(evento);
+  }
+  return visibles;
+}
+
+// Un movimiento de presupuesto y el cambio de estado del reclamo que provoca (ej. llega la
+// primera oferta → "En evaluación") se guardan casi al mismo tiempo: el movimiento va con
+// el estado en el que estaba el reclamo, no con el que causó.
+const MARGEN_CAMBIO_POR_PRESUPUESTO_MS = 2000;
+
+/**
+ * Cuelga cada ítem (avance del contratista, movimiento de presupuesto) del último cambio de
+ * estado anterior a su fecha. Devuelve un array paralelo a `eventos`, con los ítems en orden.
+ */
+function agruparPorEvento(eventos, items, margenMs = 0) {
+  const porEvento = eventos.map(() => []);
+  if (eventos.length === 0) return porEvento;
+  for (const item of items) {
+    const limite = new Date(item.fecha).getTime() - margenMs;
     let indice = 0;
-    historial.forEach((evento, i) => {
-      if (new Date(evento.fecha) <= fecha) indice = i;
+    eventos.forEach((evento, i) => {
+      if (new Date(evento.fecha).getTime() <= limite) indice = i;
     });
-    porEvento[indice].push(comentario);
+    porEvento[indice].push(item);
   }
   return porEvento;
+}
+
+function textoMovimiento({
+  nombre_empresa: empresa,
+  estado_anterior: antes,
+  estado_nuevo: estado,
+}) {
+  if (estado === 'RECIBIDO') {
+    return antes === 'AJUSTES_SOLICITADOS'
+      ? `${empresa} envió una versión corregida`
+      : `${empresa} envió su presupuesto`;
+  }
+  if (estado === 'AJUSTES_SOLICITADOS') return `Se pidieron ajustes a ${empresa}`;
+  if (estado === 'RECHAZADO') return `Se rechazó el presupuesto de ${empresa}`;
+  if (estado === 'APROBADO') return `Se aprobó el presupuesto de ${empresa}`;
+  if (estado === 'NO_SELECCIONADO') return `El presupuesto de ${empresa} no fue seleccionado`;
+  return `${empresa}: ${etiquetaPresupuesto[estado] ?? estado}`;
+}
+
+function MovimientoPresupuesto({ movimiento }) {
+  const color = colorPresupuesto[movimiento.estado_nuevo] ?? 'gray';
+  return (
+    <Paper
+      withBorder
+      radius="md"
+      p="xs"
+      style={{ borderLeft: `3px solid var(--mantine-color-${color}-6)` }}
+    >
+      <Group justify="space-between" gap="xs" mb={2} wrap="nowrap">
+        <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
+          <IconReceipt2 size={14} color={`var(--mantine-color-${color}-6)`} />
+          <Text size="xs" fw={600}>
+            {textoMovimiento(movimiento)}
+          </Text>
+        </Group>
+        <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
+          {new Date(movimiento.fecha).toLocaleString('es-AR')}
+        </Text>
+      </Group>
+      {movimiento.motivo && (
+        <Text size="sm" c="dimmed" style={{ whiteSpace: 'pre-wrap' }}>
+          {movimiento.motivo}
+        </Text>
+      )}
+    </Paper>
+  );
 }
 
 function ComentarioContratista({ comentario }) {
@@ -305,6 +373,7 @@ const SIN_CARGAR = {
   historial: [],
   visita: null,
   comentarios: [],
+  movimientos: [],
 };
 
 export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclamoActualizado }) {
@@ -331,9 +400,13 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
       obtenerHistorialReclamo(reclamoId),
       obtenerVisitaReclamo(reclamoId),
       listarComentariosReclamo(reclamoId),
+      // Los presupuestos solo los ve el admin (igual que la pestaña Presupuestos).
+      esAdministrador() ? obtenerMovimientosPresupuestos(reclamoId) : [],
     ])
-      .then(([reclamo, historial, visita, comentarios]) => {
-        if (vigente) setUltimoCargado({ id: reclamoId, reclamo, historial, visita, comentarios });
+      .then(([reclamo, historial, visita, comentarios, movimientos]) => {
+        if (vigente) {
+          setUltimoCargado({ id: reclamoId, reclamo, historial, visita, comentarios, movimientos });
+        }
       })
       .catch((err) => {
         if (vigente) notifyError(err.message);
@@ -359,9 +432,15 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
   const visita = cargadoCoincide ? ultimoCargado.visita : null;
   const todosComentarios = cargadoCoincide ? ultimoCargado.comentarios : [];
   const comentarios = todosComentarios.filter((c) => !esComentarioContratista(c));
-  const avancesPorEvento = comentariosPorEvento(
-    historial,
+  const eventos = eventosVisibles(historial);
+  const avancesPorEvento = agruparPorEvento(
+    eventos,
     todosComentarios.filter(esComentarioContratista),
+  );
+  const movimientosPorEvento = agruparPorEvento(
+    eventos,
+    cargadoCoincide ? ultimoCargado.movimientos : [],
+    MARGEN_CAMBIO_POR_PRESUPUESTO_MS,
   );
   const cargando = reclamoId !== null && reclamo === null;
 
@@ -689,8 +768,8 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
                   Todavía no hay movimientos registrados.
                 </Text>
               ) : (
-                <Timeline active={historial.length} bulletSize={24} lineWidth={2}>
-                  {historial.map((evento, i) => {
+                <Timeline active={eventos.length} bulletSize={24} lineWidth={2}>
+                  {eventos.map((evento, i) => {
                     const Icono = iconoPorEstado[evento.estado_nuevo] ?? IconClipboardList;
                     return (
                       <Timeline.Item
@@ -707,6 +786,16 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
                         <Text size="xs" c="dimmed" mt={4}>
                           {new Date(evento.fecha).toLocaleString('es-AR')}
                         </Text>
+                        {movimientosPorEvento[i].length > 0 && (
+                          <Stack gap="xs" mt="sm">
+                            {movimientosPorEvento[i].map((movimiento) => (
+                              <MovimientoPresupuesto
+                                key={`${movimiento.presupuesto_id}-${movimiento.fecha}`}
+                                movimiento={movimiento}
+                              />
+                            ))}
+                          </Stack>
+                        )}
                         {avancesPorEvento[i].length > 0 && (
                           <Stack gap="xs" mt="sm">
                             {avancesPorEvento[i].map((comentario) => (

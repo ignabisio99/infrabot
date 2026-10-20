@@ -24,6 +24,7 @@ from models.presupuesto import Presupuesto
 from models.reclamo import EstadoReclamo, Reclamo
 from models.solicitud_presupuesto import SolicitudPresupuesto
 from models.usuario import TipoUsuario, Usuario
+from models.historial_estado_presupuesto import HistorialEstadoPresupuesto
 from models.historial_estado_reclamo import HistorialEstadoReclamo
 from schemas.lista_contratistas import (
     NotificacionResultado,
@@ -39,6 +40,7 @@ from schemas.reclamo import (
     ComentarioReclamoOut,
     FotoReclamoOut,
     HistorialEstadoReclamoOut,
+    MovimientoPresupuestoOut,
     ReclamoCreate,
     ReclamoOut,
 )
@@ -245,6 +247,39 @@ def listar_historial_reclamo(
         .order_by(HistorialEstadoReclamo.fecha, HistorialEstadoReclamo.id)
         .all()
     )
+
+
+@router.get(
+    "/{reclamo_id}/movimientos-presupuestos", response_model=list[MovimientoPresupuestoOut]
+)
+def listar_movimientos_presupuestos(
+    reclamo_id: int, db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)
+):
+    """Todos los cambios de estado de los presupuestos del reclamo, en orden, para la
+    línea de tiempo. Pedir ajustes o rechazar una oferta no siempre cambia el estado del
+    reclamo, así que no queda en su historial. Solo admins, igual que la pestaña de
+    presupuestos."""
+    if db.get(Reclamo, reclamo_id) is None:
+        raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    filas = (
+        db.query(HistorialEstadoPresupuesto, Presupuesto)
+        .join(Presupuesto, Presupuesto.id == HistorialEstadoPresupuesto.presupuesto_id)
+        .options(joinedload(Presupuesto.contratista))
+        .filter(Presupuesto.reclamo_id == reclamo_id)
+        .order_by(HistorialEstadoPresupuesto.fecha, HistorialEstadoPresupuesto.id)
+        .all()
+    )
+    return [
+        MovimientoPresupuestoOut(
+            presupuesto_id=presupuesto.id,
+            nombre_empresa=presupuesto.contratista.nombre_empresa if presupuesto.contratista else "—",
+            estado_anterior=historial.estado_anterior,
+            estado_nuevo=historial.estado_nuevo,
+            motivo=historial.motivo,
+            fecha=historial.fecha,
+        )
+        for historial, presupuesto in filas
+    ]
 
 
 @router.get("/{reclamo_id}/comentarios", response_model=list[ComentarioReclamoOut])

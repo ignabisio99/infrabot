@@ -301,8 +301,8 @@ export function PresupuestarReclamoPage() {
 
         {reclamo.telefono_creador && (
           <Card withBorder radius="md" bg="var(--mantine-color-orange-0)">
-            <Group justify="space-between" wrap="nowrap" gap="md">
-              <div>
+            <Group justify="space-between" gap="md">
+              <div style={{ flex: '1 1 240px' }}>
                 <Text fw={600} size="sm">
                   ¿La información del reclamo no es suficiente?
                 </Text>

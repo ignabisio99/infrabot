@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from models.foto_reclamo import TipoMedia
 from models.historial_estado_reclamo import OrigenCambioEstado
+from models.presupuesto import EstadoPresupuesto
 from models.reclamo import EstadoReclamo, PrioridadReclamo
 
 
@@ -111,5 +112,17 @@ class HistorialEstadoReclamoOut(BaseModel):
     estado_nuevo: EstadoReclamo
     origen: OrigenCambioEstado
     usuario_id: int | None
+    motivo: str | None
+    fecha: datetime
+
+
+class MovimientoPresupuestoOut(BaseModel):
+    """Un cambio de estado de un presupuesto del reclamo (envío, ajustes, rechazo...),
+    para la línea de tiempo del reclamo."""
+
+    presupuesto_id: int
+    nombre_empresa: str
+    estado_anterior: EstadoPresupuesto | None
+    estado_nuevo: EstadoPresupuesto
     motivo: str | None
     fecha: datetime

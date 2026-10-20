@@ -111,8 +111,8 @@ export function SettingsPage() {
       <Stack gap="sm">
         <Title order={4}>Auditoría de presupuestos</Title>
         <Text size="sm" c="dimmed">
-          El desvío se calcula contra la estimación preliminar del reclamo. La recomendación es
-          solo una sugerencia: no aprueba ni rechaza el presupuesto.
+          El desvío se calcula contra la estimación preliminar del reclamo. La recomendación es solo
+          una sugerencia: no aprueba ni rechaza el presupuesto.
         </Text>
         <NumberInput
           label="Aprobar si el desvío es menor a (%)"
@@ -144,15 +144,11 @@ export function SettingsPage() {
           Horario de atención humana
         </Title>
         <Text size="sm" c="dimmed">
-          Fuera de este horario (Argentina) el usuario no entra a la cola: recibe el mensaje
-          de abajo y sigue con el bot. También se cierra el chat si el usuario no responde
-          al operador en los minutos indicados.
+          Fuera de este horario (Argentina) el usuario no entra a la cola: recibe el mensaje de
+          abajo y sigue con el bot. También se cierra el chat si el usuario no responde al operador
+          en los minutos indicados.
         </Text>
-        <Checkbox.Group
-          label="Días"
-          value={diasAtencion}
-          onChange={setDiasAtencion}
-        >
+        <Checkbox.Group label="Días" value={diasAtencion} onChange={setDiasAtencion}>
           <Group mt={6} gap="sm">
             {DIAS_ATENCION.map((dia) => (
               <Checkbox key={dia.value} value={dia.value} label={dia.label} disabled={cargando} />
@@ -229,8 +225,8 @@ export function SettingsPage() {
         </Title>
         <Text size="sm" c="dimmed">
           Si un reclamo está en ejecución y pasa el umbral sin aviso, se pide un avance por
-          WhatsApp. A los 5 intentos sin respuesta pasa a Pendiente de intervención.
-          El job corre en segundo plano; también se puede disparar ahora.
+          WhatsApp. A los 5 intentos sin respuesta pasa a Pendiente de intervención. El job corre en
+          segundo plano; también se puede disparar ahora.
         </Text>
         <Button
           variant="light"
@@ -255,9 +251,9 @@ export function SettingsPage() {
           Referencias de costo
         </Title>
         <Text size="sm" c="dimmed">
-          Trae precios de trabajos tipo (tablero, cañería, etc.) desde la lista histórica
-          del sistema: agrega ítems nuevos y actualiza monto, fecha o unidad si cambiaron.
-          No pisa costos que salieron de un presupuesto aprobado.
+          Trae precios de trabajos tipo (tablero, cañería, etc.) desde la lista histórica del
+          sistema: agrega ítems nuevos y actualiza monto, fecha o unidad si cambiaron. No pisa
+          costos que salieron de un presupuesto aprobado.
         </Text>
         <Button
           variant="light"
@@ -282,9 +278,9 @@ export function SettingsPage() {
           Roles de mano de obra
         </Title>
         <Text size="sm" c="dimmed">
-          El contratista elige un rol al cargar la mano de obra del presupuesto. Acá se
-          agregan, renombran o borran. Si un rol ya está usado en un presupuesto, no se
-          puede borrar: el nombre queda en ese ítem.
+          El contratista elige un rol al cargar la mano de obra del presupuesto. Acá se agregan,
+          renombran o borran. Si un rol ya está usado en un presupuesto, no se puede borrar: el
+          nombre queda en ese ítem.
         </Text>
         <Group align="flex-end" wrap="nowrap">
           <TextInput
@@ -320,13 +316,14 @@ export function SettingsPage() {
         </Group>
         <Stack gap="xs">
           {roles.map((rol) => (
-            <Group key={rol.id} align="flex-end" wrap="nowrap">
+            // En celular el nombre ocupa su renglón y los botones bajan al siguiente.
+            <Group key={rol.id} align="flex-end" gap="xs">
               <TextInput
                 value={nombresRoles[rol.id] ?? rol.nombre}
                 onChange={(e) =>
                   setNombresRoles((prev) => ({ ...prev, [rol.id]: e.currentTarget.value }))
                 }
-                style={{ flex: 1 }}
+                style={{ flex: '1 1 220px' }}
               />
               <Button
                 variant="light"

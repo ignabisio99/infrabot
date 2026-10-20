@@ -88,7 +88,13 @@ function BarraCalendario({ date, label, onNavigate, onView, view }) {
           {label}
         </Title>
       </Group>
-      <SegmentedControl color="#1fa7b3" data={vistas} onChange={onView} value={view} />
+      <SegmentedControl
+        color="#1fa7b3"
+        data={vistas}
+        onChange={onView}
+        value={view}
+        w={{ base: '100%', sm: 'auto' }}
+      />
     </Group>
   );
 }
@@ -98,7 +104,10 @@ const componentes = { toolbar: BarraCalendario };
 export function CalendarPage() {
   const navigate = useNavigate();
   const [fecha, setFecha] = useState(new Date());
-  const [vista, setVista] = useState('month');
+  // En celular el mes queda en 7 columnas finitas: arranca en Agenda, que es una lista.
+  const [vista, setVista] = useState(() =>
+    window.matchMedia('(max-width: 767px)').matches ? 'agenda' : 'month',
+  );
   const [visitas, setVisitas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);

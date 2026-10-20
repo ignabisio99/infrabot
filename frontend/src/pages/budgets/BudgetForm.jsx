@@ -155,8 +155,8 @@ export function BudgetForm({
             <Stack gap={6}>
               {sugeridos.map((s) => (
                 <Paper key={s.contratista_id} withBorder p="xs">
-                  <Group justify="space-between" wrap="nowrap">
-                    <div>
+                  <Group justify="space-between" gap="xs">
+                    <div style={{ flex: '1 1 200px', minWidth: 0 }}>
                       <Text size="sm" fw={500}>
                         {s.nombre_empresa}
                       </Text>

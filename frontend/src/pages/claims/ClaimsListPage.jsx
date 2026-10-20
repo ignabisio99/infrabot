@@ -10,6 +10,7 @@ import {
   Menu,
   Pagination,
   Select,
+  Stack,
   Table,
   Text,
   TextInput,
@@ -19,6 +20,8 @@ import { DatePickerInput } from '@mantine/dates';
 import { IconExchange, IconEye } from '@tabler/icons-react';
 
 import { RowActionsMenu } from '../../components/RowActionsMenu';
+import { TarjetaMovil } from '../../components/TarjetaMovil';
+import { useEsMobile } from '../../hooks/useEsMobile';
 import { eliminarReclamo, listarReclamos } from '../../api/reclamos';
 import { esInspector } from '../../utils/auth';
 import { fechaEnRango, idCoincideConBusqueda } from '../../utils/filtros';
@@ -165,6 +168,25 @@ export function ClaimsListPage() {
   };
 
   const soloLectura = esInspector();
+  const esMobile = useEsMobile();
+
+  const accionesReclamo = (reclamo) =>
+    !soloLectura && (
+      <RowActionsMenu
+        onEdit={() => navigate(`/reclamos/${reclamo.id}/editar`)}
+        onDelete={() => handleEliminar(reclamo.id)}
+        deleting={eliminandoId === reclamo.id}
+        extraItems={
+          <Menu.Item
+            leftSection={<IconExchange size={14} />}
+            onClick={() => setReclamoParaCambiarEstado(reclamo)}
+            disabled={reclamo.estados_posibles.length === 0}
+          >
+            Cambiar estado
+          </Menu.Item>
+        }
+      />
+    );
 
   return (
     <Container fluid px={0}>
@@ -182,14 +204,14 @@ export function ClaimsListPage() {
             placeholder="Ej: REC-00000034 o 34"
             value={busquedaId}
             onChange={(event) => setBusquedaId(event.currentTarget.value)}
-            w={180}
+            w={{ base: '100%', sm: 180 }}
           />
           <Select
             label="Prioridad"
             data={opcionesPrioridad}
             value={prioridadFiltro}
             onChange={(value) => setPrioridadFiltro(value ?? '')}
-            w={160}
+            w={{ base: '100%', sm: 160 }}
           />
           <StatusFilterPopover value={estadosFiltro} onChange={setEstadosFiltro} />
           <DatePickerInput
@@ -201,7 +223,7 @@ export function ClaimsListPage() {
             onChange={setRangoFechas}
             valueFormat="DD/MM/YYYY"
             clearable
-            w={260}
+            w={{ base: '100%', sm: 260 }}
           />
           {hayFiltrosActivos && (
             <Button variant="subtle" onClick={limpiarFiltros}>
@@ -227,7 +249,49 @@ export function ClaimsListPage() {
         <Text c="dimmed">Ningún reclamo coincide con los filtros seleccionados.</Text>
       )}
 
-      {!cargando && reclamosFiltrados.length > 0 && (
+      {!cargando && reclamosFiltrados.length > 0 && esMobile && (
+        <Stack gap="sm">
+          {reclamosPagina.map((reclamo) => (
+            <TarjetaMovil
+              key={reclamo.id}
+              onClick={() => setReclamoIdSeleccionado(reclamo.id)}
+              titulo={
+                <>
+                  <Text span ff="monospace" size="sm" fw={600}>
+                    {formatearIdReclamo(reclamo.id)}
+                  </Text>{' '}
+                  · {reclamo.nombre_escuela}
+                </>
+              }
+              acciones={accionesReclamo(reclamo)}
+              badges={
+                <>
+                  <StatusBadge estado={reclamo.estado} variant="light" />
+                  <PriorityBadge prioridad={reclamo.prioridad} />
+                </>
+              }
+              campos={[
+                { etiqueta: 'Ubicación', valor: reclamo.ubicacion },
+                { etiqueta: 'Categoría', valor: reclamo.categoria },
+                {
+                  etiqueta: 'Descripción',
+                  valor: (
+                    <Text size="sm" lineClamp={2}>
+                      {reclamo.descripcion}
+                    </Text>
+                  ),
+                },
+                {
+                  etiqueta: 'Fecha',
+                  valor: new Date(reclamo.fecha_creacion).toLocaleString('es-AR'),
+                },
+              ]}
+            />
+          ))}
+        </Stack>
+      )}
+
+      {!cargando && reclamosFiltrados.length > 0 && !esMobile && (
         <Table.ScrollContainer minWidth={1000}>
           <Table striped highlightOnHover>
             <Table.Thead>
@@ -276,24 +340,7 @@ export function ClaimsListPage() {
                     </Text>
                   </Table.Td>
                   <Table.Td>{new Date(reclamo.fecha_creacion).toLocaleString('es-AR')}</Table.Td>
-                  <Table.Td>
-                    {!soloLectura && (
-                      <RowActionsMenu
-                        onEdit={() => navigate(`/reclamos/${reclamo.id}/editar`)}
-                        onDelete={() => handleEliminar(reclamo.id)}
-                        deleting={eliminandoId === reclamo.id}
-                        extraItems={
-                          <Menu.Item
-                            leftSection={<IconExchange size={14} />}
-                            onClick={() => setReclamoParaCambiarEstado(reclamo)}
-                            disabled={reclamo.estados_posibles.length === 0}
-                          >
-                            Cambiar estado
-                          </Menu.Item>
-                        }
-                      />
-                    )}
-                  </Table.Td>
+                  <Table.Td>{accionesReclamo(reclamo)}</Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>

@@ -1,7 +1,9 @@
-import { Badge, Card, Group, Table, Text, Title } from '@mantine/core';
+import { Badge, Card, Group, Stack, Table, Text, Title } from '@mantine/core';
 import { IconCheck } from '@tabler/icons-react';
 import { useNavigate } from 'react-router';
 
+import { TarjetaMovil } from '../../components/TarjetaMovil';
+import { useEsMobile } from '../../hooks/useEsMobile';
 import { StatusBadge } from '../claims/StatusBadge';
 import { formatearIdReclamo } from '../../utils/ids';
 import classes from './Dashboard.module.css';
@@ -20,7 +22,9 @@ function colorAntiguedad(dias) {
  */
 export function StalledClaimsCard({ reclamos, total, umbral }) {
   const navigate = useNavigate();
+  const esMobile = useEsMobile();
   const hayMas = total > reclamos.length;
+  const abrir = (reclamo) => navigate(`/reclamos?busqueda=${formatearIdReclamo(reclamo.id)}`);
 
   return (
     <Card withBorder radius="md" padding="lg">
@@ -37,6 +41,24 @@ export function StalledClaimsCard({ reclamos, total, umbral }) {
             Ningún reclamo lleva más de {umbral} días sin movimiento.
           </Text>
         </Group>
+      ) : esMobile ? (
+        <Stack gap="sm">
+          {reclamos.map((reclamo) => (
+            <TarjetaMovil
+              key={reclamo.id}
+              onClick={() => abrir(reclamo)}
+              titulo={`${formatearIdReclamo(reclamo.id)} · ${reclamo.nombre_escuela}`}
+              badges={
+                <>
+                  <StatusBadge estado={reclamo.estado} variant="light" />
+                  <Badge color={colorAntiguedad(reclamo.dias_sin_movimiento)} variant="light">
+                    {reclamo.dias_sin_movimiento} días sin movimiento
+                  </Badge>
+                </>
+              }
+            />
+          ))}
+        </Stack>
       ) : (
         <Table.ScrollContainer minWidth={450}>
           <Table highlightOnHover>
@@ -53,7 +75,7 @@ export function StalledClaimsCard({ reclamos, total, umbral }) {
                 <Table.Tr
                   key={reclamo.id}
                   className={classes.filaClickeable}
-                  onClick={() => navigate(`/reclamos?busqueda=${formatearIdReclamo(reclamo.id)}`)}
+                  onClick={() => abrir(reclamo)}
                 >
                   <Table.Td>
                     <Text ff="monospace" size="sm">

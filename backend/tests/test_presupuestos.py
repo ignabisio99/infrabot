@@ -352,6 +352,31 @@ def test_solicitudes_del_reclamo_muestran_tambien_las_ofertas_rechazadas(
     assert sin_oferta["presupuesto_cargado"] is False
 
 
+def test_movimientos_de_presupuestos_muestran_cada_pedido_de_ajustes(
+    client, loguear_contratista, crear_reclamo
+):
+    reclamo = crear_reclamo(estado=EstadoReclamo.PENDIENTE_PRESUPUESTO)
+    ficha = loguear_contratista("Techos Sur")
+    presupuesto = _cargar(client, reclamo, ficha).json()
+    _pedir_ajustes(client, presupuesto["id"], motivo="Falta el disyuntor")
+    _editar(client, presupuesto, ficha, costo="900")
+    _pedir_ajustes(client, presupuesto["id"], motivo="Detallar mano de obra")
+    _editar(client, presupuesto, ficha, costo="950")
+    _rechazar(client, presupuesto["id"])
+
+    movimientos = client.get(f"/reclamos/{reclamo.id}/movimientos-presupuestos").json()
+
+    assert [(m["estado_nuevo"], m["motivo"]) for m in movimientos] == [
+        ("RECIBIDO", None),
+        ("AJUSTES_SOLICITADOS", "Falta el disyuntor"),
+        ("RECIBIDO", movimientos[2]["motivo"]),
+        ("AJUSTES_SOLICITADOS", "Detallar mano de obra"),
+        ("RECIBIDO", movimientos[4]["motivo"]),
+        ("RECHAZADO", "Precio fuera de mercado"),
+    ]
+    assert all(m["nombre_empresa"] == "Techos Sur" for m in movimientos)
+
+
 def test_guardar_sin_cambios_no_crea_una_version(client, loguear_contratista, crear_reclamo):
     reclamo = crear_reclamo(estado=EstadoReclamo.PENDIENTE_PRESUPUESTO)
     ficha = loguear_contratista()

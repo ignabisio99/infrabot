@@ -19,6 +19,8 @@ import { IconDownload, IconFileTypePdf } from '@tabler/icons-react';
 
 import { descargarReporteCsv, descargarReportePdf, obtenerReporte } from '../../api/reportes';
 import { notifyError } from '../../utils/notifications';
+import { TarjetaMovil } from '../../components/TarjetaMovil';
+import { useEsMobile } from '../../hooks/useEsMobile';
 
 const TIPOS = [
   { label: 'Métricas', value: 'metricas' },
@@ -95,6 +97,7 @@ function DesglosePorEstado({ resumen }) {
 }
 
 export function ReportsPage() {
+  const esMobile = useEsMobile();
   const [tipo, setTipo] = useState('reclamos');
   // Mismo selector de rango que el listado de reclamos. Mantine devuelve 'YYYY-MM-DD',
   // que es lo que espera la API.
@@ -154,7 +157,7 @@ export function ReportsPage() {
 
       <Paper withBorder p="md" radius="md" mb="lg">
         <Stack gap="md">
-          <SegmentedControl data={TIPOS} value={tipo} onChange={setTipo} />
+          <SegmentedControl data={TIPOS} value={tipo} onChange={setTipo} fullWidth={esMobile} />
 
           <Group align="flex-end" gap="md" wrap="wrap">
             <DatePickerInput
@@ -166,12 +169,13 @@ export function ReportsPage() {
               onChange={setRangoFechas}
               valueFormat="DD/MM/YYYY"
               clearable
-              w={260}
+              w={{ base: '100%', sm: 260 }}
             />
             <Button
               variant="light"
               leftSection={<IconDownload size={16} />}
               onClick={() => descargar('csv')}
+              w={{ base: '100%', sm: 'auto' }}
               loading={descargando === 'csv'}
               disabled={!reporte || cargando || descargando === 'pdf'}
             >
@@ -182,6 +186,7 @@ export function ReportsPage() {
               color="red"
               leftSection={<IconFileTypePdf size={16} />}
               onClick={() => descargar('pdf')}
+              w={{ base: '100%', sm: 'auto' }}
               loading={descargando === 'pdf'}
               disabled={!reporte || cargando || descargando === 'csv'}
             >
@@ -210,6 +215,20 @@ export function ReportsPage() {
 
           {reporte.filas.length === 0 ? (
             <Alert color="gray">No hay datos para el período seleccionado.</Alert>
+          ) : esMobile ? (
+            // En celular cada fila es una tarjeta: la primera columna de título y el resto
+            // como pares etiqueta/valor, en vez de una tabla que hay que mover de costado.
+            <Stack gap="sm">
+              {reporte.filas.map((fila, i) => (
+                <TarjetaMovil
+                  key={i}
+                  titulo={`${reporte.columnas[0]}: ${fila[0]}`}
+                  campos={reporte.columnas
+                    .slice(1)
+                    .map((columna, j) => ({ etiqueta: columna, valor: fila[j + 1] }))}
+                />
+              ))}
+            </Stack>
           ) : (
             <Paper withBorder radius="md" style={{ overflowX: 'auto' }}>
               <Table striped highlightOnHover>

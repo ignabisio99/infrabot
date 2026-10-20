@@ -15,7 +15,7 @@ import {
   Textarea,
   Title,
 } from '@mantine/core';
-import { IconSend } from '@tabler/icons-react';
+import { IconArrowLeft, IconSend } from '@tabler/icons-react';
 
 import {
   cerrarConversacion,
@@ -28,6 +28,7 @@ import {
   tomarConversacion,
   transferirConversacion,
 } from '../../api/conversaciones';
+import { useEsMobile } from '../../hooks/useEsMobile';
 import { getUsuarioActual } from '../../utils/auth';
 import { formatoHoraMensaje } from '../../utils/formatters';
 import { notifyError, notifySuccess } from '../../utils/notifications';
@@ -74,7 +75,11 @@ function ItemBandeja({ conv, activo, tieneNuevos, onClick }) {
             <Box
               w={8}
               h={8}
-              style={{ borderRadius: '50%', background: 'var(--mantine-color-red-6)', flexShrink: 0 }}
+              style={{
+                borderRadius: '50%',
+                background: 'var(--mantine-color-red-6)',
+                flexShrink: 0,
+              }}
             />
           )}
           <Text fw={tieneNuevos ? 700 : 600} size="sm" truncate>
@@ -115,6 +120,8 @@ export function ConversacionesPage() {
   const yo = getUsuarioActual()?.id;
   const [tab, setTab] = useState('espera');
   const [seleccion, setSeleccion] = useState(null);
+  // En celular no entran la bandeja y el chat lado a lado: se ve uno por vez.
+  const esMobile = useEsMobile();
   const [mensajes, setMensajes] = useState([]);
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
@@ -189,6 +196,11 @@ export function ConversacionesPage() {
     }
     setTab('mias');
     setChatAbierto(conv.id, conv.ultimo_id);
+  };
+
+  const volverABandeja = () => {
+    setChatAbierto(null);
+    setSeleccion(null);
   };
 
   const cambiarTab = (value) => {
@@ -280,7 +292,16 @@ export function ConversacionesPage() {
         Conversaciones
       </Title>
       <Group align="stretch" wrap="nowrap" gap="md" style={{ flex: 1, minHeight: 0 }}>
-        <Paper withBorder p="sm" w={360} style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <Paper
+          withBorder
+          p="sm"
+          w={esMobile ? '100%' : 360}
+          style={{
+            display: esMobile && seleccion ? 'none' : 'flex',
+            flexDirection: 'column',
+            minHeight: 0,
+          }}
+        >
           <Tabs value={tab} onChange={cambiarTab}>
             <Tabs.List grow>
               <Tabs.Tab
@@ -337,7 +358,13 @@ export function ConversacionesPage() {
         <Paper
           withBorder
           p="md"
-          style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: esMobile && !seleccion ? 'none' : 'flex',
+            flexDirection: 'column',
+            minHeight: 0,
+          }}
         >
           {!seleccion ? (
             <Text c="dimmed" ta="center" py="xl">
@@ -345,6 +372,17 @@ export function ConversacionesPage() {
             </Text>
           ) : (
             <Stack gap="sm" style={{ flex: 1, minHeight: 0 }}>
+              {esMobile && (
+                <Button
+                  variant="subtle"
+                  size="xs"
+                  leftSection={<IconArrowLeft size={14} />}
+                  onClick={volverABandeja}
+                  style={{ alignSelf: 'flex-start' }}
+                >
+                  Volver a la bandeja
+                </Button>
+              )}
               <Group justify="space-between">
                 <div>
                   <Text fw={600}>{seleccion.telefono}</Text>
@@ -366,20 +404,18 @@ export function ConversacionesPage() {
                       Tomar
                     </Button>
                   )}
-                  {esHistorial &&
-                    seleccion.estado === 'CERRADA' &&
-                    seleccion.ventana_abierta && (
-                      <Button
-                        size="xs"
-                        onClick={async () => {
-                          if (await actuar(reabrirConversacion, 'Reabriste el chat.')) {
-                            setTab('mias');
-                          }
-                        }}
-                      >
-                        Reabrir
-                      </Button>
-                    )}
+                  {esHistorial && seleccion.estado === 'CERRADA' && seleccion.ventana_abierta && (
+                    <Button
+                      size="xs"
+                      onClick={async () => {
+                        if (await actuar(reabrirConversacion, 'Reabriste el chat.')) {
+                          setTab('mias');
+                        }
+                      }}
+                    >
+                      Reabrir
+                    </Button>
+                  )}
                   {esMia && (
                     <>
                       <Button size="xs" variant="light" onClick={abrirTransferir}>
@@ -390,9 +426,13 @@ export function ConversacionesPage() {
                         variant="light"
                         color="orange"
                         onClick={() =>
-                          actuar(liberarConversacion, 'Liberaste el chat. El bot vuelve a atender.', {
-                            cerrarVista: true,
-                          })
+                          actuar(
+                            liberarConversacion,
+                            'Liberaste el chat. El bot vuelve a atender.',
+                            {
+                              cerrarVista: true,
+                            },
+                          )
                         }
                       >
                         Liberar
@@ -434,7 +474,9 @@ export function ConversacionesPage() {
                     maxRows={8}
                     autosize
                     maxLength={4096}
-                    placeholder={puedeEscribir ? 'Escribí un mensaje…' : 'No podés responder este chat'}
+                    placeholder={
+                      puedeEscribir ? 'Escribí un mensaje…' : 'No podés responder este chat'
+                    }
                     value={texto}
                     onChange={(e) => setTexto(e.currentTarget.value)}
                     onKeyDown={(e) => {

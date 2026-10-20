@@ -1,8 +1,21 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Badge, Button, Container, Group, Loader, Table, Text, Title } from '@mantine/core';
+import {
+  Alert,
+  Badge,
+  Button,
+  Container,
+  Group,
+  Loader,
+  Stack,
+  Table,
+  Text,
+  Title,
+} from '@mantine/core';
 
 import { listarMisPresupuestos } from '../../api/contratistas';
+import { TarjetaMovil } from '../../components/TarjetaMovil';
+import { useEsMobile } from '../../hooks/useEsMobile';
 import { formatearIdReclamo } from '../../utils/ids';
 import { formatoMoneda } from '../../utils/formatters';
 import { BudgetItemsModal } from '../budgets/BudgetItemsModal';
@@ -25,7 +38,29 @@ function BotonEditar({ presupuesto }) {
   );
 }
 
+function EstadoOferta({ presupuesto: p }) {
+  return (
+    <Group gap={4}>
+      {p.reclamo.estado === 'CANCELADO' && estaVigente(p) ? (
+        // Quedó en carrera cuando se canceló el reclamo: su estado ya no
+        // describe nada que el contratista pueda hacer.
+        <Badge color="gray" tt="none">
+          Reclamo cancelado
+        </Badge>
+      ) : (
+        <BudgetStatusBadge estado={p.estado} />
+      )}
+      {p.version > 1 && (
+        <Badge color="gray" variant="outline" tt="none">
+          Versión {p.version}
+        </Badge>
+      )}
+    </Group>
+  );
+}
+
 export function MyPresupuestosPage() {
+  const esMobile = useEsMobile();
   const [presupuestos, setPresupuestos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
@@ -56,7 +91,26 @@ export function MyPresupuestosPage() {
         <Text c="dimmed">Todavía no cargaste ningún presupuesto.</Text>
       )}
 
-      {!cargando && !error && presupuestos.length > 0 && (
+      {!cargando && !error && presupuestos.length > 0 && esMobile && (
+        <Stack gap="sm">
+          {presupuestos.map((p) => (
+            <TarjetaMovil
+              key={p.id}
+              onClick={() => setSeleccionado(p)}
+              titulo={`${formatearIdReclamo(p.reclamo.id)} · ${p.reclamo.nombre_escuela}`}
+              badges={<EstadoOferta presupuesto={p} />}
+              campos={[
+                { etiqueta: 'Monto', valor: formatoMoneda.format(Number(p.monto)) },
+                { etiqueta: 'Fecha', valor: new Date(p.fecha).toLocaleDateString('es-AR') },
+                { etiqueta: 'Ítems', valor: String(p.items.length) },
+              ]}
+              pie={p.editable && <BotonEditar presupuesto={p} />}
+            />
+          ))}
+        </Stack>
+      )}
+
+      {!cargando && !error && presupuestos.length > 0 && !esMobile && (
         <Table.ScrollContainer minWidth={600}>
           <Table striped highlightOnHover>
             <Table.Thead>
@@ -82,22 +136,7 @@ export function MyPresupuestosPage() {
                   <Table.Td>{new Date(p.fecha).toLocaleDateString('es-AR')}</Table.Td>
                   <Table.Td>{formatoMoneda.format(Number(p.monto))}</Table.Td>
                   <Table.Td>
-                    <Group gap={4}>
-                      {p.reclamo.estado === 'CANCELADO' && estaVigente(p) ? (
-                        // Quedó en carrera cuando se canceló el reclamo: su estado ya no
-                        // describe nada que el contratista pueda hacer.
-                        <Badge color="gray" tt="none">
-                          Reclamo cancelado
-                        </Badge>
-                      ) : (
-                        <BudgetStatusBadge estado={p.estado} />
-                      )}
-                      {p.version > 1 && (
-                        <Badge color="gray" variant="outline" tt="none">
-                          Versión {p.version}
-                        </Badge>
-                      )}
-                    </Group>
+                    <EstadoOferta presupuesto={p} />
                   </Table.Td>
                   <Table.Td>{p.items.length}</Table.Td>
                   <Table.Td onClick={(e) => e.stopPropagation()}>

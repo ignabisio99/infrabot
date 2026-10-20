@@ -9,6 +9,8 @@ import {
   Group,
   Loader,
   Modal,
+  Paper,
+  Stack,
   Table,
   Text,
 } from '@mantine/core';
@@ -21,6 +23,7 @@ import { formatearIdReclamo } from '../../utils/ids';
 import { formatoMoneda, formatoNumero } from '../../utils/formatters';
 import { notifyError } from '../../utils/notifications';
 import { esAdministrador } from '../../utils/auth';
+import { useEsMobile } from '../../hooks/useEsMobile';
 import { DecideBudgetModal } from './DecideBudgetModal';
 
 const colorPorRecomendacion = {
@@ -30,6 +33,8 @@ const colorPorRecomendacion = {
 };
 
 function GrupoItems({ titulo, items }) {
+  const esMobile = useEsMobile();
+
   if (items.length === 0) {
     return (
       <Text size="sm" c="dimmed" mb="sm">
@@ -43,30 +48,50 @@ function GrupoItems({ titulo, items }) {
       <Text size="sm" fw={600} mb={4}>
         {titulo}
       </Text>
-      <Table.ScrollContainer minWidth={500} mb="md">
-        <Table withColumnBorders striped>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th w="45%">Descripción</Table.Th>
-              <Table.Th>Cantidad</Table.Th>
-              <Table.Th>Costo unitario</Table.Th>
-              <Table.Th>Subtotal</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {items.map((item, index) => (
-              <Table.Tr key={item.id ?? index}>
-                <Table.Td>{item.descripcion}</Table.Td>
-                <Table.Td>
-                  {formatoNumero.format(Number(item.cantidad))} {item.unidad ?? ''}
-                </Table.Td>
-                <Table.Td>{formatoMoneda.format(Number(item.costo_unitario))}</Table.Td>
-                <Table.Td>{formatoMoneda.format(Number(item.subtotal))}</Table.Td>
+      {esMobile ? (
+        // En celular cada ítem va en un bloque vertical en vez de una tabla de 4 columnas.
+        <Stack gap={6} mb="md">
+          {items.map((item, index) => (
+            <Paper key={item.id ?? index} withBorder radius="sm" p="xs">
+              <Text size="sm">{item.descripcion}</Text>
+              <Group justify="space-between" gap="xs" mt={2}>
+                <Text size="xs" c="dimmed">
+                  {formatoNumero.format(Number(item.cantidad))} {item.unidad ?? ''} ×{' '}
+                  {formatoMoneda.format(Number(item.costo_unitario))}
+                </Text>
+                <Text size="sm" fw={600}>
+                  {formatoMoneda.format(Number(item.subtotal))}
+                </Text>
+              </Group>
+            </Paper>
+          ))}
+        </Stack>
+      ) : (
+        <Table.ScrollContainer minWidth={500} mb="md">
+          <Table withColumnBorders striped>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th w="45%">Descripción</Table.Th>
+                <Table.Th>Cantidad</Table.Th>
+                <Table.Th>Costo unitario</Table.Th>
+                <Table.Th>Subtotal</Table.Th>
               </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
+            </Table.Thead>
+            <Table.Tbody>
+              {items.map((item, index) => (
+                <Table.Tr key={item.id ?? index}>
+                  <Table.Td>{item.descripcion}</Table.Td>
+                  <Table.Td>
+                    {formatoNumero.format(Number(item.cantidad))} {item.unidad ?? ''}
+                  </Table.Td>
+                  <Table.Td>{formatoMoneda.format(Number(item.costo_unitario))}</Table.Td>
+                  <Table.Td>{formatoMoneda.format(Number(item.subtotal))}</Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      )}
     </>
   );
 }
@@ -140,6 +165,7 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido, acciones })
   const [recalculando, setRecalculando] = useState(false);
   const [decidirAbierto, setDecidirAbierto] = useState(false);
   const esAdmin = esAdministrador();
+  const esMobile = useEsMobile();
   const aprobado = presupuesto?.estado === 'APROBADO';
   // La auditoría solo se carga para admins y mientras el presupuesto no esté aprobado
   const mostrarAuditoria = esAdmin && !aprobado;
@@ -190,7 +216,7 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido, acciones })
       onClose={onClose}
       title={
         presupuesto ? (
-          <Group gap="xs" wrap="nowrap">
+          <Group gap="xs">
             <Text fw={600}>
               {`Ítems del presupuesto — ${formatearIdReclamo(presupuesto.reclamo.id)}${
                 presupuesto.version > 1 ? ` · versión ${presupuesto.version}` : ''
@@ -207,6 +233,7 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido, acciones })
         )
       }
       size="min(1100px, 92vw)"
+      fullScreen={esMobile}
       // El scroll queda sólo en el contenido para que el pie no tenga nada pasando por
       // detrás: con un pie sticky, iOS pintaba encima la barra horizontal de las tablas.
       styles={{
