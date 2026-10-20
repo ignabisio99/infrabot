@@ -17,4 +17,8 @@ export default defineConfig({
       ignored: ['**/node_modules/**', '**/.git/**'],
     },
   },
+  test: {
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.js',
+  },
 });

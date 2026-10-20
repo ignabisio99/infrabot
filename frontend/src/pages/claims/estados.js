@@ -46,11 +46,11 @@ export const colorPorEstado = {
   CANCELADO: 'dark',
 };
 
-// Espejo de ESTADOS_CON_MOTIVO_OBLIGATORIO en backend/services/estados_reclamo.py.
-// Es sólo para avisar antes de mandar el request; el backend igual lo rechaza.
 // Reclamos cerrados: ya no admiten comentarios de inspectores.
 export const estadosFinales = ['FINALIZADO', 'RECHAZADO', 'CANCELADO'];
 
+// Espejo de ESTADOS_CON_MOTIVO_OBLIGATORIO en backend/services/estados_reclamo.py.
+// Es sólo para avisar antes de mandar el request; el backend igual lo rechaza.
 export const estadosConMotivoObligatorio = ['RECHAZADO', 'CANCELADO', 'DESIERTO'];
 
 export function requiereMotivo(estado) {

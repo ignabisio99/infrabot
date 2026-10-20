@@ -37,6 +37,19 @@ schemas), actualizar los tests en el mismo cambio.
 Los tests necesitan Postgres: usan `date_trunc` y `timezone(...)`, así que corren contra la
 base `infrabot_test` (se crea sola) y no contra SQLite.
 
+### Frontend
+
+```sh
+docker compose exec frontend pnpm test
+```
+
+Vitest + Testing Library (jsdom). Los tests van al lado del archivo que prueban
+(`*.test.jsx`, o `*.test.js` si no hay JSX) y renderizan con `render` de
+`src/test/render.jsx`, que envuelve en `MantineProvider`.
+Correrlos ante cambios en `src/components/ChangeStateModal.jsx` o en los modales de
+reclamos/presupuestos que lo usan: el modal es compartido y un cambio pensado para una
+entidad puede romper la otra.
+
 ## Stack
 
 - Backend: FastAPI + SQLAlchemy (ORM) + Postgres.

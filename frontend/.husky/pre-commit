@@ -1,1 +1,26 @@
 cd frontend && ./node_modules/.bin/lint-staged
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR -- . | sed 's|^frontend/||')
+codigo=$(printf '%s\n' "$staged" | grep -E '\.(js|jsx)$')
+# El setup y la config no aparecen en el grafo de imports de ningún test.
+todo=$(printf '%s\n' "$staged" | grep -E '^(src/test/|vite\.config\.js$|package\.json$|pnpm-lock\.yaml$)')
+[ -z "$codigo" ] && [ -z "$todo" ] && exit 0
+
+if ! command -v docker >/dev/null 2>&1 || [ -z "$(docker compose ps --status running -q frontend 2>/dev/null)" ]; then
+  echo "No se pueden correr los tests: el contenedor frontend no está levantado (docker compose up -d)."
+  exit 1
+fi
+
+# Vitest corre sobre el working tree, no sobre lo que está en stage.
+if [ -n "$(git status --porcelain -- src | grep -v '^[MARC] ')" ]; then
+  echo "Ojo: hay cambios sin stagear en frontend/src; los tests los incluyen aunque no van en el commit."
+fi
+
+if [ -n "$todo" ]; then
+  docker compose exec -T frontend pnpm test
+else
+  docker compose exec -T frontend pnpm exec vitest related --run --passWithNoTests $codigo
+fi || {
+  echo "Fallaron los tests del frontend."
+  exit 1
+}

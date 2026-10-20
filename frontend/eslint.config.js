@@ -25,5 +25,10 @@ export default defineConfig([
       'prettier/prettier': 'warn',
     },
   },
+  {
+    // Los tests no pasan por el fast refresh de Vite.
+    files: ['src/test/**', '**/*.test.{js,jsx}'],
+    rules: { 'react-refresh/only-export-components': 'off' },
+  },
   eslintConfigPrettier,
 ]);

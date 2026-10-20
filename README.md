@@ -216,6 +216,8 @@ se cambian en las constantes `ADMIN_EMAIL` / `ADMIN_PASSWORD` de `backend/seed.p
 
 ## Tests
 
+### Backend
+
 El backend tiene tests de las agregaciones del dashboard:
 
 ```bash
@@ -231,6 +233,39 @@ Para correr un archivo o un test puntual:
 docker compose exec backend python -m pytest tests/test_dashboard.py
 docker compose exec backend python -m pytest -k estancados
 ```
+
+### Frontend
+
+El frontend tiene tests (Vitest + Testing Library) de los modales de cambio de estado de
+reclamos y presupuestos, y de la configuración de estados:
+
+```bash
+docker compose exec frontend pnpm test
+```
+
+Para correr una carpeta o un test puntual, o dejarlos corriendo mientras se edita:
+
+```bash
+docker compose exec frontend pnpm test src/pages/claims
+docker compose exec frontend pnpm test -t "ofertas en carrera"
+docker compose exec frontend pnpm test:watch
+```
+
+Los tests van al lado del archivo que prueban (`ChangeStatusModal.test.jsx`, o
+`estados.test.js` si no hay JSX) y renderizan con el `render` de `src/test/render.jsx`,
+que ya envuelve en `MantineProvider`.
+
+### Pre-commit
+
+Al hacer `git commit`, el hook de husky (`frontend/.husky/pre-commit`) corre en el
+contenedor los tests relacionados con los `.js`/`.jsx` del frontend que están en stage
+(`vitest related`), y frena el commit si alguno falla. Si el commit toca `src/test/`,
+`vite.config.js`, `package.json` o `pnpm-lock.yaml`, corre la suite completa. Por eso el
+contenedor `frontend` tiene que estar levantado (`docker compose up -d`) para commitear
+cambios de código del frontend.
+
+Los tests corren sobre el working tree, no sobre lo que está en stage: si hay cambios sin
+stagear en `frontend/src`, el hook avisa porque el resultado los incluye.
 
 ## Comandos útiles
 
