@@ -1269,9 +1269,33 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
     return "⚠️ Ocurrió un error. Escribí *nuevo* para empezar de nuevo."
 
 
+def _clave_conversacion(telefono: str) -> str:
+    """La clave con la que ya hay una conversación de ese número, o el mismo teléfono.
+
+    Los servicios registran estados con el teléfono de la ficha (ej. '11 5566-0033') y
+    WhatsApp manda los mensajes con otro formato ('5491155660033'). Se comparan por los
+    últimos dígitos, igual que en el resto del bot.
+    """
+    if telefono in _conversaciones:
+        return telefono
+    for clave in _conversaciones:
+        if avance_contratista.mismo_numero(clave, telefono):
+            return clave
+    return telefono
+
+
+def _adoptar_estado(usuario: str) -> None:
+    """Si el estado de este número quedó guardado con otro formato, lo pasa a `usuario`."""
+    if not usuario or usuario in _conversaciones:
+        return
+    clave = _clave_conversacion(usuario)
+    if clave != usuario:
+        _conversaciones[usuario] = _conversaciones.pop(clave)
+
+
 def registrar_estado_conversacion(telefono: str, estado: dict) -> None:
     """Setea el estado conversacional de un número. Lo usan los servicios (visitas)."""
-    _conversaciones[telefono] = estado
+    _conversaciones[_clave_conversacion(telefono)] = estado
 
 
 def iniciar_espera_info(
@@ -1614,13 +1638,12 @@ def _procesar_cu05_inicio(db: Session, usuario: str, mensaje: str) -> str:
         from models.visita import Visita
 
         visita = db.get(Visita, conv.get("visita_id"))
-        if visita is not None:
-            coordinacion_visita.reprogramar_visita(db, visita)
-        # reprogramar_visita deja al contratista en el paso de disponibilidad.
-        return (
-            "Entendido, reprogramemos. Mandame tu nueva disponibilidad en formato "
-            "*DD/MM HH:MM* y escribí *listo* cuando termines."
-        )
+        # reprogramar_visita deja al contratista en el paso de disponibilidad. El pedido
+        # va como respuesta a este mensaje, no aparte, para no mandarlo dos veces.
+        if visita is None or not coordinacion_visita.reprogramar_visita(db, visita, avisar=False):
+            del _conversaciones[usuario]
+            return "⚠️ No pude reprogramar la visita. Escribí *operador* para que te ayude una persona."
+        return coordinacion_visita.mensaje_reprogramacion(reclamo)
 
     if _es_confirmacion_si(mensaje):
         hallado = coordinacion_visita.contratista_de_reclamo_coordinado(db, usuario)
@@ -1893,6 +1916,8 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
             return menu
         return ""
 
+    _adoptar_estado(usuario)
+
     # Evaluar si es una sesión nueva ANTES de registrar esta interacción.
     sesion_nueva = _es_sesion_nueva(usuario)
     tenia_actividad = bool(usuario) and usuario in _ultima_actividad
@@ -2129,6 +2154,8 @@ def procesar_media(db: Session, usuario: str, url_local: str, mime_type: str, ca
 
     if usuario and conv_activa(db, usuario) is not None:
         return ""
+
+    _adoptar_estado(usuario)
 
     # Reporte de avance pedido tras "todavía no terminé": las fotos/videos van al reclamo.
     if usuario in _conversaciones and _conversaciones[usuario].get("paso") in PASOS_REPORTE_AVANCE:

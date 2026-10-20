@@ -542,11 +542,13 @@ def enviar_pregunta_inicio(db: Session, visita: Visita) -> bool:
     return True
 
 
-def reprogramar_visita(db: Session, visita: Visita) -> bool:
+def reprogramar_visita(db: Session, visita: Visita, *, avisar: bool = True) -> bool:
     """El contratista no pudo empezar: se vuelve a coordinar la visita.
 
     Reusa el flujo de disponibilidad: la visita vuelve a ESPERANDO_DISPONIBILIDAD, el
     reclamo a PENDIENTE_COORDINACION, y se le vuelve a pedir disponibilidad al contratista.
+    Con `avisar=False` no manda el pedido: lo usa el handler cuando el contratista acaba
+    de responder "no pude", para contestarle con un solo mensaje.
     """
     from models.historial_estado_reclamo import OrigenCambioEstado
     from services import estados_reclamo
@@ -585,15 +587,19 @@ def reprogramar_visita(db: Session, visita: Visita) -> bool:
         contratista.telefono,
         {"paso": "visita_disponibilidad", "visita_id": visita.id},
     )
+    if avisar:
+        _enviar(contratista.telefono, mensaje_reprogramacion(reclamo))
+    return True
+
+
+def mensaje_reprogramacion(reclamo: Reclamo) -> str:
     f1, _ = ejemplo_formato_fecha()
-    _enviar(
-        contratista.telefono,
+    return (
         f"📅 *Reprogramemos la visita del reclamo #{reclamo.id}*\n\n"
         f"🏫 {reclamo.nombre_escuela}\n"
         f"📍 {reclamo.ubicacion}\n\n"
         "Indicá tu nueva disponibilidad en formato *DD/MM HH:MM* "
         f"(ej: _{f1}_, podés mandar varias separadas por coma).\n"
         "Recordá que las opciones deben ser posteriores a la fecha y hora actual.\n"
-        "Cuando termines, escribí *listo*.",
+        "Cuando termines, escribí *listo*."
     )
-    return True

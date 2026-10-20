@@ -101,13 +101,18 @@ def test_contratista_no_pudo_reprograma_visita(
         telefono, {"paso": "cu05_inicio", "visita_id": visita.id, "reclamo_id": reclamo.id}
     )
 
-    with patch("core.whatsapp_client.enviar_mensaje"), patch("core.whatsapp_client.enviar_botones"):
-        procesar_mensaje(db, cu05_botones.INICIO_NO, usuario=telefono)
+    with patch("core.whatsapp_client.enviar_mensaje"), patch(
+        "core.whatsapp_client.enviar_botones"
+    ), patch("services.coordinacion_visita._enviar") as enviar_aparte:
+        r = procesar_mensaje(db, cu05_botones.INICIO_NO, usuario=telefono)
 
     db.refresh(reclamo)
     db.refresh(visita)
     assert reclamo.estado == EstadoReclamo.PENDIENTE_COORDINACION
     assert visita.estado == EstadoVisita.ESPERANDO_DISPONIBILIDAD
+    # Un solo mensaje: el pedido de disponibilidad va como respuesta, no además aparte.
+    assert "Reprogramemos la visita" in r
+    enviar_aparte.assert_not_called()
 
 
 # --- Pieza 2: terminación ---------------------------------------------------------------
@@ -407,3 +412,98 @@ def test_contratista_repite_termine_mientras_espera_escuela(
         # No volvió a llamar a la escuela
         assert botones.call_count == 1
 
+
+
+def test_se_puede_reprogramar_la_visita_varias_veces(
+    db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista, crear_visita
+):
+    """Ciclo completo dos veces: no pude → nueva disponibilidad → la escuela elige →
+    llega la hora → se vuelve a preguntar si pudo empezar → no pude otra vez."""
+    from services.recordatorios import revisar_recordatorios
+
+    contratista = crear_contratista()
+    contratista.telefono = "5491155660011"
+    escuela = "5491155660022"
+    reclamo = crear_reclamo(estado=EstadoReclamo.VISITA_COORDINADA, telefono_creador=escuela)
+    crear_presupuesto_aprobado(
+        reclamo, items=[(1, 100)], fecha_aprobacion=reclamo.fecha_creacion, contratista=contratista
+    )
+    visita = crear_visita(
+        reclamo,
+        fecha_visita=datetime.now(timezone.utc) - timedelta(minutes=5),
+        estado=EstadoVisita.CONFIRMADA,
+        contratista=contratista,
+    )
+    visita.horario_confirmado = "hoy"
+    visita.pregunta_inicio_enviada = datetime.now(timezone.utc)
+    db.flush()
+    reiniciar_conversacion(contratista.telefono)
+    reiniciar_conversacion(escuela)
+    registrar_estado_conversacion(
+        contratista.telefono,
+        {"paso": "cu05_inicio", "visita_id": visita.id, "reclamo_id": reclamo.id},
+    )
+
+    with patch("core.whatsapp_client.enviar_mensaje"), patch(
+        "core.whatsapp_client.enviar_botones"
+    ) as botones, patch("services.coordinacion_visita._enviar"):
+        for vuelta in range(2):
+            r = procesar_mensaje(db, cu05_botones.INICIO_NO, usuario=contratista.telefono)
+            assert "Reprogramemos la visita" in r, f"vuelta {vuelta}"
+            assert reclamo.estado == EstadoReclamo.PENDIENTE_COORDINACION
+            assert visita.estado == EstadoVisita.ESPERANDO_DISPONIBILIDAD
+            assert visita.pregunta_inicio_enviada is None
+
+            futura = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%d/%m 10:00")
+            procesar_mensaje(db, futura, usuario=contratista.telefono)
+            procesar_mensaje(db, "listo", usuario=contratista.telefono)
+            assert visita.estado == EstadoVisita.ESPERANDO_ELECCION
+            procesar_mensaje(db, "1", usuario=escuela)
+            assert visita.estado == EstadoVisita.CONFIRMADA
+            assert reclamo.estado == EstadoReclamo.VISITA_COORDINADA
+
+            # Llega la hora de la visita: se vuelve a preguntar si pudo empezar.
+            visita.fecha_visita = datetime.now(timezone.utc) - timedelta(minutes=5)
+            db.flush()
+            botones.reset_mock()
+            revisar_recordatorios(db)
+            assert visita.pregunta_inicio_enviada is not None
+            assert any("Pudiste empezar" in str(c) for c in botones.call_args_list)
+
+
+def test_reprogramar_cuando_la_ficha_tiene_el_telefono_en_otro_formato(
+    db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista, crear_visita
+):
+    """La ficha guarda '11 5566-0033' y WhatsApp manda '5491155660033': el primer horario
+    después de "no pude" tiene que entrar en la carga, no en la pregunta de inicio."""
+    from services.coordinacion_visita import enviar_pregunta_inicio
+
+    contratista = crear_contratista()
+    contratista.telefono = "11 5566-0033"
+    whatsapp = "5491155660033"
+    reclamo = crear_reclamo(estado=EstadoReclamo.VISITA_COORDINADA, telefono_creador="5491155660044")
+    crear_presupuesto_aprobado(
+        reclamo, items=[(1, 100)], fecha_aprobacion=reclamo.fecha_creacion, contratista=contratista
+    )
+    visita = crear_visita(
+        reclamo,
+        fecha_visita=datetime.now(timezone.utc) - timedelta(minutes=5),
+        estado=EstadoVisita.CONFIRMADA,
+        contratista=contratista,
+    )
+    visita.horario_confirmado = "hoy"
+    db.flush()
+    reiniciar_conversacion(whatsapp)
+    reiniciar_conversacion(contratista.telefono)
+
+    with patch("core.whatsapp_client.enviar_mensaje"), patch(
+        "core.whatsapp_client.enviar_botones"
+    ), patch("services.coordinacion_visita._enviar"):
+        enviar_pregunta_inicio(db, visita)
+        visita.pregunta_inicio_enviada = datetime.now(timezone.utc)
+        db.flush()
+        procesar_mensaje(db, cu05_botones.INICIO_NO, usuario=whatsapp)
+        futura = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%d/%m 10:00")
+        r = procesar_mensaje(db, futura, usuario=whatsapp)
+
+    assert "Anoté 1 opción" in r
