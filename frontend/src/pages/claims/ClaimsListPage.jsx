@@ -267,7 +267,7 @@ export function ClaimsListPage() {
               badges={
                 <>
                   <StatusBadge estado={reclamo.estado} variant="light" />
-                  <PriorityBadge prioridad={reclamo.prioridad} />
+                  <PriorityBadge prioridad={reclamo.prioridad} fz="sm" />
                 </>
               }
               campos={[
@@ -326,7 +326,7 @@ export function ClaimsListPage() {
                   <Table.Td>{reclamo.nombre_escuela}</Table.Td>
                   <Table.Td>{reclamo.ubicacion}</Table.Td>
                   <Table.Td>
-                    <PriorityBadge prioridad={reclamo.prioridad} />
+                    <PriorityBadge prioridad={reclamo.prioridad} fz="sm" />
                   </Table.Td>
                   <Table.Td>
                     <Group gap={6} wrap="nowrap">
