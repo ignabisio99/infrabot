@@ -1,9 +1,9 @@
 cd frontend && ./node_modules/.bin/lint-staged
 
 staged=$(git diff --cached --name-only --diff-filter=ACMR -- . | sed 's|^frontend/||')
-codigo=$(printf '%s\n' "$staged" | grep -E '\.(js|jsx)$')
+codigo=$(printf '%s\n' "$staged" | grep -E '\.(js|jsx)$' || true)
 # El setup y la config no aparecen en el grafo de imports de ningún test.
-todo=$(printf '%s\n' "$staged" | grep -E '^(src/test/|vite\.config\.js$|package\.json$|pnpm-lock\.yaml$)')
+todo=$(printf '%s\n' "$staged" | grep -E '^(src/test/|vite\.config\.js$|package\.json$|pnpm-lock\.yaml$)' || true)
 [ -z "$codigo" ] && [ -z "$todo" ] && exit 0
 
 if ! command -v docker >/dev/null 2>&1 || [ -z "$(docker compose ps --status running -q frontend 2>/dev/null)" ]; then
