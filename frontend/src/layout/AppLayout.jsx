@@ -30,6 +30,7 @@ import {
   IconLogout,
   IconUser,
   IconUserCheck,
+  IconUserShield,
   IconUsersGroup,
   IconBrandWhatsapp,
   IconMessageChatbot,
@@ -39,7 +40,10 @@ import { Footer } from '../components/Footer';
 import { NotificationBell } from './NotificationBell';
 import { SimuladorTiempoControl } from '../components/SimuladorTiempoControl';
 import { listarUsuariosPendientes } from '../api/usuarios';
-import { ConversacionesProvider, useConversaciones } from '../pages/conversaciones/ConversacionesContext';
+import {
+  ConversacionesProvider,
+  useConversaciones,
+} from '../pages/conversaciones/ConversacionesContext';
 import { esAdministrador } from '../utils/auth';
 import classes from './AppLayout.module.css';
 
@@ -53,9 +57,15 @@ const links = [
     icon: IconUsersGroup,
     soloAdmin: true,
   },
+  { label: 'Administradores', path: '/administradores', icon: IconUserShield, soloAdmin: true },
   { label: 'Presupuestos', path: '/presupuestos', icon: IconReceipt2 },
   { label: 'Calendario', path: '/calendario', icon: IconCalendar },
-  { label: 'Conversaciones', path: '/conversaciones', icon: IconMessageChatbot, mostrarChats: true },
+  {
+    label: 'Conversaciones',
+    path: '/conversaciones',
+    icon: IconMessageChatbot,
+    mostrarChats: true,
+  },
   { label: 'Reportes', path: '/reportes', icon: IconChartBar },
   { label: 'Solicitudes', path: '/solicitudes', icon: IconUserCheck, mostrarPendientes: true },
   { label: 'Configuración', path: '/configuracion', icon: IconSettings },
@@ -164,29 +174,33 @@ function AppLayoutInner() {
             {esAdministrador() && <SimuladorTiempoControl />}
             {esAdministrador() && <NotificationBell />}
             <Menu shadow="md" width={200}>
-            <Menu.Target>
-              <UnstyledButton>
-                <Group gap="xs" wrap="nowrap">
-                  <Avatar color="#1fa7b3" radius="xl">
-                    {usuario.iniciales}
-                  </Avatar>
-                  <div style={{ lineHeight: 1.1, maxWidth: 160 }} className="header-user-info">
-                    <Text size="sm" fw={500} truncate>
-                      {usuario.nombre}
-                    </Text>
-                  </div>
-                  <IconChevronDown size={16} stroke={1.5} />
-                </Group>
-              </UnstyledButton>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Item leftSection={<IconUser size={16} />} onClick={() => irA('/perfil')}>
-                Mi perfil
-              </Menu.Item>
-              <Menu.Item color="red" leftSection={<IconLogout size={16} />} onClick={handleLogout}>
-                Cerrar sesión
-              </Menu.Item>
-            </Menu.Dropdown>
+              <Menu.Target>
+                <UnstyledButton>
+                  <Group gap="xs" wrap="nowrap">
+                    <Avatar color="#1fa7b3" radius="xl">
+                      {usuario.iniciales}
+                    </Avatar>
+                    <div style={{ lineHeight: 1.1, maxWidth: 160 }} className="header-user-info">
+                      <Text size="sm" fw={500} truncate>
+                        {usuario.nombre}
+                      </Text>
+                    </div>
+                    <IconChevronDown size={16} stroke={1.5} />
+                  </Group>
+                </UnstyledButton>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item leftSection={<IconUser size={16} />} onClick={() => irA('/perfil')}>
+                  Mi perfil
+                </Menu.Item>
+                <Menu.Item
+                  color="red"
+                  leftSection={<IconLogout size={16} />}
+                  onClick={handleLogout}
+                >
+                  Cerrar sesión
+                </Menu.Item>
+              </Menu.Dropdown>
             </Menu>
           </Group>
         </Group>

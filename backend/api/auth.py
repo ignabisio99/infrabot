@@ -237,6 +237,17 @@ def listar_pendientes(db: Session = Depends(get_db), _admin: Usuario = Depends(g
     )
 
 
+@router.get("/administradores", response_model=list[UsuarioOut])
+def listar_administradores(db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
+    """Lista los administradores con la cuenta aprobada."""
+    return (
+        db.query(Usuario)
+        .filter(Usuario.tipo == TipoUsuario.ADMINISTRADOR, Usuario.estado == EstadoUsuario.APROBADO)
+        .order_by(Usuario.nombre)
+        .all()
+    )
+
+
 @router.get("/me", response_model=UsuarioOut)
 def obtener_usuario_actual(
     request: Request,

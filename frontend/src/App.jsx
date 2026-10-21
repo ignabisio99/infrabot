@@ -6,6 +6,7 @@ import { IconCalendar, IconClipboardList, IconReceipt2 } from '@tabler/icons-rea
 import { getMe, logout } from './api/auth';
 import { AppLayout } from './layout/AppLayout';
 import { PortalLayout } from './layout/PortalLayout';
+import { AdminsListPage } from './pages/admins/AdminsListPage';
 import { CompletarPerfilPage } from './pages/auth/CompletarPerfilPage';
 import { ConfirmarEmailPage } from './pages/auth/ConfirmarEmailPage';
 import { LoginPage } from './pages/auth/LoginPage';
@@ -212,6 +213,7 @@ function App() {
         <Route path="/contratistas" element={<ContractorsListPage />} />
         <Route path="/contratistas/listas" element={<ContractorListsPage />} />
         <Route path="/contratistas/:id/editar" element={<EditContractorPage />} />
+        <Route path="/administradores" element={<AdminsListPage usuarioId={usuario.id} />} />
         <Route path="/presupuestos" element={<BudgetsListPage />} />
         <Route path="/calendario" element={<CalendarPage />} />
         <Route path="/reportes" element={<ReportsPage />} />

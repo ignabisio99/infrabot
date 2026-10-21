@@ -13,3 +13,17 @@ export async function listarUsuariosPendientes() {
 
   return response.json();
 }
+
+/** Lista los administradores con la cuenta aprobada (solo admins). */
+export async function listarAdministradores() {
+  const response = await fetchConAuth(`${API_URL}/auth/administradores`);
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(
+      extraerMensajeError(error?.detail, 'No se pudieron cargar los administradores.'),
+    );
+  }
+
+  return response.json();
+}
