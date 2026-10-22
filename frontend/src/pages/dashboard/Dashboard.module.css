@@ -11,3 +11,52 @@
 .filaClickeable {
   cursor: pointer;
 }
+
+/* Etiqueta y valor miden lo que su texto más largo y la barra se queda con el resto:
+   como las filas son subgrids, todas las barras arrancan y terminan en la misma línea. */
+.barras {
+  display: grid;
+  grid-template-columns: max-content 1fr max-content;
+  row-gap: 4px;
+}
+
+.barraFila {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+  column-gap: var(--mantine-spacing-md);
+  padding: 8px;
+  border-radius: var(--mantine-radius-sm);
+}
+
+.barraFila:hover {
+  background-color: var(--mantine-color-gray-0);
+}
+
+.barraPista {
+  height: 12px;
+}
+
+/* En celular la barra no entra entre el nombre y el valor (sobre todo con la marca de
+   "más lenta"): nombre y valor van arriba y la barra abajo, a todo el ancho. */
+@media (max-width: $mantine-breakpoint-xs) {
+  .barras {
+    grid-template-columns: 1fr max-content;
+  }
+
+  .barraFila {
+    row-gap: 6px;
+  }
+
+  .barraValor {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .barraPista {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    height: 8px;
+  }
+}

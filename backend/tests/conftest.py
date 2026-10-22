@@ -137,9 +137,10 @@ def crear_reclamo(db):
 
 @pytest.fixture
 def crear_historial(db):
-    def _crear(reclamo, estado_nuevo, fecha):
+    def _crear(reclamo, estado_nuevo, fecha, estado_anterior=None):
         asiento = HistorialEstadoReclamo(
             reclamo_id=reclamo.id,
+            estado_anterior=estado_anterior,
             estado_nuevo=estado_nuevo,
             fecha=fecha,
         )

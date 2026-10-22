@@ -26,9 +26,11 @@ from api.dashboard import (
     _meses_de_la_serie,
     _monto_aprobado,
     _serie_mensual,
+    _tiempo_por_etapa,
 )
 from conftest import UTC
 from models.reclamo import EstadoReclamo, PrioridadReclamo
+from schemas.dashboard import EtapaFlujo
 from models.visita import EstadoVisita
 
 AHORA = datetime(2026, 9, 15, 12, 0, tzinfo=ART)
@@ -505,6 +507,178 @@ class TestKpis:
         assert kpis.dias_promedio_resolucion.anterior is None
 
 
+# --- Tiempo por etapa -----------------------------------------------------------------
+
+
+E = EstadoReclamo
+HACE_30 = AHORA - timedelta(days=30)
+
+
+def _por_etapa(db, desde=HACE_30, hasta=None, filtros=None):
+    filas = _tiempo_por_etapa(db, desde, hasta, filtros or Filtros())
+    return {fila.etapa: (fila.dias_promedio, fila.reclamos) for fila in filas}
+
+
+class TestTiempoPorEtapa:
+    def _recorrer(self, crear_reclamo, crear_historial, creado_hace, pasos, **campos):
+        """Crea un reclamo y su historial. `pasos` son (estado_nuevo, días atrás), en orden."""
+        reclamo = crear_reclamo(
+            estado=pasos[-1][0], fecha_creacion=AHORA - timedelta(days=creado_hace), **campos
+        )
+        anterior = None
+        for estado, dias in pasos:
+            fecha = AHORA - timedelta(days=dias)
+            crear_historial(reclamo, estado, fecha, estado_anterior=anterior)
+            anterior = estado
+        return reclamo
+
+    def test_mide_cada_etapa_desde_el_asiento_anterior(
+        self, db, crear_reclamo, crear_historial
+    ):
+        self._recorrer(
+            crear_reclamo,
+            crear_historial,
+            creado_hace=20,
+            pasos=[
+                (E.PENDIENTE_REVISION, 20),
+                (E.PENDIENTE_PRESUPUESTO, 18),
+                (E.EN_EVALUACION, 12),
+                (E.APROBADO, 10),
+                (E.EN_EJECUCION, 7),
+                (E.FINALIZADO, 2),
+            ],
+        )
+
+        etapas = _por_etapa(db)
+
+        assert etapas[EtapaFlujo.REVISION] == (2.0, 1)
+        assert etapas[EtapaFlujo.PRESUPUESTO] == (8.0, 1)
+        assert etapas[EtapaFlujo.EJECUCION] == (8.0, 1)
+
+    def test_promedia_entre_reclamos(self, db, crear_reclamo, crear_historial):
+        for revision in (1, 5):
+            self._recorrer(
+                crear_reclamo,
+                crear_historial,
+                creado_hace=10,
+                pasos=[(E.PENDIENTE_REVISION, 10), (E.PENDIENTE_PRESUPUESTO, 10 - revision)],
+            )
+
+        assert _por_etapa(db)[EtapaFlujo.REVISION] == (3.0, 2)
+
+    def test_las_idas_y_vueltas_suman_en_la_misma_etapa(
+        self, db, crear_reclamo, crear_historial
+    ):
+        """Pasar por DESIERTO y volver a pedir presupuesto es un solo reclamo en la etapa."""
+        self._recorrer(
+            crear_reclamo,
+            crear_historial,
+            creado_hace=25,
+            pasos=[
+                (E.PENDIENTE_REVISION, 25),
+                (E.PENDIENTE_PRESUPUESTO, 24),
+                (E.DESIERTO, 20),
+                (E.PENDIENTE_PRESUPUESTO, 18),
+                (E.EN_EVALUACION, 15),
+                (E.APROBADO, 12),
+            ],
+        )
+
+        assert _por_etapa(db)[EtapaFlujo.PRESUPUESTO] == (12.0, 1)
+
+    def test_no_cuenta_la_estadia_en_curso(self, db, crear_reclamo, crear_historial):
+        self._recorrer(
+            crear_reclamo,
+            crear_historial,
+            creado_hace=10,
+            pasos=[(E.PENDIENTE_REVISION, 10), (E.PENDIENTE_PRESUPUESTO, 9)],
+        )
+
+        etapas = _por_etapa(db)
+
+        assert etapas[EtapaFlujo.REVISION] == (1.0, 1)
+        assert etapas[EtapaFlujo.PRESUPUESTO] == (None, 0)
+
+    def test_sin_asiento_inicial_mide_desde_la_creacion(
+        self, db, crear_reclamo, crear_historial
+    ):
+        """Reclamos anteriores al historial: la primera estadía arranca en su creación."""
+        reclamo = crear_reclamo(
+            estado=E.PENDIENTE_PRESUPUESTO, fecha_creacion=AHORA - timedelta(days=6)
+        )
+        crear_historial(
+            reclamo,
+            E.PENDIENTE_PRESUPUESTO,
+            AHORA - timedelta(days=2),
+            estado_anterior=E.PENDIENTE_REVISION,
+        )
+
+        assert _por_etapa(db)[EtapaFlujo.REVISION] == (4.0, 1)
+
+    def test_solo_cuenta_las_estadias_que_terminaron_en_el_rango(
+        self, db, crear_reclamo, crear_historial
+    ):
+        self._recorrer(
+            crear_reclamo,
+            crear_historial,
+            creado_hace=60,
+            pasos=[(E.PENDIENTE_REVISION, 60), (E.PENDIENTE_PRESUPUESTO, 50)],
+        )
+
+        assert _por_etapa(db)[EtapaFlujo.REVISION] == (None, 0)
+        assert _por_etapa(db, desde=AHORA - timedelta(days=90))[EtapaFlujo.REVISION] == (
+            10.0,
+            1,
+        )
+
+    def test_la_estadia_que_cruza_el_corte_se_mide_desde_su_inicio_real(
+        self, db, crear_reclamo, crear_historial
+    ):
+        """Empezó antes del rango y terminó adentro: cuenta entera, no desde el corte."""
+        self._recorrer(
+            crear_reclamo,
+            crear_historial,
+            creado_hace=40,
+            pasos=[
+                (E.PENDIENTE_REVISION, 40),
+                (E.PENDIENTE_PRESUPUESTO, 35),
+                (E.EN_EVALUACION, 10),
+            ],
+        )
+
+        assert _por_etapa(db)[EtapaFlujo.PRESUPUESTO] == (25.0, 1)
+
+    def test_ignora_las_estadias_en_estados_finales(self, db, crear_reclamo, crear_historial):
+        self._recorrer(
+            crear_reclamo,
+            crear_historial,
+            creado_hace=10,
+            pasos=[(E.PENDIENTE_REVISION, 10), (E.RECHAZADO, 8)],
+        )
+
+        etapas = _por_etapa(db)
+
+        assert etapas[EtapaFlujo.REVISION] == (2.0, 1)
+        assert sum(reclamos for _, reclamos in etapas.values()) == 1
+
+    def test_respeta_los_filtros(self, db, crear_reclamo, crear_historial):
+        for prioridad, dias in ((PrioridadReclamo.ALTA, 1), (PrioridadReclamo.BAJA, 7)):
+            self._recorrer(
+                crear_reclamo,
+                crear_historial,
+                creado_hace=10,
+                pasos=[(E.PENDIENTE_REVISION, 10), (E.PENDIENTE_PRESUPUESTO, 10 - dias)],
+                prioridad=prioridad,
+            )
+
+        etapas = _por_etapa(db, filtros=Filtros(prioridad=PrioridadReclamo.ALTA))
+
+        assert etapas[EtapaFlujo.REVISION] == (1.0, 1)
+
+    def test_devuelve_las_tres_etapas_aunque_no_haya_datos(self, db):
+        assert _por_etapa(db) == {etapa: (None, 0) for etapa in EtapaFlujo}
+
+
 # --- Filtros --------------------------------------------------------------------------
 
 
@@ -597,6 +771,7 @@ class TestEndpointResumen:
             "kpis",
             "por_estado",
             "serie_mensual",
+            "tiempo_por_etapa",
             "estados_abiertos",
             "estancados",
             "estancados_total",

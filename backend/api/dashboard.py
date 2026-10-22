@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import and_, distinct, func
+from sqlalchemy import and_, case, distinct, func
 from sqlalchemy.orm import Session
 
 from core.database import get_db
@@ -28,10 +28,12 @@ from models.visita import EstadoVisita, Visita
 from schemas.dashboard import (
     Comparacion,
     ConteoPorEstado,
+    EtapaFlujo,
     KpisDashboard,
     PuntoSerieMensual,
     ReclamoEstancado,
     ResumenDashboard,
+    TiempoEtapa,
 )
 from services.estados_reclamo import ESTADOS_FINALES
 
@@ -51,6 +53,24 @@ ESTADOS_ABIERTOS = [estado for estado in EstadoReclamo if estado not in ESTADOS_
 # estancado.
 DIAS_SIN_MOVIMIENTO = 7
 MAX_ESTANCADOS = 8
+
+# Qué estados forman cada etapa. DESIERTO va en presupuesto porque de ahí se vuelve a
+# pedir cotizaciones: un reclamo que pasa por desierto sigue sumando tiempo de presupuesto.
+ESTADOS_POR_ETAPA = {
+    EtapaFlujo.REVISION: [EstadoReclamo.PENDIENTE_REVISION],
+    EtapaFlujo.PRESUPUESTO: [
+        EstadoReclamo.PENDIENTE_PRESUPUESTO,
+        EstadoReclamo.EN_EVALUACION,
+        EstadoReclamo.DESIERTO,
+    ],
+    EtapaFlujo.EJECUCION: [
+        EstadoReclamo.APROBADO,
+        EstadoReclamo.PENDIENTE_COORDINACION,
+        EstadoReclamo.VISITA_COORDINADA,
+        EstadoReclamo.EN_EJECUCION,
+        EstadoReclamo.PENDIENTE_INTERVENCION,
+    ],
+}
 
 
 class PeriodoDias(enum.IntEnum):
@@ -357,6 +377,81 @@ def _estancados(
     ]
 
 
+def _tiempo_por_etapa(
+    db: Session, desde: datetime, hasta: datetime | None = None, filtros: Filtros = SIN_FILTROS
+) -> list[TiempoEtapa]:
+    """Días promedio que un reclamo pasa en cada etapa.
+
+    Cada asiento del historial cierra una estadía en `estado_anterior`, que empezó en el
+    asiento previo del mismo reclamo (o en su creación, para los anteriores al
+    historial). Por reclamo se suman todas sus estadías de la etapa, también las de
+    idas y vueltas como DESIERTO -> PENDIENTE_PRESUPUESTO, y después se promedia entre
+    reclamos.
+
+    Sólo cuentan las estadías que terminaron en el rango: la de un reclamo que todavía
+    está en la etapa no tiene duración final, y la muestra la tabla de estancados.
+    """
+    inicio = func.coalesce(
+        func.lag(HistorialEstadoReclamo.fecha).over(
+            partition_by=HistorialEstadoReclamo.reclamo_id,
+            order_by=HistorialEstadoReclamo.fecha,
+        ),
+        Reclamo.fecha_creacion,
+    )
+    etapa = case(
+        *[
+            (HistorialEstadoReclamo.estado_anterior.in_(estados), clave.value)
+            for clave, estados in ESTADOS_POR_ETAPA.items()
+        ],
+        else_=None,
+    )
+
+    # El lag se calcula antes de recortar por fecha: si no, la primera estadía dentro del
+    # rango tomaría como inicio la creación del reclamo en vez del asiento anterior.
+    estadias = filtros.aplicar(
+        db.query(
+            HistorialEstadoReclamo.reclamo_id.label("reclamo_id"),
+            etapa.label("etapa"),
+            HistorialEstadoReclamo.fecha.label("fin"),
+            func.extract("epoch", HistorialEstadoReclamo.fecha - inicio).label("segundos"),
+        ).join(Reclamo, Reclamo.id == HistorialEstadoReclamo.reclamo_id)
+    ).subquery()
+
+    por_reclamo = (
+        db.query(
+            estadias.c.etapa.label("etapa"),
+            func.sum(estadias.c.segundos).label("segundos"),
+        )
+        .filter(estadias.c.etapa.isnot(None), _entre(estadias.c.fin, desde, hasta))
+        .group_by(estadias.c.reclamo_id, estadias.c.etapa)
+        .subquery()
+    )
+
+    filas = (
+        db.query(
+            por_reclamo.c.etapa,
+            func.avg(por_reclamo.c.segundos),
+            func.count(),
+        )
+        .group_by(por_reclamo.c.etapa)
+        .all()
+    )
+    por_etapa = {etapa: (segundos, cantidad) for etapa, segundos, cantidad in filas}
+
+    return [
+        TiempoEtapa(
+            etapa=etapa,
+            dias_promedio=(
+                round(float(por_etapa[etapa.value][0]) / 86400, 1)
+                if etapa.value in por_etapa
+                else None
+            ),
+            reclamos=por_etapa.get(etapa.value, (None, 0))[1],
+        )
+        for etapa in EtapaFlujo
+    ]
+
+
 def _categorias(db: Session) -> list[str]:
     filas = db.query(distinct(Reclamo.categoria)).order_by(Reclamo.categoria).all()
     return [categoria for (categoria,) in filas]
@@ -385,6 +480,9 @@ def resumen(
             for estado in EstadoReclamo
         ],
         serie_mensual=_serie_mensual(db, ahora, _cantidad_de_meses(periodo), filtros),
+        tiempo_por_etapa=_tiempo_por_etapa(
+            db, ahora - timedelta(days=periodo), filtros=filtros
+        ),
         estados_abiertos=ESTADOS_ABIERTOS,
         estancados=estancados,
         estancados_total=total_estancados,

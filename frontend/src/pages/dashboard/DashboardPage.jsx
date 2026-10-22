@@ -27,6 +27,7 @@ import { obtenerResumenDashboard } from '../../api/dashboard';
 import { ClaimsByStateChart } from './ClaimsByStateChart';
 import { DashboardSkeleton } from './DashboardSkeleton';
 import { MonthlyFlowChart } from './MonthlyFlowChart';
+import { StageTimeChart } from './StageTimeChart';
 import { StalledClaimsCard } from './StalledClaimsCard';
 import { StatCard } from './StatCard';
 
@@ -259,6 +260,12 @@ export function DashboardPage() {
               <MonthlyFlowChart datos={resumen.serie_mensual} />
             </Grid.Col>
           </Grid>
+
+          <StageTimeChart
+            datos={resumen.tiempo_por_etapa}
+            etiquetaPeriodo={etiquetaPeriodo}
+            linkReclamos={linkReclamos}
+          />
 
           <StalledClaimsCard
             reclamos={resumen.estancados}

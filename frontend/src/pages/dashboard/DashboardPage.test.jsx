@@ -37,6 +37,11 @@ function resumen({
       { mes: '2026-09', ingresados: 3, finalizados: 1, monto_aprobado: '0' },
       { mes: '2026-10', ingresados: 9, finalizados: 3, monto_aprobado: '150000.00' },
     ],
+    tiempo_por_etapa: [
+      { etapa: 'REVISION', dias_promedio: 1.5, reclamos: 3 },
+      { etapa: 'PRESUPUESTO', dias_promedio: 11.2, reclamos: 2 },
+      { etapa: 'EJECUCION', dias_promedio: null, reclamos: 0 },
+    ],
     estados_abiertos: ['PENDIENTE_REVISION', 'EN_EVALUACION'],
     estancados: [],
     estancados_total: 0,

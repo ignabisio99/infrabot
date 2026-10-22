@@ -50,6 +50,7 @@ export function DashboardSkeleton() {
           <GraficoSkeleton />
         </Grid.Col>
       </Grid>
+      <GraficoSkeleton filas={3} />
       <GraficoSkeleton filas={4} />
     </Stack>
   );

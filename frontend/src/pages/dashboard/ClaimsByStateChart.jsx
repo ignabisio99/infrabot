@@ -4,46 +4,7 @@ import { useNavigate } from 'react-router';
 
 import { etiquetaPorEstado } from '../claims/estados';
 import classes from './Dashboard.module.css';
-
-// Los 12 estados en una dona son porciones finitas y colores que no se distinguen, así
-// que se agrupan por etapa del flujo. Las tres abiertas llevan color (son las que piden
-// trabajo) y las cerradas van en gris para no competir con ellas. Los tres colores
-// pasan la validación de daltonismo entre todos los pares.
-const ETAPAS = [
-  {
-    nombre: 'Revisión',
-    color: '#2a78d6',
-    estados: ['PENDIENTE_REVISION'],
-  },
-  {
-    nombre: 'Presupuesto',
-    color: '#eb6834',
-    estados: ['PENDIENTE_PRESUPUESTO', 'EN_EVALUACION', 'DESIERTO'],
-  },
-  {
-    nombre: 'Ejecución',
-    color: '#1baf7a',
-    estados: [
-      'APROBADO',
-      'PENDIENTE_COORDINACION',
-      'VISITA_COORDINADA',
-      'EN_EJECUCION',
-      'PENDIENTE_INTERVENCION',
-    ],
-  },
-  {
-    nombre: 'Finalizados',
-    color: '#898781',
-    estados: ['FINALIZADO'],
-    cerrada: true,
-  },
-  {
-    nombre: 'Rechazados o cancelados',
-    color: '#c9c8c3',
-    estados: ['RECHAZADO', 'CANCELADO'],
-    cerrada: true,
-  },
-];
+import { ETAPAS } from './etapas';
 
 function TooltipEtapa({ active, payload }) {
   if (!active || !payload?.length) return null;

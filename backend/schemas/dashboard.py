@@ -1,3 +1,4 @@
+import enum
 from decimal import Decimal
 from typing import Generic, TypeVar
 
@@ -39,6 +40,22 @@ class PuntoSerieMensual(BaseModel):
     monto_aprobado: Decimal
 
 
+class EtapaFlujo(str, enum.Enum):
+    """Las etapas abiertas del flujo. Igual que en el frontend (dashboard/etapas.js)."""
+
+    REVISION = "REVISION"
+    PRESUPUESTO = "PRESUPUESTO"
+    EJECUCION = "EJECUCION"
+
+
+class TiempoEtapa(BaseModel):
+    etapa: EtapaFlujo
+    # Null si en el período ningún reclamo terminó de pasar por la etapa.
+    dias_promedio: float | None
+    # Cuántos reclamos entran en el promedio.
+    reclamos: int
+
+
 class ReclamoEstancado(BaseModel):
     id: int
     nombre_escuela: str
@@ -53,6 +70,7 @@ class ResumenDashboard(BaseModel):
     kpis: KpisDashboard
     por_estado: list[ConteoPorEstado]
     serie_mensual: list[PuntoSerieMensual]
+    tiempo_por_etapa: list[TiempoEtapa]
     # Qué estados cuenta `reclamos_abiertos`. Viaja en la respuesta para que el link de
     # la tarjeta filtre por exactamente esos y el frontend no repita la máquina de
     # estados, igual que `estados_posibles` en el modelo de Reclamo.
