@@ -44,12 +44,22 @@ const opcionesPrioridad = [
 const POR_PAGINA = 10;
 
 // El Dashboard enlaza acá con los filtros ya elegidos: uno o varios estados separados por
-// coma (/reclamos?estado=EN_EVALUACION, /reclamos?estado=APROBADO,EN_EJECUCION) y el ID
-// (/reclamos?busqueda=REC-00000007). Los estados que no existan se ignoran en vez de
-// dejar la lista vacía sin explicación.
+// coma (/reclamos?estado=EN_EVALUACION, /reclamos?estado=APROBADO,EN_EJECUCION), la
+// prioridad (&prioridad=ALTA), la categoría (&categoria=Gas) y el ID
+// (/reclamos?busqueda=REC-00000007). Los estados y prioridades que no existan se ignoran
+// en vez de dejar la lista vacía sin explicación.
 function estadosDeParams(searchParams) {
   const estados = new Set(searchParams.get('estado')?.split(',') ?? []);
   return [...estados].filter((estado) => ESTADOS.includes(estado));
+}
+
+function prioridadDeParams(searchParams) {
+  const prioridad = searchParams.get('prioridad') ?? '';
+  return opcionesPrioridad.some((opcion) => opcion.value === prioridad) ? prioridad : '';
+}
+
+function categoriaDeParams(searchParams) {
+  return searchParams.get('categoria') ?? '';
 }
 
 function busquedaDeParams(searchParams) {
@@ -74,7 +84,8 @@ export function ClaimsListPage() {
   );
   const [reclamoParaCambiarEstado, setReclamoParaCambiarEstado] = useState(null);
 
-  const [prioridadFiltro, setPrioridadFiltro] = useState('');
+  const [prioridadFiltro, setPrioridadFiltro] = useState(() => prioridadDeParams(searchParams));
+  const [categoriaFiltro, setCategoriaFiltro] = useState(() => categoriaDeParams(searchParams));
   const [estadosFiltro, setEstadosFiltro] = useState(() => estadosDeParams(searchParams));
   const [rangoFechas, setRangoFechas] = useState([null, null]);
   const [busquedaId, setBusquedaId] = useState(() => busquedaDeParams(searchParams));
@@ -85,16 +96,17 @@ export function ClaimsListPage() {
   // filtrado sin que nadie lo haya pedido. Mismo patrón que el reseteo de página de más
   // abajo: ajustar el estado en el render, no en un effect.
   //
-  // Se reinician los cuatro filtros y no sólo los dos que viajan en la URL: entrar por un
-  // link (o volver a /reclamos pelado) pide esa vista, no esa vista más la prioridad o el
-  // rango de fechas que hubieran quedado del listado anterior.
+  // Se reinician todos los filtros y no sólo los que viajan en la URL: entrar por un
+  // link (o volver a /reclamos pelado) pide esa vista, no esa vista más el rango de
+  // fechas que hubiera quedado del listado anterior.
   const paramsActuales = searchParams.toString();
   const [paramsPrevios, setParamsPrevios] = useState(paramsActuales);
   if (paramsActuales !== paramsPrevios) {
     setParamsPrevios(paramsActuales);
     setEstadosFiltro(estadosDeParams(searchParams));
     setBusquedaId(busquedaDeParams(searchParams));
-    setPrioridadFiltro('');
+    setPrioridadFiltro(prioridadDeParams(searchParams));
+    setCategoriaFiltro(categoriaDeParams(searchParams));
     setRangoFechas([null, null]);
     const abrir = reclamoAbrirDeParams(searchParams);
     if (abrir !== null) setReclamoIdSeleccionado(abrir);
@@ -110,6 +122,7 @@ export function ClaimsListPage() {
   const reclamosFiltrados = useMemo(() => {
     return reclamos.filter((reclamo) => {
       if (prioridadFiltro && reclamo.prioridad !== prioridadFiltro) return false;
+      if (categoriaFiltro && reclamo.categoria !== categoriaFiltro) return false;
 
       // Sin estados elegidos no se filtra: ninguno tildado es "todos".
       if (estadosFiltro.length > 0 && !estadosFiltro.includes(reclamo.estado)) return false;
@@ -118,10 +131,21 @@ export function ClaimsListPage() {
 
       return fechaEnRango(reclamo.fecha_creacion, rangoFechas);
     });
-  }, [reclamos, prioridadFiltro, estadosFiltro, rangoFechas, busquedaId]);
+  }, [reclamos, prioridadFiltro, categoriaFiltro, estadosFiltro, rangoFechas, busquedaId]);
+
+  const opcionesCategoria = useMemo(
+    // La elegida va aunque ningún reclamo la tenga, para que el Select la muestre y se
+    // pueda limpiar.
+    () =>
+      [...new Set([...reclamos.map((reclamo) => reclamo.categoria), categoriaFiltro])]
+        .filter(Boolean)
+        .sort(),
+    [reclamos, categoriaFiltro],
+  );
 
   const hayFiltrosActivos =
     prioridadFiltro !== '' ||
+    categoriaFiltro !== '' ||
     estadosFiltro.length > 0 ||
     rangoFechas[0] !== null ||
     rangoFechas[1] !== null ||
@@ -129,12 +153,13 @@ export function ClaimsListPage() {
 
   const limpiarFiltros = () => {
     setPrioridadFiltro('');
+    setCategoriaFiltro('');
     setEstadosFiltro([]);
     setRangoFechas([null, null]);
     setBusquedaId('');
   };
 
-  const filtroActual = `${prioridadFiltro}|${estadosFiltro}|${rangoFechas[0]}|${rangoFechas[1]}|${busquedaId}`;
+  const filtroActual = `${prioridadFiltro}|${categoriaFiltro}|${estadosFiltro}|${rangoFechas[0]}|${rangoFechas[1]}|${busquedaId}`;
   const [filtroPrevio, setFiltroPrevio] = useState(filtroActual);
   if (filtroActual !== filtroPrevio) {
     setFiltroPrevio(filtroActual);
@@ -212,6 +237,17 @@ export function ClaimsListPage() {
             value={prioridadFiltro}
             onChange={(value) => setPrioridadFiltro(value ?? '')}
             w={{ base: '100%', sm: 160 }}
+          />
+          <Select
+            label="Categoría"
+            placeholder="Todas"
+            data={opcionesCategoria}
+            value={categoriaFiltro || null}
+            onChange={(value) => setCategoriaFiltro(value ?? '')}
+            clearable
+            searchable
+            nothingFoundMessage="Sin coincidencias"
+            w={{ base: '100%', sm: 180 }}
           />
           <StatusFilterPopover value={estadosFiltro} onChange={setEstadosFiltro} />
           <DatePickerInput

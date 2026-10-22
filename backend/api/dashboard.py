@@ -7,12 +7,14 @@ las 22 hs del 31 de agosto es de agosto para quien lo cargó, aunque en UTC ya s
 septiembre.
 """
 
+import enum
 import math
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import distinct, func
+from sqlalchemy import and_, distinct, func
 from sqlalchemy.orm import Session
 
 from core.database import get_db
@@ -20,10 +22,11 @@ from core.dependencies import get_current_admin
 from models.historial_estado_presupuesto import HistorialEstadoPresupuesto
 from models.historial_estado_reclamo import HistorialEstadoReclamo
 from models.presupuesto import EstadoPresupuesto, ItemPresupuesto, Presupuesto
-from models.reclamo import EstadoReclamo, Reclamo
+from models.reclamo import EstadoReclamo, PrioridadReclamo, Reclamo
 from models.usuario import Usuario
 from models.visita import EstadoVisita, Visita
 from schemas.dashboard import (
+    Comparacion,
     ConteoPorEstado,
     KpisDashboard,
     PuntoSerieMensual,
@@ -48,7 +51,49 @@ ESTADOS_ABIERTOS = [estado for estado in EstadoReclamo if estado not in ESTADOS_
 # estancado.
 DIAS_SIN_MOVIMIENTO = 7
 MAX_ESTANCADOS = 8
-MESES_SERIE = 6
+
+
+class PeriodoDias(enum.IntEnum):
+    # IntEnum y no Literal: el query string llega como texto y Literal[30, ...] no
+    # convierte "30" a 30, así que rechazaría cualquier período pedido por URL.
+    MES = 30
+    TRIMESTRE = 90
+    ANIO = 365
+
+
+def _cantidad_de_meses(periodo: PeriodoDias) -> int:
+    """Con el período de un año la serie muestra el año entero; con los cortos, medio año:
+    un gráfico de uno o tres puntos no muestra ninguna tendencia."""
+    return 12 if periodo == PeriodoDias.ANIO else 6
+
+
+@dataclass(frozen=True)
+class Filtros:
+    """Recorte por prioridad y categoría que se aplica a todas las agregaciones.
+
+    Cada consulta que lo usa tiene que tener `Reclamo` en el FROM (directo o por join).
+    """
+
+    prioridad: PrioridadReclamo | None = None
+    categoria: str | None = None
+
+    def aplicar(self, query):
+        if self.prioridad is not None:
+            query = query.filter(Reclamo.prioridad == self.prioridad)
+        if self.categoria is not None:
+            query = query.filter(Reclamo.categoria == self.categoria)
+        return query
+
+
+SIN_FILTROS = Filtros()
+
+
+def _entre(columna, desde: datetime, hasta: datetime | None):
+    """`desde <= columna < hasta`. Sin `hasta` no hay tope: así el período en curso
+    incluye lo cargado en el mismo instante del cálculo."""
+    if hasta is None:
+        return columna >= desde
+    return and_(columna >= desde, columna < hasta)
 
 
 def _meses_de_la_serie(hasta: datetime, cantidad: int) -> tuple[datetime, list[str]]:
@@ -81,22 +126,51 @@ def _clave_mes(valor: datetime) -> str:
     return f"{valor.year:04d}-{valor.month:02d}"
 
 
-def _conteo_por_estado(db: Session) -> dict[EstadoReclamo, int]:
-    filas = db.query(Reclamo.estado, func.count(Reclamo.id)).group_by(Reclamo.estado).all()
+def _conteo_por_estado(db: Session, filtros: Filtros = SIN_FILTROS) -> dict[EstadoReclamo, int]:
+    query = db.query(Reclamo.estado, func.count(Reclamo.id))
+    filas = filtros.aplicar(query).group_by(Reclamo.estado).all()
     return {estado: cantidad for estado, cantidad in filas}
 
 
-def _monto_aprobado_desde(db: Session, desde: datetime):
-    """Suma de los presupuestos aprobados a partir de `desde`.
+def _ingresados(
+    db: Session, desde: datetime, hasta: datetime | None = None, filtros: Filtros = SIN_FILTROS
+) -> int:
+    query = db.query(func.count(Reclamo.id)).filter(_entre(Reclamo.fecha_creacion, desde, hasta))
+    return filtros.aplicar(query).scalar()
+
+
+def _finalizados(
+    db: Session, desde: datetime, hasta: datetime | None = None, filtros: Filtros = SIN_FILTROS
+) -> int:
+    """Reclamos con un asiento de FINALIZADO en el rango.
+
+    DISTINCT por lo mismo que en la serie mensual: lo que se cuenta son reclamos
+    resueltos, no asientos del historial.
+    """
+    query = (
+        db.query(func.count(distinct(HistorialEstadoReclamo.reclamo_id)))
+        .join(Reclamo, Reclamo.id == HistorialEstadoReclamo.reclamo_id)
+        .filter(
+            HistorialEstadoReclamo.estado_nuevo == EstadoReclamo.FINALIZADO,
+            _entre(HistorialEstadoReclamo.fecha, desde, hasta),
+        )
+    )
+    return filtros.aplicar(query).scalar()
+
+
+def _query_monto_aprobado(db: Session, *columnas):
+    """Suma de los presupuestos aprobados, por fecha de aprobación.
 
     La fecha que importa es la de la aprobación (el asiento del historial), no la de
-    carga del presupuesto: lo que se quiere medir es lo que se comprometió este mes. El
-    join no multiplica los ítems porque APROBADO es terminal, así que hay a lo sumo un
+    carga del presupuesto: lo que se quiere medir es lo que se comprometió en el período.
+    El join no multiplica los ítems porque APROBADO es terminal, así que hay a lo sumo un
     asiento de aprobación por presupuesto.
     """
-    total = (
-        db.query(func.sum(ItemPresupuesto.cantidad * ItemPresupuesto.costo_unitario))
+    return (
+        db.query(*columnas, func.sum(ItemPresupuesto.cantidad * ItemPresupuesto.costo_unitario))
+        .select_from(ItemPresupuesto)
         .join(Presupuesto, Presupuesto.id == ItemPresupuesto.presupuesto_id)
+        .join(Reclamo, Reclamo.id == Presupuesto.reclamo_id)
         .join(
             HistorialEstadoPresupuesto,
             HistorialEstadoPresupuesto.presupuesto_id == Presupuesto.id,
@@ -104,106 +178,143 @@ def _monto_aprobado_desde(db: Session, desde: datetime):
         .filter(
             Presupuesto.estado == EstadoPresupuesto.APROBADO,
             HistorialEstadoPresupuesto.estado_nuevo == EstadoPresupuesto.APROBADO,
-            HistorialEstadoPresupuesto.fecha >= desde,
         )
-        .scalar()
     )
-    return total or 0
 
 
-def _dias_promedio_resolucion(db: Session) -> float | None:
-    """Promedio de días entre la creación del reclamo y su paso a FINALIZADO."""
+def _monto_aprobado(
+    db: Session, desde: datetime, hasta: datetime | None = None, filtros: Filtros = SIN_FILTROS
+):
+    query = _query_monto_aprobado(db).filter(
+        _entre(HistorialEstadoPresupuesto.fecha, desde, hasta)
+    )
+    return filtros.aplicar(query).scalar() or 0
+
+
+def _dias_promedio_resolucion(
+    db: Session, desde: datetime, hasta: datetime | None = None, filtros: Filtros = SIN_FILTROS
+) -> float | None:
+    """Promedio de días entre la creación y el paso a FINALIZADO, de los reclamos que se
+    finalizaron en el rango.
+
+    El rango se aplica antes del max: si no, un reclamo reabierto y vuelto a finalizar
+    desaparece del período de su primera finalización, aunque `_finalizados` lo cuente ahí.
+    """
     finalizacion = (
         db.query(
             HistorialEstadoReclamo.reclamo_id.label("reclamo_id"),
             func.max(HistorialEstadoReclamo.fecha).label("fecha"),
         )
-        .filter(HistorialEstadoReclamo.estado_nuevo == EstadoReclamo.FINALIZADO)
+        .filter(
+            HistorialEstadoReclamo.estado_nuevo == EstadoReclamo.FINALIZADO,
+            _entre(HistorialEstadoReclamo.fecha, desde, hasta),
+        )
         .group_by(HistorialEstadoReclamo.reclamo_id)
         .subquery()
     )
 
-    segundos = (
-        db.query(func.avg(func.extract("epoch", finalizacion.c.fecha - Reclamo.fecha_creacion)))
-        .join(finalizacion, finalizacion.c.reclamo_id == Reclamo.id)
-        .scalar()
-    )
+    query = db.query(
+        func.avg(func.extract("epoch", finalizacion.c.fecha - Reclamo.fecha_creacion))
+    ).join(finalizacion, finalizacion.c.reclamo_id == Reclamo.id)
+    segundos = filtros.aplicar(query).scalar()
 
     if segundos is None:
         return None
     return round(float(segundos) / 86400, 1)
 
 
-def _kpis(db: Session, ahora: datetime, conteo: dict[EstadoReclamo, int]) -> KpisDashboard:
-    hace_30 = ahora - timedelta(days=30)
-    inicio_mes = ahora.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+def _comparacion(calcular, ahora: datetime, periodo_dias: int) -> Comparacion:
+    """`calcular(desde, hasta)` para el período que termina ahora y para el anterior."""
+    largo = timedelta(days=periodo_dias)
+    desde = ahora - largo
+    return Comparacion(actual=calcular(desde, None), anterior=calcular(desde - largo, desde))
 
+
+def _kpis(
+    db: Session,
+    ahora: datetime,
+    conteo: dict[EstadoReclamo, int],
+    periodo_dias: int = 30,
+    filtros: Filtros = SIN_FILTROS,
+) -> KpisDashboard:
     abiertos = sum(conteo.get(estado, 0) for estado in ESTADOS_ABIERTOS)
-
-    nuevos = (
-        db.query(func.count(Reclamo.id)).filter(Reclamo.fecha_creacion >= hace_30).scalar()
-    )
 
     visitas = (
         db.query(func.count(Visita.id))
+        .join(Reclamo, Reclamo.id == Visita.reclamo_id)
         .filter(
             Visita.estado == EstadoVisita.CONFIRMADA,
             Visita.fecha_visita >= ahora,
             Visita.fecha_visita < ahora + timedelta(days=7),
         )
-        .scalar()
     )
+
+    def comparar(funcion):
+        return _comparacion(
+            lambda desde, hasta: funcion(db, desde, hasta, filtros), ahora, periodo_dias
+        )
 
     return KpisDashboard(
         reclamos_abiertos=abiertos,
         pendientes_revision=conteo.get(EstadoReclamo.PENDIENTE_REVISION, 0),
         en_evaluacion=conteo.get(EstadoReclamo.EN_EVALUACION, 0),
-        visitas_proximos_7_dias=visitas,
-        monto_aprobado_mes=_monto_aprobado_desde(db, inicio_mes),
-        mes_aprobado=_clave_mes(inicio_mes),
-        dias_promedio_resolucion=_dias_promedio_resolucion(db),
-        nuevos_ultimos_30_dias=nuevos,
+        visitas_proximos_7_dias=filtros.aplicar(visitas).scalar(),
+        ingresados=comparar(_ingresados),
+        finalizados=comparar(_finalizados),
+        monto_aprobado=comparar(_monto_aprobado),
+        dias_promedio_resolucion=comparar(_dias_promedio_resolucion),
     )
 
 
-def _serie_mensual(db: Session, ahora: datetime) -> list[PuntoSerieMensual]:
-    desde, meses = _meses_de_la_serie(ahora, MESES_SERIE)
+def _serie_mensual(
+    db: Session, ahora: datetime, meses: int = 6, filtros: Filtros = SIN_FILTROS
+) -> list[PuntoSerieMensual]:
+    desde, claves = _meses_de_la_serie(ahora, meses)
 
     mes_creacion = _mes_local(Reclamo.fecha_creacion)
-    ingresados = dict(
-        db.query(mes_creacion, func.count(Reclamo.id))
-        .filter(Reclamo.fecha_creacion >= desde)
-        .group_by(mes_creacion)
-        .all()
+    ingresados = (
+        db.query(mes_creacion, func.count(Reclamo.id)).filter(Reclamo.fecha_creacion >= desde)
     )
 
     # DISTINCT porque un reclamo reabierto podría volver a FINALIZADO dentro del mismo
     # mes, y lo que se cuenta son reclamos resueltos, no asientos del historial.
     mes_finalizacion = _mes_local(HistorialEstadoReclamo.fecha)
-    finalizados = dict(
+    finalizados = (
         db.query(mes_finalizacion, func.count(distinct(HistorialEstadoReclamo.reclamo_id)))
+        .join(Reclamo, Reclamo.id == HistorialEstadoReclamo.reclamo_id)
         .filter(
             HistorialEstadoReclamo.estado_nuevo == EstadoReclamo.FINALIZADO,
             HistorialEstadoReclamo.fecha >= desde,
         )
-        .group_by(mes_finalizacion)
-        .all()
     )
 
-    ingresados = {_clave_mes(fecha): cantidad for fecha, cantidad in ingresados.items()}
-    finalizados = {_clave_mes(fecha): cantidad for fecha, cantidad in finalizados.items()}
+    mes_aprobacion = _mes_local(HistorialEstadoPresupuesto.fecha)
+    aprobado = _query_monto_aprobado(db, mes_aprobacion).filter(
+        HistorialEstadoPresupuesto.fecha >= desde
+    )
+
+    def por_mes(query, mes):
+        filas = filtros.aplicar(query).group_by(mes).all()
+        return {_clave_mes(fecha): valor for fecha, valor in filas}
+
+    ingresados = por_mes(ingresados, mes_creacion)
+    finalizados = por_mes(finalizados, mes_finalizacion)
+    aprobado = por_mes(aprobado, mes_aprobacion)
 
     return [
         PuntoSerieMensual(
             mes=clave,
             ingresados=ingresados.get(clave, 0),
             finalizados=finalizados.get(clave, 0),
+            monto_aprobado=aprobado.get(clave, 0),
         )
-        for clave in meses
+        for clave in claves
     ]
 
 
-def _estancados(db: Session, ahora: datetime) -> tuple[int, list[ReclamoEstancado]]:
+def _estancados(
+    db: Session, ahora: datetime, filtros: Filtros = SIN_FILTROS
+) -> tuple[int, list[ReclamoEstancado]]:
     """Los `MAX_ESTANCADOS` más antiguos, y cuántos hay en total.
 
     El total va aparte del recorte para que la pantalla pueda decir que está mostrando
@@ -224,7 +335,7 @@ def _estancados(db: Session, ahora: datetime) -> tuple[int, list[ReclamoEstancad
     # para esos el último movimiento es su propia creación.
     fecha_movimiento = func.coalesce(ultimo_movimiento.c.fecha, Reclamo.fecha_creacion)
 
-    estancados = (
+    estancados = filtros.aplicar(
         db.query(Reclamo, fecha_movimiento.label("fecha"))
         .outerjoin(ultimo_movimiento, ultimo_movimiento.c.reclamo_id == Reclamo.id)
         .filter(Reclamo.estado.notin_(list(ESTADOS_FINALES)), fecha_movimiento < limite)
@@ -246,23 +357,37 @@ def _estancados(db: Session, ahora: datetime) -> tuple[int, list[ReclamoEstancad
     ]
 
 
+def _categorias(db: Session) -> list[str]:
+    filas = db.query(distinct(Reclamo.categoria)).order_by(Reclamo.categoria).all()
+    return [categoria for (categoria,) in filas]
+
+
 @router.get("/resumen", response_model=ResumenDashboard)
-def resumen(db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
+def resumen(
+    periodo: PeriodoDias = PeriodoDias.MES,
+    prioridad: PrioridadReclamo | None = None,
+    categoria: str | None = None,
+    db: Session = Depends(get_db),
+    _admin: Usuario = Depends(get_current_admin),
+):
     ahora = datetime.now(ART)
-    conteo = _conteo_por_estado(db)
-    total_estancados, estancados = _estancados(db, ahora)
+    filtros = Filtros(prioridad=prioridad, categoria=categoria or None)
+    conteo = _conteo_por_estado(db, filtros)
+    total_estancados, estancados = _estancados(db, ahora, filtros)
 
     return ResumenDashboard(
-        kpis=_kpis(db, ahora, conteo),
+        periodo_dias=periodo,
+        kpis=_kpis(db, ahora, conteo, periodo, filtros),
         # Se listan todos los estados, incluso los que están en cero: el gráfico muestra
         # el flujo completo, y una etapa vacía también es información.
         por_estado=[
             ConteoPorEstado(estado=estado, cantidad=conteo.get(estado, 0))
             for estado in EstadoReclamo
         ],
-        serie_mensual=_serie_mensual(db, ahora),
+        serie_mensual=_serie_mensual(db, ahora, _cantidad_de_meses(periodo), filtros),
         estados_abiertos=ESTADOS_ABIERTOS,
         estancados=estancados,
         estancados_total=total_estancados,
         dias_sin_movimiento_umbral=DIAS_SIN_MOVIMIENTO,
+        categorias=_categorias(db),
     )

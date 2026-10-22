@@ -123,7 +123,7 @@ def crear_reclamo(db):
             ubicacion="Ubicación",
             prioridad=campos.pop("prioridad", PrioridadReclamo.MEDIA),
             estado=estado,
-            categoria="Categoría",
+            categoria=campos.pop("categoria", "Categoría"),
             descripcion="Descripción",
             fecha_creacion=fecha_creacion or datetime.now(UTC),
             **campos,

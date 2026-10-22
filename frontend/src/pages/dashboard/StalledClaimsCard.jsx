@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 
 import { TarjetaMovil } from '../../components/TarjetaMovil';
 import { useEsMobile } from '../../hooks/useEsMobile';
+import { PriorityBadge } from '../claims/PriorityBadge';
 import { StatusBadge } from '../claims/StatusBadge';
 import { formatearIdReclamo } from '../../utils/ids';
 import classes from './Dashboard.module.css';
@@ -51,6 +52,7 @@ export function StalledClaimsCard({ reclamos, total, umbral }) {
               badges={
                 <>
                   <StatusBadge estado={reclamo.estado} variant="light" />
+                  <PriorityBadge prioridad={reclamo.prioridad} />
                   <Badge color={colorAntiguedad(reclamo.dias_sin_movimiento)} variant="light">
                     {reclamo.dias_sin_movimiento} días sin movimiento
                   </Badge>
@@ -60,13 +62,14 @@ export function StalledClaimsCard({ reclamos, total, umbral }) {
           ))}
         </Stack>
       ) : (
-        <Table.ScrollContainer minWidth={450}>
+        <Table.ScrollContainer minWidth={560}>
           <Table highlightOnHover>
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>ID</Table.Th>
                 <Table.Th>Escuela</Table.Th>
                 <Table.Th>Estado</Table.Th>
+                <Table.Th>Prioridad</Table.Th>
                 <Table.Th ta="right">Sin movimiento</Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -85,6 +88,9 @@ export function StalledClaimsCard({ reclamos, total, umbral }) {
                   <Table.Td>{reclamo.nombre_escuela}</Table.Td>
                   <Table.Td>
                     <StatusBadge estado={reclamo.estado} variant="light" />
+                  </Table.Td>
+                  <Table.Td>
+                    <PriorityBadge prioridad={reclamo.prioridad} fz="sm" />
                   </Table.Td>
                   <Table.Td ta="right">
                     <Badge color={colorAntiguedad(reclamo.dias_sin_movimiento)} variant="light">

@@ -15,7 +15,7 @@ const ANCHO_MINIMO = 2;
  * exactamente los de `colorPorEstado`, que son los que ya usan los badges en toda la
  * app: el estado se reconoce por el mismo color en el listado y acá.
  */
-export function ClaimsByStateChart({ datos }) {
+export function ClaimsByStateChart({ datos, linkReclamos }) {
   const navigate = useNavigate();
   const maximo = Math.max(...datos.map((fila) => fila.cantidad), 1);
   const total = datos.reduce((suma, fila) => suma + fila.cantidad, 0);
@@ -46,7 +46,7 @@ export function ClaimsByStateChart({ datos }) {
               >
                 <UnstyledButton
                   className={classes.estadoFila}
-                  onClick={() => navigate(`/reclamos?estado=${estado}`)}
+                  onClick={() => navigate(linkReclamos([estado]))}
                 >
                   <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
                     {etiquetaPorEstado[estado] ?? estado}

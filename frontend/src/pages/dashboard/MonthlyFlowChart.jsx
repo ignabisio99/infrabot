@@ -20,7 +20,7 @@ export function MonthlyFlowChart({ datos }) {
     <Card withBorder radius="md" padding="lg" h="100%">
       <Title order={4}>Ingresados vs. finalizados</Title>
       <Text size="xs" c="dimmed" mb="md">
-        Últimos 6 meses. Si la línea de ingresados queda arriba, el backlog crece.
+        Últimos {datos.length} meses.
       </Text>
 
       <LineChart

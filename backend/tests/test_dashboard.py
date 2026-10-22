@@ -13,21 +13,27 @@ from api.dashboard import (
     DIAS_SIN_MOVIMIENTO,
     ESTADOS_ABIERTOS,
     MAX_ESTANCADOS,
+    Filtros,
+    PeriodoDias,
+    _cantidad_de_meses,
     _clave_mes,
     _conteo_por_estado,
     _dias_promedio_resolucion,
     _estancados,
+    _finalizados,
+    _ingresados,
     _kpis,
     _meses_de_la_serie,
-    _monto_aprobado_desde,
+    _monto_aprobado,
     _serie_mensual,
 )
 from conftest import UTC
-from models.reclamo import EstadoReclamo
+from models.reclamo import EstadoReclamo, PrioridadReclamo
 from models.visita import EstadoVisita
 
 AHORA = datetime(2026, 9, 15, 12, 0, tzinfo=ART)
 INICIO_MES = datetime(2026, 9, 1, tzinfo=ART)
+DESDE_SIEMPRE = datetime(2000, 1, 1, tzinfo=ART)
 
 
 # --- Helpers de fecha ------------------------------------------------------------------
@@ -78,7 +84,7 @@ class TestMontoAprobado:
             fecha_aprobacion=AHORA - timedelta(days=3),
         )
 
-        assert _monto_aprobado_desde(db, INICIO_MES) == Decimal("3500.00")
+        assert _monto_aprobado(db, INICIO_MES) == Decimal("3500.00")
 
     def test_varios_items_no_multiplican_el_total(
         self, db, crear_reclamo, crear_presupuesto_aprobado
@@ -91,7 +97,7 @@ class TestMontoAprobado:
             fecha_aprobacion=AHORA - timedelta(days=1),
         )
 
-        assert _monto_aprobado_desde(db, INICIO_MES) == Decimal("500.00")
+        assert _monto_aprobado(db, INICIO_MES) == Decimal("500.00")
 
     def test_ignora_lo_aprobado_antes_del_corte(
         self, db, crear_reclamo, crear_presupuesto_aprobado
@@ -103,7 +109,7 @@ class TestMontoAprobado:
             fecha_aprobacion=INICIO_MES - timedelta(minutes=1),
         )
 
-        assert _monto_aprobado_desde(db, INICIO_MES) == 0
+        assert _monto_aprobado(db, INICIO_MES) == 0
 
     def test_cuenta_por_fecha_de_aprobacion_y_no_por_fecha_del_presupuesto(
         self, db, crear_reclamo, crear_presupuesto_aprobado
@@ -121,10 +127,10 @@ class TestMontoAprobado:
         presupuesto.fecha = INICIO_MES - timedelta(days=15)
         db.flush()
 
-        assert _monto_aprobado_desde(db, INICIO_MES) == Decimal("4000.00")
+        assert _monto_aprobado(db, INICIO_MES) == Decimal("4000.00")
 
     def test_sin_aprobaciones_devuelve_cero(self, db):
-        assert _monto_aprobado_desde(db, INICIO_MES) == 0
+        assert _monto_aprobado(db, INICIO_MES) == 0
 
 
 # --- Días promedio de resolución -------------------------------------------------------
@@ -134,7 +140,7 @@ class TestDiasPromedioResolucion:
     def test_sin_reclamos_finalizados_devuelve_none(self, db, crear_reclamo):
         crear_reclamo(estado=EstadoReclamo.EN_EJECUCION)
 
-        assert _dias_promedio_resolucion(db) is None
+        assert _dias_promedio_resolucion(db, DESDE_SIEMPRE) is None
 
     def test_mide_desde_la_creacion_hasta_el_asiento_de_finalizado(
         self, db, crear_reclamo, crear_historial
@@ -145,7 +151,7 @@ class TestDiasPromedioResolucion:
         )
         crear_historial(reclamo, EstadoReclamo.FINALIZADO, AHORA - timedelta(days=2))
 
-        assert _dias_promedio_resolucion(db) == 8.0
+        assert _dias_promedio_resolucion(db, DESDE_SIEMPRE) == 8.0
 
     def test_promedia_entre_los_finalizados(self, db, crear_reclamo, crear_historial):
         rapido = crear_reclamo(
@@ -159,7 +165,7 @@ class TestDiasPromedioResolucion:
         crear_historial(lento, EstadoReclamo.FINALIZADO, AHORA - timedelta(days=4))
 
         # (4 + 16) / 2
-        assert _dias_promedio_resolucion(db) == 10.0
+        assert _dias_promedio_resolucion(db, DESDE_SIEMPRE) == 10.0
 
     def test_toma_la_ultima_finalizacion_de_un_reclamo_reabierto(
         self, db, crear_reclamo, crear_historial
@@ -170,7 +176,40 @@ class TestDiasPromedioResolucion:
         crear_historial(reclamo, EstadoReclamo.FINALIZADO, AHORA - timedelta(days=25))
         crear_historial(reclamo, EstadoReclamo.FINALIZADO, AHORA - timedelta(days=10))
 
-        assert _dias_promedio_resolucion(db) == 20.0
+        assert _dias_promedio_resolucion(db, DESDE_SIEMPRE) == 20.0
+
+    def test_un_reclamo_reabierto_cuenta_en_el_rango_de_su_primera_finalizacion(
+        self, db, crear_reclamo, crear_historial
+    ):
+        reclamo = crear_reclamo(
+            estado=EstadoReclamo.FINALIZADO, fecha_creacion=AHORA - timedelta(days=50)
+        )
+        crear_historial(reclamo, EstadoReclamo.FINALIZADO, AHORA - timedelta(days=40))
+        crear_historial(reclamo, EstadoReclamo.FINALIZADO, AHORA - timedelta(days=5))
+
+        anterior = (AHORA - timedelta(days=60), AHORA - timedelta(days=30))
+        assert _dias_promedio_resolucion(db, *anterior) == 10.0
+        assert _finalizados(db, *anterior) == 1
+        assert _dias_promedio_resolucion(db, AHORA - timedelta(days=30)) == 45.0
+
+    def test_solo_promedia_los_finalizados_dentro_del_rango(
+        self, db, crear_reclamo, crear_historial
+    ):
+        adentro = crear_reclamo(
+            estado=EstadoReclamo.FINALIZADO, fecha_creacion=AHORA - timedelta(days=10)
+        )
+        crear_historial(adentro, EstadoReclamo.FINALIZADO, AHORA - timedelta(days=5))
+
+        afuera = crear_reclamo(
+            estado=EstadoReclamo.FINALIZADO, fecha_creacion=AHORA - timedelta(days=100)
+        )
+        crear_historial(afuera, EstadoReclamo.FINALIZADO, AHORA - timedelta(days=40))
+
+        assert _dias_promedio_resolucion(db, AHORA - timedelta(days=30)) == 5.0
+        assert (
+            _dias_promedio_resolucion(db, AHORA - timedelta(days=60), AHORA - timedelta(days=30))
+            == 60.0
+        )
 
 
 # --- Reclamos estancados ---------------------------------------------------------------
@@ -327,6 +366,27 @@ class TestSerieMensual:
 
         assert serie["2026-08"] == 1
 
+    def test_suma_el_monto_aprobado_por_mes_de_aprobacion(
+        self, db, crear_reclamo, crear_presupuesto_aprobado
+    ):
+        reclamo = crear_reclamo(estado=EstadoReclamo.APROBADO)
+        crear_presupuesto_aprobado(
+            reclamo, items=[(2, 500)], fecha_aprobacion=datetime(2026, 7, 3, tzinfo=ART)
+        )
+        crear_presupuesto_aprobado(
+            reclamo, items=[(1, 250)], fecha_aprobacion=datetime(2026, 7, 28, tzinfo=ART)
+        )
+
+        serie = {p.mes: p.monto_aprobado for p in _serie_mensual(db, AHORA)}
+
+        assert serie["2026-07"] == Decimal("1250.00")
+        assert serie["2026-08"] == 0
+
+    def test_el_periodo_anual_muestra_doce_meses_y_los_cortos_seis(self):
+        assert _cantidad_de_meses(PeriodoDias.ANIO) == 12
+        assert _cantidad_de_meses(PeriodoDias.TRIMESTRE) == 6
+        assert _cantidad_de_meses(PeriodoDias.MES) == 6
+
     def test_ignora_lo_anterior_a_la_ventana(self, db, crear_reclamo):
         crear_reclamo(fecha_creacion=datetime(2026, 1, 15, tzinfo=ART))
 
@@ -359,13 +419,37 @@ class TestKpis:
         assert kpis.pendientes_revision == 1
         assert kpis.en_evaluacion == 1
 
-    def test_nuevos_cuenta_solo_los_ultimos_30_dias(self, db, crear_reclamo):
+    def test_ingresados_compara_el_periodo_con_el_anterior(self, db, crear_reclamo):
         for dias in (0, 1, 29):
             crear_reclamo(fecha_creacion=AHORA - timedelta(days=dias))
-        for dias in (31, 90):
+        for dias in (31, 59):
+            crear_reclamo(fecha_creacion=AHORA - timedelta(days=dias))
+        crear_reclamo(fecha_creacion=AHORA - timedelta(days=90))
+
+        ingresados = self._kpis_de(db).ingresados
+
+        assert (ingresados.actual, ingresados.anterior) == (3, 2)
+
+    def test_el_periodo_cambia_el_largo_de_las_dos_ventanas(self, db, crear_reclamo):
+        for dias in (10, 80, 100, 170, 200):
             crear_reclamo(fecha_creacion=AHORA - timedelta(days=dias))
 
-        assert self._kpis_de(db).nuevos_ultimos_30_dias == 3
+        ingresados = _kpis(db, AHORA, _conteo_por_estado(db), periodo_dias=90).ingresados
+
+        assert (ingresados.actual, ingresados.anterior) == (2, 2)
+
+    def test_finalizados_compara_el_periodo_con_el_anterior(
+        self, db, crear_reclamo, crear_historial
+    ):
+        for dias in (5, 40, 45):
+            reclamo = crear_reclamo(
+                estado=EstadoReclamo.FINALIZADO, fecha_creacion=AHORA - timedelta(days=80)
+            )
+            crear_historial(reclamo, EstadoReclamo.FINALIZADO, AHORA - timedelta(days=dias))
+
+        finalizados = self._kpis_de(db).finalizados
+
+        assert (finalizados.actual, finalizados.anterior) == (1, 2)
 
     def test_visitas_cuenta_las_confirmadas_de_los_proximos_7_dias(
         self, db, crear_reclamo, crear_visita
@@ -395,25 +479,105 @@ class TestKpis:
 
         assert self._kpis_de(db).visitas_proximos_7_dias == 0
 
-    def test_mes_aprobado_es_el_mes_del_monto(
+    def test_monto_aprobado_compara_el_periodo_con_el_anterior(
         self, db, crear_reclamo, crear_presupuesto_aprobado
     ):
         reclamo = crear_reclamo(estado=EstadoReclamo.APROBADO)
         crear_presupuesto_aprobado(
             reclamo, items=[(1, 700)], fecha_aprobacion=AHORA - timedelta(days=1)
         )
+        otro = crear_reclamo(estado=EstadoReclamo.APROBADO)
+        crear_presupuesto_aprobado(
+            otro, items=[(2, 150)], fecha_aprobacion=AHORA - timedelta(days=35)
+        )
 
-        kpis = self._kpis_de(db)
+        monto = self._kpis_de(db).monto_aprobado
 
-        assert kpis.mes_aprobado == "2026-09"
-        assert kpis.monto_aprobado_mes == Decimal("700.00")
+        assert monto.actual == Decimal("700.00")
+        assert monto.anterior == Decimal("300.00")
 
     def test_base_vacia_no_rompe(self, db):
         kpis = self._kpis_de(db)
 
         assert kpis.reclamos_abiertos == 0
-        assert kpis.monto_aprobado_mes == 0
-        assert kpis.dias_promedio_resolucion is None
+        assert kpis.monto_aprobado.actual == 0
+        assert kpis.dias_promedio_resolucion.actual is None
+        assert kpis.dias_promedio_resolucion.anterior is None
+
+
+# --- Filtros --------------------------------------------------------------------------
+
+
+class TestFiltros:
+    ALTA = Filtros(prioridad=PrioridadReclamo.ALTA)
+
+    def test_conteo_por_estado_respeta_la_prioridad(self, db, crear_reclamo):
+        crear_reclamo(prioridad=PrioridadReclamo.ALTA)
+        crear_reclamo(prioridad=PrioridadReclamo.BAJA)
+
+        assert _conteo_por_estado(db, self.ALTA) == {EstadoReclamo.PENDIENTE_REVISION: 1}
+
+    def test_ingresados_respeta_la_categoria(self, db, crear_reclamo):
+        crear_reclamo(categoria="Gas", fecha_creacion=AHORA - timedelta(days=1))
+        crear_reclamo(categoria="Techos", fecha_creacion=AHORA - timedelta(days=1))
+
+        desde = AHORA - timedelta(days=30)
+
+        assert _ingresados(db, desde, filtros=Filtros(categoria="Gas")) == 1
+        assert _ingresados(db, desde) == 2
+
+    def test_combina_prioridad_y_categoria(self, db, crear_reclamo):
+        crear_reclamo(prioridad=PrioridadReclamo.ALTA, categoria="Gas")
+        crear_reclamo(prioridad=PrioridadReclamo.ALTA, categoria="Techos")
+        crear_reclamo(prioridad=PrioridadReclamo.BAJA, categoria="Gas")
+
+        filtros = Filtros(prioridad=PrioridadReclamo.ALTA, categoria="Gas")
+
+        assert sum(_conteo_por_estado(db, filtros).values()) == 1
+
+    def test_finalizados_respeta_la_prioridad(self, db, crear_reclamo, crear_historial):
+        for prioridad in (PrioridadReclamo.ALTA, PrioridadReclamo.BAJA):
+            reclamo = crear_reclamo(estado=EstadoReclamo.FINALIZADO, prioridad=prioridad)
+            crear_historial(reclamo, EstadoReclamo.FINALIZADO, AHORA - timedelta(days=1))
+
+        assert _finalizados(db, AHORA - timedelta(days=30), filtros=self.ALTA) == 1
+
+    def test_monto_aprobado_respeta_la_prioridad_del_reclamo(
+        self, db, crear_reclamo, crear_presupuesto_aprobado
+    ):
+        for prioridad, monto in ((PrioridadReclamo.ALTA, 100), (PrioridadReclamo.BAJA, 900)):
+            reclamo = crear_reclamo(estado=EstadoReclamo.APROBADO, prioridad=prioridad)
+            crear_presupuesto_aprobado(
+                reclamo, items=[(1, monto)], fecha_aprobacion=AHORA - timedelta(days=1)
+            )
+
+        assert _monto_aprobado(db, INICIO_MES, filtros=self.ALTA) == Decimal("100.00")
+
+    def test_estancados_respeta_la_prioridad(self, db, crear_reclamo):
+        for prioridad in (PrioridadReclamo.ALTA, PrioridadReclamo.BAJA):
+            crear_reclamo(prioridad=prioridad, fecha_creacion=AHORA - timedelta(days=20))
+
+        total, filas = _estancados(db, AHORA, self.ALTA)
+
+        assert total == 1
+        assert filas[0].prioridad == PrioridadReclamo.ALTA
+
+    def test_visitas_respeta_la_prioridad(self, db, crear_reclamo, crear_visita):
+        for prioridad in (PrioridadReclamo.ALTA, PrioridadReclamo.BAJA):
+            reclamo = crear_reclamo(estado=EstadoReclamo.VISITA_COORDINADA, prioridad=prioridad)
+            crear_visita(reclamo, AHORA + timedelta(days=2))
+
+        kpis = _kpis(db, AHORA, _conteo_por_estado(db, self.ALTA), filtros=self.ALTA)
+
+        assert kpis.visitas_proximos_7_dias == 1
+
+    def test_serie_mensual_respeta_la_prioridad(self, db, crear_reclamo):
+        for prioridad in (PrioridadReclamo.ALTA, PrioridadReclamo.BAJA):
+            crear_reclamo(prioridad=prioridad, fecha_creacion=datetime(2026, 8, 5, tzinfo=ART))
+
+        serie = {p.mes: p.ingresados for p in _serie_mensual(db, AHORA, filtros=self.ALTA)}
+
+        assert serie["2026-08"] == 1
 
 
 # --- Endpoint --------------------------------------------------------------------------
@@ -428,6 +592,8 @@ class TestEndpointResumen:
         assert respuesta.status_code == 200
         cuerpo = respuesta.json()
         assert set(cuerpo) == {
+            "periodo_dias",
+            "categorias",
             "kpis",
             "por_estado",
             "serie_mensual",
@@ -459,3 +625,38 @@ class TestEndpointResumen:
         cuerpo = client.get("/dashboard/resumen").json()
 
         assert len(cuerpo["serie_mensual"]) == 6
+        assert cuerpo["periodo_dias"] == 30
+
+    def test_periodo_anual_trae_doce_meses(self, client):
+        cuerpo = client.get("/dashboard/resumen", params={"periodo": 365}).json()
+
+        assert cuerpo["periodo_dias"] == 365
+        assert len(cuerpo["serie_mensual"]) == 12
+
+    def test_rechaza_un_periodo_que_no_esta_en_las_opciones(self, client):
+        assert client.get("/dashboard/resumen", params={"periodo": 45}).status_code == 422
+
+    def test_kpis_comparativos_traen_actual_y_anterior(self, client):
+        kpis = client.get("/dashboard/resumen").json()["kpis"]
+
+        for campo in ("ingresados", "finalizados", "monto_aprobado", "dias_promedio_resolucion"):
+            assert set(kpis[campo]) == {"actual", "anterior"}
+
+    def test_filtra_por_prioridad_y_categoria(self, client, crear_reclamo):
+        crear_reclamo(prioridad=PrioridadReclamo.ALTA, categoria="Gas")
+        crear_reclamo(prioridad=PrioridadReclamo.ALTA, categoria="Techos")
+        crear_reclamo(prioridad=PrioridadReclamo.BAJA, categoria="Gas")
+
+        cuerpo = client.get(
+            "/dashboard/resumen", params={"prioridad": "ALTA", "categoria": "Gas"}
+        ).json()
+
+        assert cuerpo["kpis"]["reclamos_abiertos"] == 1
+
+    def test_categorias_no_se_recortan_con_el_filtro(self, client, crear_reclamo):
+        crear_reclamo(categoria="Techos")
+        crear_reclamo(categoria="Gas")
+
+        cuerpo = client.get("/dashboard/resumen", params={"categoria": "Gas"}).json()
+
+        assert cuerpo["categorias"] == ["Gas", "Techos"]
