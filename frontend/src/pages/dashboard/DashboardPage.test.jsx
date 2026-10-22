@@ -9,7 +9,11 @@ import { DashboardPage } from './DashboardPage';
 vi.mock('../../api/dashboard', () => ({ obtenerResumenDashboard: vi.fn() }));
 vi.mock('../../hooks/useEsMobile', () => ({ useEsMobile: vi.fn(() => false) }));
 // jsdom no hace layout: Recharts mide el contenedor en 0x0, no dibuja y llena stderr de warnings.
-vi.mock('@mantine/charts', () => ({ LineChart: () => null, Sparkline: () => null }));
+vi.mock('@mantine/charts', () => ({
+  DonutChart: () => null,
+  LineChart: () => null,
+  Sparkline: () => null,
+}));
 
 function resumen({
   abiertos = 5,
@@ -57,8 +61,10 @@ function renderDashboard(url = '/dashboard') {
   );
 }
 
+// Sólo entre las tarjetas de KPIs: "Finalizados" también es una etapa de la dona.
 function tarjeta(titulo) {
-  return screen.getByText(titulo).closest('.mantine-Card-root');
+  const grilla = document.querySelector('.mantine-SimpleGrid-root');
+  return within(grilla).getByText(titulo).closest('.mantine-Card-root');
 }
 
 describe('DashboardPage', () => {
@@ -180,7 +186,7 @@ describe('DashboardPage', () => {
 
     await screen.findByText('Reclamos abiertos');
     await user.click(
-      screen.getByText('Reclamos por estado').closest('.mantine-Card-root').querySelector('button'),
+      screen.getByText('Reclamos por etapa').closest('.mantine-Card-root').querySelector('button'),
     );
 
     expect(screen.getByTestId('ubicacion')).toHaveTextContent(
