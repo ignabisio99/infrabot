@@ -53,8 +53,8 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 
 
 def _validar_reclamo_abierto(reclamo: Reclamo, que_no_se_puede: str) -> None:
-    """Un reclamo cerrado conserva su último análisis, pero ya no se regenera: algunos
-    pasos (aplicar la clasificación, agregar la sugerencia de las fotos) lo modificarían."""
+    """Un reclamo cerrado conserva su último análisis, pero ya no se regenera: aplicar la
+    clasificación, por ejemplo, le cambiaría la categoría y la prioridad."""
     if estados_reclamo.es_final(reclamo.estado):
         raise HTTPException(
             status_code=409,
@@ -520,10 +520,6 @@ def listar_contratistas_sugeridos(
 @router.post("/reclamos/{reclamo_id}/analizar-media", response_model=AnalisisMediaOut)
 def analizar_media_reclamo(
     reclamo_id: int,
-    enriquecer_descripcion: bool = Query(
-        False,
-        description="Si true, appende la sugerencia a observaciones (no pisa descripcion)",
-    ),
     db: Session = Depends(get_db),
     _admin: Usuario = Depends(get_current_admin),
 ):
@@ -544,15 +540,6 @@ def analizar_media_reclamo(
             detail="El reclamo no tiene fotos de tipo IMAGEN disponibles en disco",
         )
 
-    enriquecido = False
-    if enriquecer_descripcion and resultado.sugerencia_descripcion:
-        nota = f"[IA visión] {resultado.sugerencia_descripcion}"
-        if reclamo.observaciones:
-            reclamo.observaciones = f"{reclamo.observaciones}\n{nota}"
-        else:
-            reclamo.observaciones = nota
-        enriquecido = True
-
     registro.registrar(
         db,
         tipo=TipoRecomendacionIA.VISION,
@@ -561,7 +548,6 @@ def analizar_media_reclamo(
             "severidad": resultado.severidad,
             "sugerencia_descripcion": resultado.sugerencia_descripcion,
             "fotos_analizadas": resultado.fotos_analizadas,
-            "enriquecido": enriquecido,
         },
         reclamo_id=reclamo.id,
         proveedor=resultado.proveedor,
@@ -575,7 +561,6 @@ def analizar_media_reclamo(
         sugerencia_descripcion=resultado.sugerencia_descripcion,
         fotos_analizadas=resultado.fotos_analizadas,
         proveedor=resultado.proveedor,
-        enriquecido=enriquecido,
     )
 
 

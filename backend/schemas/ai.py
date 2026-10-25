@@ -130,7 +130,6 @@ class AnalisisMediaOut(BaseModel):
     sugerencia_descripcion: str
     fotos_analizadas: int
     proveedor: str
-    enriquecido: bool = False
 
 
 class ItemExtraidoOut(BaseModel):
