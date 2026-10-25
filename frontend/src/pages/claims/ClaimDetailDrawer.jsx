@@ -40,6 +40,7 @@ import {
   listarComentariosReclamo,
   obtenerHistorialReclamo,
   obtenerMovimientosPresupuestos,
+  listarSolicitudesInspeccion,
   obtenerReclamo,
   obtenerVisitaReclamo,
   asignarOfertaExistente,
@@ -65,6 +66,8 @@ import { esComentarioContratista, partesComentarioContratista } from './comentar
 import { ClaimIAPanel } from './ClaimIAPanel';
 import { ClaimPhotosManager } from './ClaimPhotosManager';
 import { NotifyContractorsModal } from './NotifyContractorsModal';
+import { NotifyInspectorsModal } from './NotifyInspectorsModal';
+import { PedidosDelReclamo } from './PedidosInspeccion';
 import { PriorityBadge } from './PriorityBadge';
 import { StatusBadge } from './StatusBadge';
 import tabsClasses from './ClaimDetailTabs.module.css';
@@ -374,6 +377,7 @@ const SIN_CARGAR = {
   visita: null,
   comentarios: [],
   movimientos: [],
+  pedidosInspeccion: [],
 };
 
 export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclamoActualizado }) {
@@ -402,10 +406,19 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
       listarComentariosReclamo(reclamoId),
       // Los presupuestos solo los ve el admin (igual que la pestaña Presupuestos).
       esAdministrador() ? obtenerMovimientosPresupuestos(reclamoId) : [],
+      esAdministrador() || esInspector() ? listarSolicitudesInspeccion(reclamoId) : [],
     ])
-      .then(([reclamo, historial, visita, comentarios, movimientos]) => {
+      .then(([reclamo, historial, visita, comentarios, movimientos, pedidosInspeccion]) => {
         if (vigente) {
-          setUltimoCargado({ id: reclamoId, reclamo, historial, visita, comentarios, movimientos });
+          setUltimoCargado({
+            id: reclamoId,
+            reclamo,
+            historial,
+            visita,
+            comentarios,
+            movimientos,
+            pedidosInspeccion,
+          });
         }
       })
       .catch((err) => {
@@ -417,6 +430,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
   }, [reclamoId, recarga]);
 
   const [notificarAbierto, setNotificarAbierto] = useState(false);
+  const [pedirInspeccionAbierto, setPedirInspeccionAbierto] = useState(false);
   const [cambiarEstadoAbierto, setCambiarEstadoAbierto] = useState(false);
   const [confirmarReabrir, setConfirmarReabrir] = useState(false);
   const [reabriendo, setReabriendo] = useState(false);
@@ -432,6 +446,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
   const visita = cargadoCoincide ? ultimoCargado.visita : null;
   const todosComentarios = cargadoCoincide ? ultimoCargado.comentarios : [];
   const comentarios = todosComentarios.filter((c) => !esComentarioContratista(c));
+  const pedidosInspeccion = cargadoCoincide ? ultimoCargado.pedidosInspeccion : [];
   const eventos = eventosVisibles(historial);
   const avancesPorEvento = agruparPorEvento(
     eventos,
@@ -708,6 +723,20 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
             </Button>
           )}
 
+          {esAdmin && reclamoAbierto && (
+            <Button
+              fullWidth
+              mb="md"
+              variant="light"
+              leftSection={<IconEyeCheck size={18} />}
+              onClick={() => setPedirInspeccionAbierto(true)}
+            >
+              Pedir información a inspectores
+            </Button>
+          )}
+
+          {inspector && <PedidosDelReclamo pedidos={pedidosInspeccion} esAdmin={false} />}
+
           <Paper withBorder radius="md" p="md" mb="md">
             <Group gap={8} mb={6}>
               <IconClipboardList size={16} color="var(--mantine-color-dimmed)" />
@@ -821,10 +850,15 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
                 }
                 // Al quitar una foto el backend deja un comentario: recargar para verlo.
                 onFotoEliminada={() => setRecarga((n) => n + 1)}
+                // Subir una foto atiende el pedido de información del inspector.
+                onFotoSubida={() => {
+                  if (pedidosInspeccion.some((p) => !p.atendida_en)) setRecarga((n) => n + 1);
+                }}
               />
             </Tabs.Panel>
 
             <Tabs.Panel value="comentarios" pt="md">
+              {esAdmin && <PedidosDelReclamo pedidos={pedidosInspeccion} esAdmin />}
               <Group gap={6} mb="sm" wrap="nowrap" align="flex-start" c="dimmed">
                 <IconInfoCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
                 <Text size="sm">
@@ -837,13 +871,15 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
                 reclamoId={reclamo.id}
                 comentarios={comentarios}
                 puedeComentar={inspector && reclamoAbierto}
-                onComentarioAgregado={(nuevo) =>
+                onComentarioAgregado={(nuevo) => {
                   setUltimoCargado((actual) =>
                     actual.id === nuevo.reclamo_id
                       ? { ...actual, comentarios: [...actual.comentarios, nuevo] }
                       : actual,
-                  )
-                }
+                  );
+                  // Comentar atiende el pedido de información: recargar para sacar el aviso.
+                  if (pedidosInspeccion.some((p) => !p.atendida_en)) setRecarga((n) => n + 1);
+                }}
               />
             </Tabs.Panel>
 
@@ -873,6 +909,15 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
               reclamoId={reclamo.id}
               opened={notificarAbierto}
               onClose={() => setNotificarAbierto(false)}
+            />
+          )}
+
+          {esAdmin && (
+            <NotifyInspectorsModal
+              reclamoId={reclamo.id}
+              opened={pedirInspeccionAbierto}
+              onClose={() => setPedirInspeccionAbierto(false)}
+              onEnviado={() => setRecarga((n) => n + 1)}
             />
           )}
 

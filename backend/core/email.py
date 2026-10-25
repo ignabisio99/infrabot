@@ -3,6 +3,7 @@
 import logging
 import os
 import smtplib
+from html import escape
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -121,6 +122,49 @@ def enviar_solicitud_presupuesto(
     </div>
     """
     return enviar_email(destinatario, f"Solicitud de presupuesto - Reclamo #{reclamo_id}", html)
+
+
+def enviar_solicitud_inspeccion(
+    destinatario: str,
+    reclamo_id: int,
+    nombre_escuela: str,
+    ubicacion: str,
+    mensaje: str | None,
+    link: str,
+) -> bool:
+    """Le pide a un inspector que cargue información adicional de un reclamo."""
+    pedido = (
+        f'''<p style="margin:12px 0 4px;"><strong>📝 Qué se necesita:</strong></p>
+        <p style="margin:4px 0; white-space:pre-wrap;">{escape(mensaje)}</p>'''
+        if mensaje
+        else ""
+    )
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #132a4d;">Pedido de información</h2>
+        <p>Te pidieron que cargues información adicional del <strong>reclamo #{reclamo_id}</strong>.</p>
+        <div style="background:#f4f6fb; border-radius:8px; padding:16px; margin:16px 0;">
+            <p style="margin:4px 0;"><strong>🏫 Escuela:</strong> {nombre_escuela}</p>
+            <p style="margin:4px 0;"><strong>📍 Ubicación:</strong> {ubicacion}</p>
+            {pedido}
+        </div>
+        <p>Ingresá para ver el reclamo y agregar comentarios o fotos:</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{link}"
+               style="background-color: #1fa7b3; color: white; padding: 12px 30px;
+                      text-decoration: none; border-radius: 6px; font-weight: bold;">
+                Ver reclamo
+            </a>
+        </div>
+        <p style="color: #666; font-size: 13px;">
+            Si el botón no funciona, copiá y pegá este enlace en tu navegador:<br>
+            <a href="{link}">{link}</a>
+        </p>
+    </div>
+    """
+    return enviar_email(
+        destinatario, f"Pedido de información - Reclamo #{reclamo_id}", html
+    )
 
 
 def enviar_aprobado_presupuesto(

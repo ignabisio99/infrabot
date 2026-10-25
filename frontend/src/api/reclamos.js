@@ -145,3 +145,43 @@ export async function eliminarFotoReclamo(reclamoId, fotoId) {
     throw new Error(extraerMensajeError(error?.detail, 'No se pudo eliminar el archivo.'));
   }
 }
+
+/** Pide a inspectores información adicional del reclamo (WhatsApp, email y aviso en la app). */
+export async function notificarInspectores(reclamoId, { inspectorIds, mensaje }) {
+  const response = await fetchConAuth(`${API_URL}/reclamos/${reclamoId}/notificar-inspectores`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ inspector_ids: inspectorIds, mensaje: mensaje || null }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(
+      extraerMensajeError(error?.detail, 'No se pudo avisar a los inspectores. Intentá de nuevo.'),
+    );
+  }
+
+  return response.json();
+}
+
+/** Pedidos de información del reclamo: todos para el admin, los propios para el inspector. */
+export async function listarSolicitudesInspeccion(reclamoId) {
+  const response = await fetchConAuth(`${API_URL}/reclamos/${reclamoId}/solicitudes-inspeccion`);
+
+  if (!response.ok) {
+    throw new Error('No se pudieron obtener los pedidos de información del reclamo.');
+  }
+
+  return response.json();
+}
+
+/** Reclamos en los que le pidieron información al inspector logueado y todavía no aportó nada. */
+export async function listarMisPedidosInspeccion() {
+  const response = await fetchConAuth(`${API_URL}/reclamos/inspeccion/pendientes`);
+
+  if (!response.ok) {
+    throw new Error('No se pudieron obtener tus pedidos de información.');
+  }
+
+  return response.json();
+}

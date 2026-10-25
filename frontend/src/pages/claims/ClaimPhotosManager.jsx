@@ -20,6 +20,7 @@ export function ClaimPhotosManager({
   puedeSubir = !soloLectura,
   puedeEliminarFoto = () => !soloLectura,
   onFotoEliminada,
+  onFotoSubida,
 }) {
   const [fotos, setFotos] = useState(fotosIniciales);
   const [subiendo, setSubiendo] = useState(false);
@@ -33,6 +34,7 @@ export function ClaimPhotosManager({
       for (const archivo of archivos) {
         const foto = await subirFotoReclamo(reclamoId, archivo);
         setFotos((actuales) => [...actuales, foto]);
+        onFotoSubida?.(foto);
       }
     } catch (error) {
       notifyError(error?.message);
@@ -60,7 +62,9 @@ export function ClaimPhotosManager({
     src: `${API_URL}${foto.url}`,
     alt: foto.nombre_archivo,
     tipo: foto.tipo,
-    autor: foto.autor,
+    // Solo los inspectores suben fotos al reclamo: se firma "Ana (inspector)". Las que
+    // cargó el admin al crear el reclamo son las de la escuela y van sin firma.
+    autor: foto.autor_tipo === 'INSPECTOR' ? `${foto.autor} (inspector)` : null,
     eliminable: puedeEliminarFoto(foto),
   }));
 

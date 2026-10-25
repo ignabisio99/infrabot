@@ -40,6 +40,7 @@ from models.recomendacion_ia import RecomendacionIA, TipoRecomendacionIA
 from models.recordatorio_contratista import RecordatorioContratista
 from models.referencia_costo import ReferenciaCosto
 from models.rol_mano_obra import RolManoObra
+from models.solicitud_inspeccion import SolicitudInspeccion
 from models.solicitud_presupuesto import SolicitudPresupuesto
 from models.token_blacklist import TokenBlacklist
 from models.usuario import EstadoUsuario, TipoUsuario, Usuario
@@ -76,6 +77,7 @@ __all__ = [
     "RecordatorioContratista",
     "ReferenciaCosto",
     "RolManoObra",
+    "SolicitudInspeccion",
     "SolicitudPresupuesto",
     "TipoAdjuntoPresupuesto",
     "TipoMensaje",

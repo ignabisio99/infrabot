@@ -34,6 +34,7 @@ def test_el_inspector_sube_una_foto_y_queda_con_su_autoria(client, loguear, crea
     assert foto["nombre_archivo"] == "grieta.png"
     assert foto["usuario_id"] == inspector.id
     assert foto["autor"] == "Ana"
+    assert foto["autor_tipo"] == "INSPECTOR"
 
     loguear(TipoUsuario.CONTRATISTA)
     fotos = client.get(f"/reclamos/{reclamo.id}").json()["fotos"]

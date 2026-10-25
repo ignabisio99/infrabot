@@ -5,6 +5,7 @@ import { buscarDuplicados, listarRecomendaciones, obtenerEstimacion } from '../.
 import { listarSolicitudesPresupuesto } from '../../api/listasContratistas';
 import {
   listarComentariosReclamo,
+  listarSolicitudesInspeccion,
   obtenerHistorialReclamo,
   obtenerMovimientosPresupuestos,
   obtenerReclamo,
@@ -60,6 +61,7 @@ describe('ClaimDetailDrawer', () => {
     obtenerVisitaReclamo.mockResolvedValue(null);
     listarComentariosReclamo.mockResolvedValue([]);
     obtenerMovimientosPresupuestos.mockResolvedValue([]);
+    listarSolicitudesInspeccion.mockResolvedValue([]);
     listarSolicitudesPresupuesto.mockResolvedValue([]);
     obtenerEstimacion.mockResolvedValue(null);
     buscarDuplicados.mockResolvedValue({ reclamo_id: 1, candidatos: [] });

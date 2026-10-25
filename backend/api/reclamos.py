@@ -23,7 +23,7 @@ from models.lista_contratistas import ListaContratistas
 from models.presupuesto import Presupuesto
 from models.reclamo import EstadoReclamo, Reclamo
 from models.solicitud_presupuesto import SolicitudPresupuesto
-from models.usuario import TipoUsuario, Usuario
+from models.usuario import EstadoUsuario, TipoUsuario, Usuario
 from models.historial_estado_presupuesto import HistorialEstadoPresupuesto
 from models.historial_estado_reclamo import HistorialEstadoReclamo
 from schemas.lista_contratistas import (
@@ -41,10 +41,14 @@ from schemas.reclamo import (
     FotoReclamoOut,
     HistorialEstadoReclamoOut,
     MovimientoPresupuestoOut,
+    NotificarInspectoresIn,
+    NotificarInspectoresOut,
+    AvisoInspectorOut,
     ReclamoCreate,
     ReclamoOut,
+    SolicitudInspeccionOut,
 )
-from services import avisos_presupuesto, estados_presupuesto, estados_reclamo
+from services import avisos_presupuesto, estados_presupuesto, estados_reclamo, solicitudes_inspeccion
 from services.ai.automatico import post_alta_reclamo, post_fotos_reclamo
 from services.reabrir_convocatoria import (
     ReaperturaInvalida,
@@ -317,6 +321,7 @@ def crear_comentario_reclamo(
         reclamo_id=reclamo_id, usuario_id=usuario.id, texto=datos.texto
     )
     db.add(comentario)
+    solicitudes_inspeccion.marcar_atendidas(db, reclamo_id, usuario)
     db.commit()
     db.refresh(comentario)
     return comentario
@@ -375,6 +380,7 @@ def subir_foto(
         usuario_id=usuario.id,
     )
     db.add(nueva_foto)
+    solicitudes_inspeccion.marcar_atendidas(db, reclamo_id, usuario)
     db.commit()
     db.refresh(nueva_foto)
     if tipo == TipoMedia.IMAGEN:
@@ -428,6 +434,90 @@ def eliminar_foto(
     db.delete(foto)
     db.commit()
     storage.eliminar(url)
+
+
+def _solicitud_out(solicitud) -> SolicitudInspeccionOut:
+    return SolicitudInspeccionOut(
+        id=solicitud.id,
+        reclamo_id=solicitud.reclamo_id,
+        nombre_escuela=solicitud.reclamo.nombre_escuela,
+        estado_reclamo=solicitud.reclamo.estado,
+        inspector_id=solicitud.inspector_id,
+        inspector_nombre=solicitud.inspector.nombre,
+        solicitado_por_nombre=solicitud.solicitado_por.nombre if solicitud.solicitado_por else None,
+        mensaje=solicitud.mensaje,
+        fecha=solicitud.fecha,
+        atendida_en=solicitud.atendida_en,
+    )
+
+
+@router.get("/inspeccion/pendientes", response_model=list[SolicitudInspeccionOut])
+def listar_mis_pedidos_de_inspeccion(
+    db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_inspector)
+):
+    """Reclamos en los que le pidieron información al inspector y todavía no aportó nada."""
+    return [_solicitud_out(s) for s in solicitudes_inspeccion.pendientes_de(db, usuario)]
+
+
+@router.get("/{reclamo_id}/solicitudes-inspeccion", response_model=list[SolicitudInspeccionOut])
+def listar_solicitudes_inspeccion(
+    reclamo_id: int,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_admin_o_inspector),
+):
+    """Pedidos de información del reclamo: todos para el admin, los propios para el inspector."""
+    if db.get(Reclamo, reclamo_id) is None:
+        raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    return [
+        _solicitud_out(s) for s in solicitudes_inspeccion.del_reclamo(db, reclamo_id, usuario)
+    ]
+
+
+@router.post("/{reclamo_id}/notificar-inspectores", response_model=NotificarInspectoresOut)
+def notificar_inspectores(
+    reclamo_id: int,
+    datos: NotificarInspectoresIn,
+    db: Session = Depends(get_db),
+    admin: Usuario = Depends(get_current_admin),
+):
+    """Pide a inspectores información adicional del reclamo: les llega por WhatsApp y
+    email, y les aparece en la app hasta que comenten o suban una foto. Solo admins."""
+    reclamo = db.get(Reclamo, reclamo_id)
+    if reclamo is None:
+        raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    if reclamo.estado in estados_reclamo.ESTADOS_FINALES:
+        raise HTTPException(
+            status_code=409,
+            detail=f'No se puede pedir información de un reclamo en estado "{reclamo.estado.etiqueta}"',
+        )
+
+    ids = set(datos.inspector_ids)
+    inspectores = (
+        db.query(Usuario)
+        .filter(
+            Usuario.id.in_(ids),
+            Usuario.tipo == TipoUsuario.INSPECTOR,
+            Usuario.estado == EstadoUsuario.APROBADO,
+        )
+        .all()
+    )
+    if len(inspectores) != len(ids):
+        raise HTTPException(status_code=404, detail="Alguno de los inspectores elegidos no existe")
+
+    resultados = solicitudes_inspeccion.notificar(db, reclamo, inspectores, datos.mensaje, admin)
+    db.commit()
+    return NotificarInspectoresOut(
+        total=len(resultados),
+        resultados=[
+            AvisoInspectorOut(
+                inspector_id=r.inspector.id,
+                nombre=r.inspector.nombre,
+                whatsapp=r.whatsapp,
+                email=r.email,
+            )
+            for r in resultados
+        ],
+    )
 
 
 @router.post("/{reclamo_id}/notificar-contratistas", response_model=NotificarContratistasOut)

@@ -248,6 +248,17 @@ def listar_administradores(db: Session = Depends(get_db), _admin: Usuario = Depe
     )
 
 
+@router.get("/inspectores", response_model=list[UsuarioOut])
+def listar_inspectores(db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
+    """Lista los inspectores con la cuenta aprobada, para pedirles información de un reclamo."""
+    return (
+        db.query(Usuario)
+        .filter(Usuario.tipo == TipoUsuario.INSPECTOR, Usuario.estado == EstadoUsuario.APROBADO)
+        .order_by(Usuario.nombre)
+        .all()
+    )
+
+
 @router.get("/me", response_model=UsuarioOut)
 def obtener_usuario_actual(
     request: Request,

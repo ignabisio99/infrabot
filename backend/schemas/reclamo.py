@@ -1,11 +1,12 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from models.foto_reclamo import TipoMedia
 from models.historial_estado_reclamo import OrigenCambioEstado
 from models.presupuesto import EstadoPresupuesto
 from models.reclamo import EstadoReclamo, PrioridadReclamo
+from models.usuario import TipoUsuario
 
 
 class ReclamoCreate(BaseModel):
@@ -56,6 +57,7 @@ class FotoReclamoOut(BaseModel):
     fecha_creacion: datetime
     usuario_id: int | None = None
     autor: str | None = None
+    autor_tipo: TipoUsuario | None = None
 
 
 class ReclamoOut(ReclamoCreate):
@@ -126,3 +128,37 @@ class MovimientoPresupuestoOut(BaseModel):
     estado_nuevo: EstadoPresupuesto
     motivo: str | None
     fecha: datetime
+
+
+class NotificarInspectoresIn(BaseModel):
+    """El admin pide a uno o varios inspectores información adicional del reclamo."""
+
+    inspector_ids: list[int] = Field(min_length=1)
+    mensaje: str | None = Field(default=None, max_length=1000)
+
+
+class AvisoInspectorOut(BaseModel):
+    inspector_id: int
+    nombre: str
+    whatsapp: bool
+    email: bool
+
+
+class NotificarInspectoresOut(BaseModel):
+    total: int
+    resultados: list[AvisoInspectorOut]
+
+
+class SolicitudInspeccionOut(BaseModel):
+    """Un pedido de información a un inspector sobre un reclamo."""
+
+    id: int
+    reclamo_id: int
+    nombre_escuela: str
+    estado_reclamo: EstadoReclamo
+    inspector_id: int
+    inspector_nombre: str
+    solicitado_por_nombre: str | None
+    mensaje: str | None
+    fecha: datetime
+    atendida_en: datetime | None

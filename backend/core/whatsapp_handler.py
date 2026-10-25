@@ -537,7 +537,11 @@ def _procesar_confirmar_duplicado(db: Session, usuario: str, conv: dict, datos: 
 
 
 def _formatear_reclamo(r: Reclamo) -> str:
-    fotos_count = len(r.fotos) if r.fotos else 0
+    # Fotos y videos se cuentan por separado y SIEMPRE se muestran (0 si no hay). No existe
+    # un ítem genérico de "archivos adjuntos": todo adjunto es foto o video.
+    medios = r.fotos or []
+    fotos_count = sum(1 for m in medios if m.tipo != TipoMedia.VIDEO)
+    videos_count = sum(1 for m in medios if m.tipo == TipoMedia.VIDEO)
     return (
         f"📋 *Reclamo #{r.id}*\n"
         f"🏫 Escuela: {r.nombre_escuela}\n"
@@ -546,7 +550,8 @@ def _formatear_reclamo(r: Reclamo) -> str:
         f"🚦 Prioridad: {r.prioridad.value}\n"
         f"🏷️ Categoría: {r.categoria}\n"
         f"📝 Descripción: {r.descripcion}\n"
-        f"📎 Fotos: {fotos_count}\n"
+        f"📷 Fotos: {fotos_count}\n"
+        f"🎥 Videos: {videos_count}\n"
         f"📅 Fecha de inicio: {reloj.formatear_art(r.fecha_creacion)}"
         + _linea_fecha_finalizacion(r)
     )
@@ -1252,10 +1257,11 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
             _encolar_post_ia(db, reclamo_id)
 
             del _conversaciones[usuario]
-            media_txt = f"\n📎 Archivos adjuntos: {media_guardados}" if media_guardados else ""
+            # El detalle de fotos/videos ya lo muestra _formatear_reclamo; no se agrega
+            # un ítem genérico de "archivos adjuntos" aparte.
             return (
                 f"🎉 *¡Reclamo #{reclamo_id} creado exitosamente!*\n\n"
-                f"{_formatear_reclamo(nuevo)}{media_txt}\n\n"
+                f"{_formatear_reclamo(nuevo)}\n\n"
                 f"Podés ver su estado con: *ver #{reclamo_id}*"
             )
         elif _es_comando(texto, "no", "n", "cancelar"):
