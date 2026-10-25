@@ -182,17 +182,11 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
     }
   };
 
-  const analizar = async (enriquecer) => {
+  const analizar = async () => {
     setAnalizando(true);
     try {
-      const resultado = await analizarMediaReclamo(reclamo.id, {
-        enriquecerDescripcion: enriquecer,
-      });
+      const resultado = await analizarMediaReclamo(reclamo.id);
       setVision(resultado);
-      if (enriquecer) {
-        notifySuccess('Se agregó la sugerencia a las observaciones.');
-        onReclamoActualizado?.();
-      }
     } catch (err) {
       notifyError(err.message);
     } finally {
@@ -384,14 +378,9 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
           </Stack>
         )}
         {hayFotos && (
-          <Group gap="xs">
-            <Button size="xs" variant="subtle" loading={analizando} onClick={() => analizar(false)}>
-              Reanalizar fotos
-            </Button>
-            <Button size="xs" variant="subtle" loading={analizando} onClick={() => analizar(true)}>
-              Agregar sugerencia a observaciones
-            </Button>
-          </Group>
+          <Button size="xs" variant="subtle" loading={analizando} onClick={analizar}>
+            Reanalizar fotos
+          </Button>
         )}
       </Bloque>
 
