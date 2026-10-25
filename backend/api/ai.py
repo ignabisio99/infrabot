@@ -31,6 +31,7 @@ from schemas.ai import (
     SeguimientoOut,
     TranscripcionOut,
 )
+from services import estados_reclamo
 from services.referencias_costo import sincronizar_desde_csv
 from services.ai import (
     agente,
@@ -49,6 +50,16 @@ from services.ai import (
 )
 
 router = APIRouter(prefix="/ai", tags=["ai"])
+
+
+def _validar_reclamo_abierto(reclamo: Reclamo, que_no_se_puede: str) -> None:
+    """Un reclamo cerrado conserva su último análisis, pero ya no se regenera: algunos
+    pasos (aplicar la clasificación, agregar la sugerencia de las fotos) lo modificarían."""
+    if estados_reclamo.es_final(reclamo.estado):
+        raise HTTPException(
+            status_code=409,
+            detail=f'{que_no_se_puede} un reclamo en estado "{reclamo.estado.etiqueta}"',
+        )
 
 
 @router.post("/transcribir", response_model=TranscripcionOut)
@@ -113,6 +124,7 @@ def clasificar_reclamo(
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    _validar_reclamo_abierto(reclamo, "No se puede clasificar")
 
     resultado = clasificacion.clasificar_reclamo(reclamo, db)
     aplicada = False
@@ -157,6 +169,7 @@ def listar_duplicados(
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    # Sin _validar_reclamo_abierto: el panel de IA lo consulta al abrir cualquier reclamo.
 
     candidatos = duplicados.buscar_duplicados(db, reclamo)
     registro.registrar(
@@ -207,6 +220,7 @@ def crear_estimacion(
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    _validar_reclamo_abierto(reclamo, "No se puede regenerar la estimación de")
 
     nueva = estimacion.generar_estimacion(db, reclamo, transicionar=True)
     db.commit()
@@ -250,6 +264,7 @@ def auditar_presupuesto(
         ficha = db.query(Contratista).filter(Contratista.usuario_id == usuario.id).first()
         if ficha is None or presupuesto.contratista_id != ficha.id:
             raise HTTPException(status_code=403, detail="No tenés acceso a este presupuesto")
+    _validar_reclamo_abierto(presupuesto.reclamo, "No se puede auditar un presupuesto de")
 
     informe = auditoria.auditar_presupuesto(db, presupuesto)
     auditoria.persistir_informe(db, informe)
@@ -390,6 +405,7 @@ def orquestar_reclamo(
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    _validar_reclamo_abierto(reclamo, "No se puede volver a analizar")
     try:
         estado = grafo.ejecutar_pipeline(db, reclamo)
         db.commit()
@@ -425,6 +441,7 @@ def analizar_con_agente(
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    _validar_reclamo_abierto(reclamo, "No se puede volver a analizar")
     try:
         res = agente.analizar_reclamo(db, reclamo)
         db.commit()
@@ -518,6 +535,7 @@ def analizar_media_reclamo(
     )
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    _validar_reclamo_abierto(reclamo, "No se pueden analizar las fotos de")
 
     resultado = vision_reclamo.analizar_media_reclamo(db, reclamo)
     if resultado.fotos_analizadas == 0:

@@ -62,7 +62,12 @@ function leerDetalleEstimacion(detalle) {
   }
 }
 
-export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) {
+export function ClaimIAPanel({
+  reclamo,
+  soloLectura = false,
+  onReclamoActualizado,
+  onAbrirReclamo,
+}) {
   const [clasificacion, setClasificacion] = useState(null);
   const [aplicando, setAplicando] = useState(false);
 
@@ -225,8 +230,9 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
   return (
     <Stack gap="md">
       <Alert color="blue" title="Análisis automático">
-        La IA corre sola al registrar el reclamo y al subir fotos. Acá se ven los resultados; los
-        botones de abajo solo regeneran si hace falta.
+        {soloLectura
+          ? 'El reclamo está cerrado: acá quedan los últimos resultados de la IA, pero ya no se pueden regenerar.'
+          : 'La IA corre sola al registrar el reclamo y al subir fotos. Acá se ven los resultados; los botones de abajo solo regeneran si hace falta.'}
       </Alert>
 
       {pipeline && (
@@ -263,7 +269,13 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
             )}
           </Paper>
         )}
-        <Button size="xs" variant="subtle" loading={aplicando} onClick={aplicar}>
+        <Button
+          size="xs"
+          variant="subtle"
+          loading={aplicando}
+          disabled={soloLectura}
+          onClick={aplicar}
+        >
           Reaplicar clasificación
         </Button>
       </Bloque>
@@ -298,6 +310,7 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
           size="xs"
           variant="subtle"
           loading={buscandoDups}
+          disabled={soloLectura}
           onClick={regenerarDuplicados}
           mt="xs"
         >
@@ -349,7 +362,13 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
             {estimacion.justificacion && <Text size="sm">{estimacion.justificacion}</Text>}
           </Stack>
         )}
-        <Button size="xs" variant="subtle" loading={generandoEst} onClick={generar}>
+        <Button
+          size="xs"
+          variant="subtle"
+          loading={generandoEst}
+          disabled={soloLectura}
+          onClick={generar}
+        >
           Regenerar estimación
         </Button>
       </Bloque>
@@ -378,13 +397,25 @@ export function ClaimIAPanel({ reclamo, onReclamoActualizado, onAbrirReclamo }) 
           </Stack>
         )}
         {hayFotos && (
-          <Button size="xs" variant="subtle" loading={analizando} onClick={analizar}>
+          <Button
+            size="xs"
+            variant="subtle"
+            loading={analizando}
+            disabled={soloLectura}
+            onClick={analizar}
+          >
             Reanalizar fotos
           </Button>
         )}
       </Bloque>
 
-      <Button size="xs" variant="light" loading={orquestando} onClick={orquestar}>
+      <Button
+        size="xs"
+        variant="light"
+        loading={orquestando}
+        disabled={soloLectura}
+        onClick={orquestar}
+      >
         Regenerar todo el análisis
       </Button>
     </Stack>

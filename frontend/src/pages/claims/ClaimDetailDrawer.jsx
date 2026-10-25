@@ -126,7 +126,6 @@ function ChatDelReclamo({ telefono }) {
   useEffect(() => {
     if (!abierto) return undefined;
     let vigente = true;
-    setCargando(true);
     historialPorTelefono(telefono, { limit: PAGINA_CHAT_RECLAMO })
       .then((data) => {
         if (!vigente) return;
@@ -216,7 +215,8 @@ function ChatDelReclamo({ telefono }) {
             variant="subtle"
             size="compact-xs"
             onClick={() => {
-              setAbierto((v) => !v);
+              if (!abierto) setCargando(true);
+              setAbierto(!abierto);
               setAmpliado(false);
             }}
           >
@@ -851,6 +851,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
               <Tabs.Panel value="ia" pt="md">
                 <ClaimIAPanel
                   reclamo={reclamo}
+                  soloLectura={!reclamoAbierto}
                   onAbrirReclamo={onAbrirReclamo}
                   onReclamoActualizado={() => {
                     setRecarga((n) => n + 1);
