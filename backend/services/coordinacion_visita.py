@@ -297,9 +297,22 @@ def finalizar_disponibilidad(db: Session, visita: Visita) -> tuple[bool, str | N
     return True, None
 
 
-def confirmar_eleccion(db: Session, visita: Visita, indice: int) -> str | None:
+def mensaje_visita_confirmada_creador(reclamo: Reclamo, elegido: str) -> str:
+    return (
+        f"✅ *Visita confirmada — Reclamo #{reclamo.id}*\n\n"
+        f"🗓️ Horario: {elegido}\n\n"
+        "El contratista fue notificado. Te vamos a recordar la visita el día "
+        "anterior y el mismo día."
+    )
+
+
+def confirmar_eleccion(
+    db: Session, visita: Visita, indice: int, *, avisar_creador: bool = True
+) -> str | None:
     """El creador eligió una opción (1-based). Confirma la visita a ambos.
 
+    Con `avisar_creador=False` no le manda la confirmación al creador: lo usa el handler
+    cuando el creador acaba de elegir, para contestarle con un solo mensaje.
     Devuelve el texto del horario confirmado, o None si el índice es inválido.
     Lanza FechaPasada si la opción elegida ya pasó.
     """
@@ -353,14 +366,8 @@ def confirmar_eleccion(db: Session, visita: Visita, indice: int) -> str | None:
         )
 
     # Avisar al creador
-    if reclamo and reclamo.telefono_creador:
-        _enviar(
-            reclamo.telefono_creador,
-            f"✅ *Visita confirmada — Reclamo #{reclamo.id}*\n\n"
-            f"🗓️ Horario: {elegido}\n\n"
-            "El contratista fue notificado. Te vamos a recordar la visita el día "
-            "anterior y el mismo día.",
-        )
+    if avisar_creador and reclamo and reclamo.telefono_creador:
+        _enviar(reclamo.telefono_creador, mensaje_visita_confirmada_creador(reclamo, elegido))
 
     return elegido
 
@@ -450,6 +457,72 @@ def contratista_de_reclamo_coordinado(db: Session, telefono: str):
         if contratista and _mismo_numero(contratista.telefono, telefono):
             return reclamo, contratista
     return None
+
+
+def coordinar_nueva_visita(
+    db: Session, reclamo: Reclamo, *, detalle: str | None = None, cantidad_media: int = 0
+) -> Contratista | None:
+    """La escuela dijo que no quedó resuelto: EN_EJECUCION -> PENDIENTE_COORDINACION.
+
+    Se crea una visita nueva (la anterior queda en el calendario como lo que fue) y se le
+    pide disponibilidad al contratista, avisándole por qué (con lo que contó la escuela y
+    cuántas fotos o videos mandó, que quedan en el reclamo). Desde ahí sigue el flujo de
+    siempre: la escuela elige horario, "¿pudiste empezar?", seguimiento y "¿quedó
+    resuelto?". Devuelve el contratista, o None si no hay a quién pedirle (el reclamo
+    queda como estaba). No hace commit.
+    """
+    from core.whatsapp_handler import registrar_estado_conversacion
+    from models.historial_estado_reclamo import OrigenCambioEstado
+    from services import estados_reclamo
+
+    if reclamo.estado != EstadoReclamo.EN_EJECUCION:
+        return None
+    anterior = (
+        db.query(Visita).filter(Visita.reclamo_id == reclamo.id).order_by(Visita.id.desc()).first()
+    )
+    contratista = db.get(Contratista, anterior.contratista_id) if anterior else None
+    if contratista is None or not contratista.telefono:
+        return None
+
+    # La visita anterior ya se hizo: que el scheduler no le vuelva a preguntar si empezó.
+    if anterior.pregunta_inicio_enviada is None:
+        anterior.pregunta_inicio_enviada = reloj.ahora()
+
+    estados_reclamo.cambiar_estado(
+        db,
+        reclamo,
+        EstadoReclamo.PENDIENTE_COORDINACION,
+        motivo="La escuela indicó que el problema no quedó resuelto: se coordina una nueva visita",
+        origen=OrigenCambioEstado.AUTOMATICO,
+    )
+    visita = Visita(
+        reclamo_id=reclamo.id,
+        contratista_id=contratista.id,
+        estado=EstadoVisita.ESPERANDO_DISPONIBILIDAD,
+    )
+    db.add(visita)
+    db.flush()
+
+    registrar_estado_conversacion(
+        contratista.telefono,
+        {"paso": "visita_disponibilidad", "visita_id": visita.id},
+    )
+    f1, f2 = ejemplo_formato_fecha()
+    que_quedo_mal = f"📝 La escuela dice: _{detalle.strip()}_\n" if detalle else ""
+    if cantidad_media:
+        que_quedo_mal += f"📎 Mandó {cantidad_media} foto(s)/video(s): los ves en el reclamo.\n"
+    _enviar(
+        contratista.telefono,
+        f"⚠️ *Reclamo #{reclamo.id} — la escuela indicó que no quedó resuelto*\n\n"
+        f"🏫 {reclamo.nombre_escuela}\n"
+        f"📍 {reclamo.ubicacion}\n"
+        f"{que_quedo_mal}\n"
+        "Coordinemos una nueva visita para terminar el trabajo. Indicá tu disponibilidad "
+        f"en formato *DD/MM HH:MM* (ej: _{f1}_, _{f2}_; podés mandar varias separadas por "
+        "coma).\n"
+        "Cuando termines, escribí *listo*.",
+    )
+    return contratista
 
 
 def registrar_inicio_obra(db: Session, reclamo: Reclamo, contratista) -> bool:

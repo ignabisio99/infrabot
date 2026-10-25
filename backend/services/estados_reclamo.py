@@ -104,6 +104,9 @@ TRANSICIONES: dict[EstadoReclamo, frozenset[EstadoReclamo]] = {
         {
             EstadoReclamo.FINALIZADO,
             EstadoReclamo.PENDIENTE_INTERVENCION,
+            # La escuela dijo que no quedó resuelto: se coordina una nueva visita con el
+            # contratista. Lo dispara el sistema (ver coordinacion_visita).
+            EstadoReclamo.PENDIENTE_COORDINACION,
             # El contratista dejó de responder las preguntas de avance: queda desierto
             # para poder reconvocar. Lo dispara el sistema (ver seguimiento).
             EstadoReclamo.DESIERTO,
@@ -148,7 +151,11 @@ TRANSICIONES_SOLO_AUTOMATICAS: dict[EstadoReclamo, frozenset[EstadoReclamo]] = {
         {EstadoReclamo.PENDIENTE_PRESUPUESTO, EstadoReclamo.PENDIENTE_COORDINACION}
     ),
     EstadoReclamo.EN_EJECUCION: frozenset(
-        {EstadoReclamo.PENDIENTE_INTERVENCION, EstadoReclamo.DESIERTO}
+        {
+            EstadoReclamo.PENDIENTE_INTERVENCION,
+            EstadoReclamo.DESIERTO,
+            EstadoReclamo.PENDIENTE_COORDINACION,
+        }
     ),
     EstadoReclamo.PENDIENTE_INTERVENCION: frozenset(
         {EstadoReclamo.PENDIENTE_PRESUPUESTO, EstadoReclamo.APROBADO}
@@ -272,9 +279,11 @@ def cambiar_estado(
         motivo=(motivo or "").strip() or None,
     )
     db.add(evento)
-    if (
-        estado_anterior is EstadoReclamo.PENDIENTE_INTERVENCION
-        and nuevo_estado is EstadoReclamo.EN_EJECUCION
+    # Al volver a ejecución (tras una intervención o una nueva visita) las preguntas de
+    # avance arrancan de cero: si no, la primera saldría apenas empieza el trabajo.
+    if nuevo_estado is EstadoReclamo.EN_EJECUCION and estado_anterior in (
+        EstadoReclamo.PENDIENTE_INTERVENCION,
+        EstadoReclamo.VISITA_COORDINADA,
     ):
         from services.seguimiento import reiniciar_reloj_seguimiento
 

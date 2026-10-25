@@ -117,6 +117,25 @@ def _volver_a_ejecucion(db: Session, reclamo: Reclamo) -> None:
     )
 
 
+# Respuestas que solo dicen "terminé" (o el botón): no aportan nada al comentario de cierre.
+_SOLO_CONFIRMA_TERMINO = frozenset(
+    {
+        "si", "sí", "ok", "dale", "listo", "lista",
+        "terminé", "termine", "terminado", "terminamos", "ya terminé", "ya termine",
+        "finalizado", "finalicé", "finalice", "sí, terminé", "si, termine",
+    }
+)
+
+
+def _aporta_algo(texto: str) -> bool:
+    from services import cu05_botones
+
+    t = (texto or "").strip()
+    if not t or t in cu05_botones.TODOS:
+        return False
+    return t.lower().rstrip(".!") not in _SOLO_CONFIRMA_TERMINO
+
+
 def registrar_avance_texto(
     db: Session, reclamo: Reclamo, contratista, texto: str, *, termino: bool = False
 ) -> ComentarioReclamo:
@@ -126,9 +145,10 @@ def registrar_avance_texto(
             f"[WhatsApp — {empresa}]\n"
             "El contratista reportó que el trabajo está terminado."
         )
-        extra = (texto or "").strip()
-        if extra and extra.lower() not in ("terminé", "termine", "finalizado", "finalicé", "finalice"):
-            cuerpo = f"{cuerpo}\n{extra}"
+        # Si además contó algo ("terminé, cambié el caño"), va abajo; el ID del botón o un
+        # "sí" suelto no.
+        if _aporta_algo(texto):
+            cuerpo = f"{cuerpo}\n{texto.strip()}"
     else:
         cuerpo = f"[WhatsApp — {empresa}]\n{(texto or '').strip()}"
     comentario = ComentarioReclamo(
