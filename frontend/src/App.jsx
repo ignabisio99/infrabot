@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Navigate, Route, Routes } from 'react-router';
+import { Navigate, Route, Routes, useLocation } from 'react-router';
 import { Box, Center, Loader, Stack, Text } from '@mantine/core';
 import { IconCalendar, IconClipboardList, IconReceipt2 } from '@tabler/icons-react';
 
@@ -9,8 +9,10 @@ import { PortalLayout } from './layout/PortalLayout';
 import { AdminsListPage } from './pages/admins/AdminsListPage';
 import { CompletarPerfilPage } from './pages/auth/CompletarPerfilPage';
 import { ConfirmarEmailPage } from './pages/auth/ConfirmarEmailPage';
+import { CuentaRechazadaPage } from './pages/auth/CuentaRechazadaPage';
 import { LoginPage } from './pages/auth/LoginPage';
 import { PendienteAprobacionPage } from './pages/auth/PendienteAprobacionPage';
+import { RestablecerPasswordPage } from './pages/auth/RestablecerPasswordPage';
 import { BudgetsListPage } from './pages/budgets/BudgetsListPage';
 import { CalendarPage } from './pages/calendar/CalendarPage';
 import { ClaimsListPage } from './pages/claims/ClaimsListPage';
@@ -60,6 +62,7 @@ function getUsuarioGuardado() {
 function App() {
   const [usuario, setUsuario] = useState(getUsuarioGuardado);
   const [verificando, setVerificando] = useState(true);
+  const location = useLocation();
 
   // Al montar la app, verificar la sesión real contra el backend
   useEffect(() => {
@@ -124,6 +127,16 @@ function App() {
     setUsuario(null);
   };
 
+  // El link del email para restablecer la contraseña se abre igual haya o no una sesión
+  // iniciada (ej. en la compu donde quedó logueado otro usuario).
+  if (location.pathname === '/restablecer-password') {
+    return (
+      <ConFooter>
+        <RestablecerPasswordPage />
+      </ConFooter>
+    );
+  }
+
   if (verificando) {
     return (
       <ConFooter>
@@ -160,8 +173,17 @@ function App() {
     );
   }
 
-  // Autenticado pero pendiente de aprobación o rechazado
-  if (usuario.estado === 'PENDIENTE_APROBACION' || usuario.estado === 'RECHAZADO') {
+  // Autenticado pero rechazado: la cuenta quedó bloqueada, no hay nada que esperar.
+  if (usuario.estado === 'RECHAZADO') {
+    return (
+      <ConFooter>
+        <CuentaRechazadaPage onLogout={handleLogout} />
+      </ConFooter>
+    );
+  }
+
+  // Autenticado pero pendiente de aprobación
+  if (usuario.estado === 'PENDIENTE_APROBACION') {
     return (
       <ConFooter>
         <PendienteAprobacionPage onLogout={handleLogout} />

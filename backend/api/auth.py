@@ -1,4 +1,6 @@
+import hashlib
 import os
+from datetime import timedelta
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from google.auth.transport import requests as google_requests
@@ -9,13 +11,21 @@ from sqlalchemy.orm import Session
 from core.auth import create_access_token, decode_access_token, hash_password, invalidar_token, verify_password
 from core.database import get_db
 from core.dependencies import get_current_admin, get_current_user
-from core.email import enviar_confirmacion, enviar_aprobacion
+from core.email import (
+    enviar_aprobacion,
+    enviar_confirmacion,
+    enviar_rechazo_cuenta,
+    enviar_restablecer_password,
+)
 from models.contratista import Contratista
 from models.usuario import EstadoUsuario, TipoUsuario, Usuario
 from schemas.usuario import (
     CompletarPerfil,
     LoginOut,
     MensajeOut,
+    OlvidePasswordIn,
+    RestablecerPasswordIn,
+    TokenRestablecerOut,
     UsuarioLogin,
     UsuarioOut,
     UsuarioRegister,
@@ -28,6 +38,9 @@ COOKIE_NAME = "infrabot_session"
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# Una cuenta rechazada queda bloqueada: no entra por ningún medio ni se puede volver a pedir.
+MENSAJE_CUENTA_RECHAZADA = "Tu cuenta fue rechazada. Contactá a un administrador para más información."
 
 
 def _set_session_cookie(response: Response, token: str):
@@ -51,6 +64,12 @@ def _clear_session_cookie(response: Response):
 @router.post("/register", response_model=MensajeOut, status_code=201)
 def registrar_usuario(datos: UsuarioRegister, db: Session = Depends(get_db)):
     existente = db.query(Usuario).filter(Usuario.email == datos.email).first()
+    if existente and existente.estado == EstadoUsuario.RECHAZADO:
+        raise HTTPException(
+            status_code=409,
+            detail="Ese email tiene una solicitud de cuenta rechazada. Contactá a un "
+            "administrador para más información.",
+        )
     if existente:
         raise HTTPException(status_code=409, detail="Ya existe un usuario con ese email")
 
@@ -95,10 +114,7 @@ def iniciar_sesion(datos: UsuarioLogin, response: Response, db: Session = Depend
         )
 
     if usuario.estado == EstadoUsuario.RECHAZADO:
-        raise HTTPException(
-            status_code=403,
-            detail="Tu cuenta fue rechazada. Contactá a un administrador para más información.",
-        )
+        raise HTTPException(status_code=403, detail=MENSAJE_CUENTA_RECHAZADA)
 
     token = create_access_token({"sub": str(usuario.id), "email": usuario.email})
     _set_session_cookie(response, token)
@@ -124,6 +140,63 @@ def confirmar_email(token: str, db: Session = Depends(get_db)):
     db.commit()
 
     return MensajeOut(mensaje="Email confirmado exitosamente. Tu cuenta será revisada por un administrador antes de poder acceder.")
+
+
+# --- Restablecer contraseña ----------------------------------------------------------
+# El link lleva un JWT que vence en 1 hora y guarda una huella de la contraseña actual:
+# al cambiarla la huella deja de coincidir, así que cada link sirve una sola vez (y uno
+# viejo no sirve después de que la cambiaste por otro lado) sin guardar nada en la base.
+
+VENCIMIENTO_RESTABLECER = timedelta(hours=1)
+MENSAJE_LINK_INVALIDO = "El link no es válido o ya venció. Pedí uno nuevo desde el inicio de sesión."
+
+
+def _huella_password(usuario: Usuario) -> str:
+    return hashlib.sha256((usuario.password_hash or "").encode()).hexdigest()[:16]
+
+
+def _usuario_del_link(token: str, db: Session) -> Usuario:
+    payload = decode_access_token(token)
+    if not payload or payload.get("tipo") != "restablecer_password":
+        raise HTTPException(status_code=400, detail=MENSAJE_LINK_INVALIDO)
+    usuario = db.get(Usuario, int(payload["sub"]))
+    if usuario is None or payload.get("huella") != _huella_password(usuario):
+        raise HTTPException(status_code=400, detail=MENSAJE_LINK_INVALIDO)
+    return usuario
+
+
+@router.post("/olvide-password", response_model=MensajeOut)
+def olvide_password(datos: OlvidePasswordIn, db: Session = Depends(get_db)):
+    """Manda el link para elegir una contraseña nueva. La respuesta es la misma exista o
+    no la cuenta, para no revelar qué emails están registrados."""
+    usuario = db.query(Usuario).filter(Usuario.email == datos.email).first()
+    if usuario is not None:
+        token = create_access_token(
+            {"sub": str(usuario.id), "tipo": "restablecer_password", "huella": _huella_password(usuario)},
+            expira_en=VENCIMIENTO_RESTABLECER,
+        )
+        enviar_restablecer_password(usuario.email, usuario.nombre, token)
+    return MensajeOut(
+        mensaje="Si el email está registrado, te enviamos un link para restablecer la "
+        "contraseña. Revisá tu bandeja de entrada (y la carpeta de spam)."
+    )
+
+
+@router.get("/restablecer-password", response_model=TokenRestablecerOut)
+def validar_link_restablecer(token: str, db: Session = Depends(get_db)):
+    """La pantalla lo consulta al abrirse: si el link ya no sirve, lo dice antes de que
+    la persona escriba la contraseña nueva."""
+    return TokenRestablecerOut(email=_usuario_del_link(token, db).email)
+
+
+@router.post("/restablecer-password", response_model=MensajeOut)
+def restablecer_password(datos: RestablecerPasswordIn, db: Session = Depends(get_db)):
+    usuario = _usuario_del_link(datos.token, db)
+    usuario.password_hash = hash_password(datos.password)
+    # Recibió el link en ese email: queda confirmado aunque no hubiera abierto el de alta.
+    usuario.email_confirmado = True
+    db.commit()
+    return MensajeOut(mensaje="Listo, cambiaste tu contraseña. Ya podés iniciar sesión con la nueva.")
 
 
 @router.post("/reenviar-confirmacion", response_model=MensajeOut)
@@ -222,6 +295,8 @@ def rechazar_usuario(usuario_id: int, db: Session = Depends(get_db), _admin: Usu
 
     usuario.estado = EstadoUsuario.RECHAZADO
     db.commit()
+
+    enviar_rechazo_cuenta(usuario.email)
 
     return MensajeOut(mensaje=f"Usuario {usuario.email} rechazado.")
 
@@ -352,6 +427,10 @@ def login_google(datos: GoogleTokenIn, response: Response, db: Session = Depends
         db.add(usuario)
         db.commit()
         db.refresh(usuario)
+
+    # Igual que con email y contraseña: una cuenta rechazada no entra.
+    if usuario.estado == EstadoUsuario.RECHAZADO:
+        raise HTTPException(status_code=403, detail=MENSAJE_CUENTA_RECHAZADA)
 
     if not usuario.email_confirmado:
         usuario.email_confirmado = True

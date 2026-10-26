@@ -71,6 +71,34 @@ def enviar_confirmacion(destinatario: str, token: str) -> bool:
     return enviar_email(destinatario, "Confirmá tu cuenta - InfraBot", html)
 
 
+def enviar_restablecer_password(destinatario: str, nombre: str, token: str) -> bool:
+    """Envía el link para elegir una contraseña nueva (vence en 1 hora, sirve una vez)."""
+    link = f"{APP_URL}/restablecer-password?token={token}"
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #132a4d;">Restablecer tu contraseña</h2>
+        <p>Hola {escape(nombre)}, recibimos un pedido para restablecer la contraseña de tu cuenta
+        de InfraBot. Para elegir una nueva, hacé click en el siguiente botón:</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{link}"
+               style="background-color: #1fa7b3; color: white; padding: 12px 30px;
+                      text-decoration: none; border-radius: 6px; font-weight: bold;">
+                Elegir una contraseña nueva
+            </a>
+        </div>
+        <p style="color: #666; font-size: 13px;">
+            El link vence en 1 hora y sirve una sola vez. Si no pediste cambiar tu contraseña,
+            ignorá este mensaje: tu contraseña actual sigue funcionando.
+        </p>
+        <p style="color: #666; font-size: 13px;">
+            Si el botón no funciona, copiá y pegá este enlace en tu navegador:<br>
+            <a href="{link}">{link}</a>
+        </p>
+    </div>
+    """
+    return enviar_email(destinatario, "Restablecer contraseña - InfraBot", html)
+
+
 def enviar_aprobacion(destinatario: str) -> bool:
     """Envía un email notificando que la cuenta fue aprobada."""
     link = APP_URL
@@ -89,6 +117,19 @@ def enviar_aprobacion(destinatario: str) -> bool:
     </div>
     """
     return enviar_email(destinatario, "Tu cuenta fue aprobada - InfraBot", html)
+
+
+def enviar_rechazo_cuenta(destinatario: str) -> bool:
+    """Avisa que la solicitud de cuenta fue rechazada (la cuenta queda bloqueada)."""
+    html = """
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #132a4d;">Tu solicitud de cuenta fue rechazada</h2>
+        <p>Un administrador revisó tu solicitud de cuenta en InfraBot y no fue aprobada, así
+        que no vas a poder iniciar sesión.</p>
+        <p>Si creés que es un error, contactá a un administrador.</p>
+    </div>
+    """
+    return enviar_email(destinatario, "Tu solicitud de cuenta fue rechazada - InfraBot", html)
 
 
 def enviar_solicitud_presupuesto(

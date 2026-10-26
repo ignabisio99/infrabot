@@ -21,9 +21,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
 
 
-def create_access_token(data: dict) -> str:
+def create_access_token(data: dict, expira_en: timedelta | None = None) -> str:
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
+    expire = datetime.now(timezone.utc) + (expira_en or timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS))
     to_encode.update({
         "exp": expire,
         "jti": uuid.uuid4().hex,

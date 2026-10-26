@@ -7,6 +7,17 @@ from models.usuario import EstadoUsuario, TipoUsuario
 from core.telefonos import normalizar_telefono_ar
 
 
+def validar_password_segura(v: str) -> str:
+    """Reglas de contraseña: las mismas al registrarse y al restablecerla."""
+    if len(v) < 8:
+        raise ValueError("La contraseña debe tener al menos 8 caracteres")
+    if not re.search(r"[A-Z]", v):
+        raise ValueError("La contraseña debe tener al menos una mayúscula")
+    if not re.search(r"[!@#$%^&*()\-_+=\[\]{};':\"\\|,.<>/?]", v):
+        raise ValueError("La contraseña debe tener al menos un símbolo especial")
+    return v
+
+
 class UsuarioRegister(BaseModel):
     nombre: str
     email: EmailStr
@@ -27,13 +38,7 @@ class UsuarioRegister(BaseModel):
     @field_validator("password")
     @classmethod
     def validar_password(cls, v):
-        if len(v) < 8:
-            raise ValueError("La contraseña debe tener al menos 8 caracteres")
-        if not re.search(r"[A-Z]", v):
-            raise ValueError("La contraseña debe tener al menos una mayúscula")
-        if not re.search(r"[!@#$%^&*()\-_+=\[\]{};':\"\\|,.<>/?]", v):
-            raise ValueError("La contraseña debe tener al menos un símbolo especial")
-        return v
+        return validar_password_segura(v)
 
     @field_validator("telefono")
     @classmethod
@@ -164,3 +169,23 @@ class TokenOut(BaseModel):
 
 class MensajeOut(BaseModel):
     mensaje: str
+
+
+class OlvidePasswordIn(BaseModel):
+    email: EmailStr
+
+
+class RestablecerPasswordIn(BaseModel):
+    token: str
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def validar_password(cls, v):
+        return validar_password_segura(v)
+
+
+class TokenRestablecerOut(BaseModel):
+    """El link es válido: a qué cuenta corresponde, para mostrarlo en la pantalla."""
+
+    email: str

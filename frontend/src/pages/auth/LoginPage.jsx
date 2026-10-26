@@ -28,6 +28,7 @@ import {
 import logo from '../../assets/logo-infrabot-front.png';
 import { login, register, loginWithGoogle } from '../../api/auth';
 import { PhoneInput } from '../../components/PhoneInput';
+import { OlvidePasswordModal } from './OlvidePasswordModal';
 import { GoogleLogin } from '@react-oauth/google';
 
 export function LoginPage({ onLogin }) {
@@ -37,6 +38,7 @@ export function LoginPage({ onLogin }) {
   const [success, setSuccess] = useState('');
 
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+  const [olvideAbierto, setOlvideAbierto] = useState(false);
   const [registerForm, setRegisterForm] = useState({
     nombre: '',
     email: '',
@@ -207,7 +209,13 @@ export function LoginPage({ onLogin }) {
                     onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
                   />
                   <Group justify="flex-end">
-                    <Anchor size="xs" c="#1fa7b3">
+                    <Anchor
+                      component="button"
+                      type="button"
+                      size="xs"
+                      c="#1fa7b3"
+                      onClick={() => setOlvideAbierto(true)}
+                    >
                       ¿Olvidaste tu contraseña?
                     </Anchor>
                   </Group>
@@ -330,6 +338,15 @@ export function LoginPage({ onLogin }) {
           </Text>
         </Paper>
       </Container>
+
+      {/* Se monta al abrir: así arranca con el email que ya estaba escrito en el login. */}
+      {olvideAbierto && (
+        <OlvidePasswordModal
+          opened
+          onClose={() => setOlvideAbierto(false)}
+          emailInicial={loginForm.email}
+        />
+      )}
     </div>
   );
 }
