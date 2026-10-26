@@ -25,6 +25,7 @@ from models.historial_estado_presupuesto import HistorialEstadoPresupuesto
 from models.historial_estado_reclamo import HistorialEstadoReclamo
 from models.presupuesto import EstadoPresupuesto, ItemPresupuesto, Presupuesto
 from models.reclamo import EstadoReclamo, PrioridadReclamo, Reclamo
+from models.solicitud_presupuesto import SolicitudPresupuesto
 from models.usuario import EstadoUsuario, TipoUsuario, Usuario
 from models.visita import EstadoVisita, Visita
 
@@ -165,6 +166,24 @@ def crear_contratista(db):
         return contratista
 
     return _crear
+
+
+@pytest.fixture
+def loguear_contratista_convocado(db, loguear, crear_contratista):
+    """Deja logueado a un contratista con ficha, convocado a presupuestar `reclamo`.
+
+    Un contratista solo ve (y presupuesta) los reclamos a los que lo convocaron.
+    """
+
+    def _loguear(reclamo, nombre="Constructora"):
+        usuario = loguear(TipoUsuario.CONTRATISTA, nombre=nombre)
+        ficha = crear_contratista(nombre_empresa=nombre)
+        ficha.usuario_id = usuario.id
+        db.add(SolicitudPresupuesto(reclamo_id=reclamo.id, contratista_id=ficha.id))
+        db.flush()
+        return ficha
+
+    return _loguear
 
 
 @pytest.fixture

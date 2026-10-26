@@ -22,7 +22,9 @@ def _subir(client, reclamo_id, nombre="grieta.png", tipo="image/png"):
     )
 
 
-def test_el_inspector_sube_una_foto_y_queda_con_su_autoria(client, loguear, crear_reclamo):
+def test_el_inspector_sube_una_foto_y_queda_con_su_autoria(
+    client, loguear, crear_reclamo, loguear_contratista_convocado
+):
     reclamo = crear_reclamo()
     inspector = loguear(TipoUsuario.INSPECTOR, nombre="Ana")
 
@@ -36,7 +38,7 @@ def test_el_inspector_sube_una_foto_y_queda_con_su_autoria(client, loguear, crea
     assert foto["autor"] == "Ana"
     assert foto["autor_tipo"] == "INSPECTOR"
 
-    loguear(TipoUsuario.CONTRATISTA)
+    loguear_contratista_convocado(reclamo)
     fotos = client.get(f"/reclamos/{reclamo.id}").json()["fotos"]
     assert [(f["id"], f["autor"]) for f in fotos] == [(foto["id"], "Ana")]
 

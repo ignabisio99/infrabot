@@ -48,7 +48,13 @@ from schemas.reclamo import (
     ReclamoOut,
     SolicitudInspeccionOut,
 )
-from services import avisos_presupuesto, estados_presupuesto, estados_reclamo, solicitudes_inspeccion
+from services import (
+    acceso_reclamos,
+    avisos_presupuesto,
+    estados_presupuesto,
+    estados_reclamo,
+    solicitudes_inspeccion,
+)
 from services.ai.automatico import post_alta_reclamo, post_fotos_reclamo
 from services.reabrir_convocatoria import (
     ReaperturaInvalida,
@@ -119,15 +125,18 @@ def crear_reclamo(reclamo: ReclamoCreate, db: Session = Depends(get_db), _admin:
 
 
 @router.get("", response_model=list[ReclamoOut])
-def listar_reclamos(db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
-    return _con_fotos(db.query(Reclamo)).order_by(Reclamo.fecha_creacion.desc()).all()
+def listar_reclamos(db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_user)):
+    # Un contratista solo ve los reclamos a los que lo convocaron.
+    query = acceso_reclamos.filtrar_visibles(db, _con_fotos(db.query(Reclamo)), usuario)
+    return query.order_by(Reclamo.fecha_creacion.desc()).all()
 
 
 @router.get("/{reclamo_id}", response_model=ReclamoOut)
-def obtener_reclamo(reclamo_id: int, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
+def obtener_reclamo(reclamo_id: int, db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_user)):
     reclamo = _con_fotos(db.query(Reclamo)).filter(Reclamo.id == reclamo_id).first()
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    acceso_reclamos.exigir_acceso(db, reclamo_id, usuario)
     return reclamo
 
 
@@ -241,10 +250,11 @@ def asignar_oferta_ya_enviada(
 
 @router.get("/{reclamo_id}/historial", response_model=list[HistorialEstadoReclamoOut])
 def listar_historial_reclamo(
-    reclamo_id: int, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)
+    reclamo_id: int, db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_user)
 ):
     if db.get(Reclamo, reclamo_id) is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    acceso_reclamos.exigir_acceso(db, reclamo_id, usuario)
     return (
         db.query(HistorialEstadoReclamo)
         .filter(HistorialEstadoReclamo.reclamo_id == reclamo_id)
@@ -288,10 +298,11 @@ def listar_movimientos_presupuestos(
 
 @router.get("/{reclamo_id}/comentarios", response_model=list[ComentarioReclamoOut])
 def listar_comentarios_reclamo(
-    reclamo_id: int, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)
+    reclamo_id: int, db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_user)
 ):
     if db.get(Reclamo, reclamo_id) is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    acceso_reclamos.exigir_acceso(db, reclamo_id, usuario)
     return (
         db.query(ComentarioReclamo)
         .options(joinedload(ComentarioReclamo.usuario))
@@ -716,6 +727,7 @@ def solicitar_informacion(
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    acceso_reclamos.exigir_acceso(db, reclamo_id, usuario)
 
     if not reclamo.telefono_creador:
         raise HTTPException(
@@ -776,7 +788,7 @@ def solicitar_informacion(
 def obtener_visita_reclamo(
     reclamo_id: int,
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    usuario: Usuario = Depends(get_current_user),
 ):
     """Devuelve la coordinación de visita del reclamo (o null si no hay).
 
@@ -788,6 +800,7 @@ def obtener_visita_reclamo(
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    acceso_reclamos.exigir_acceso(db, reclamo_id, usuario)
 
     from models.visita import EstadoVisita
 

@@ -1,4 +1,5 @@
 import pytest
+from sqlalchemy.orm import object_session
 
 import api.presupuestos
 import services.avisos_presupuesto
@@ -66,6 +67,17 @@ def loguear_contratista(db, crear_contratista):
 
 
 def _cargar(client, reclamo, ficha, items=ITEMS):
+    """Carga una oferta como el contratista, convocándolo antes si hacía falta (un
+    contratista solo presupuesta los reclamos a los que lo convocaron)."""
+    db = object_session(reclamo)
+    convocado = (
+        db.query(SolicitudPresupuesto)
+        .filter_by(reclamo_id=reclamo.id, contratista_id=ficha.id)
+        .first()
+    )
+    if convocado is None:
+        db.add(SolicitudPresupuesto(reclamo_id=reclamo.id, contratista_id=ficha.id))
+        db.flush()
     return client.post(
         "/presupuestos",
         json={"reclamo_id": reclamo.id, "contratista_id": ficha.id, "items": items},

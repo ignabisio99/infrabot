@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from core.auth import create_access_token, decode_access_token, hash_password, invalidar_token, verify_password
 from core.database import get_db
-from core.dependencies import get_current_admin, get_current_user
+from core.dependencies import get_current_admin, get_current_user, get_usuario_de_sesion
 from core.email import (
     enviar_aprobacion,
     enviar_confirmacion,
@@ -116,7 +116,7 @@ def iniciar_sesion(datos: UsuarioLogin, response: Response, db: Session = Depend
     if usuario.estado == EstadoUsuario.RECHAZADO:
         raise HTTPException(status_code=403, detail=MENSAJE_CUENTA_RECHAZADA)
 
-    token = create_access_token({"sub": str(usuario.id), "email": usuario.email})
+    token = create_access_token({"sub": str(usuario.id), "email": usuario.email, "tipo": "sesion"})
     _set_session_cookie(response, token)
 
     return LoginOut(usuario=UsuarioOut.model_validate(usuario))
@@ -215,11 +215,20 @@ def reenviar_confirmacion(datos: UsuarioLogin, db: Session = Depends(get_db)):
 
 
 @router.post("/completar-perfil/{usuario_id}", response_model=MensajeOut)
-def completar_perfil_usuario(usuario_id: int, datos: CompletarPerfil, db: Session = Depends(get_db)):
-    """Completa el perfil del usuario después del registro."""
-    usuario = db.get(Usuario, usuario_id)
-    if not usuario:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+def completar_perfil_usuario(
+    usuario_id: int,
+    datos: CompletarPerfil,
+    db: Session = Depends(get_db),
+    sesion: Usuario = Depends(get_usuario_de_sesion),
+):
+    """Completa el perfil del usuario después de registrarse con Google.
+
+    Solo el propio usuario, con su sesión: si no, cualquiera podría completarle el perfil
+    (tipo, teléfono, dirección) a una cuenta ajena sabiendo su ID.
+    """
+    if sesion.id != usuario_id:
+        raise HTTPException(status_code=403, detail="Solo podés completar tu propio perfil")
+    usuario = sesion
 
     if usuario.estado != EstadoUsuario.PENDIENTE_PERFIL:
         raise HTTPException(status_code=400, detail="El perfil ya fue completado")
@@ -335,27 +344,9 @@ def listar_inspectores(db: Session = Depends(get_db), _admin: Usuario = Depends(
 
 
 @router.get("/me", response_model=UsuarioOut)
-def obtener_usuario_actual(
-    request: Request,
-    db: Session = Depends(get_db),
-):
-    """Devuelve el usuario autenticado (verifica la cookie de sesión)."""
-    token = request.cookies.get(COOKIE_NAME)
-    if not token:
-        raise HTTPException(status_code=401, detail="No autenticado")
-
-    from core.auth import token_esta_invalidado
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Sesión expirada")
-
-    if token_esta_invalidado(token, db):
-        raise HTTPException(status_code=401, detail="Sesión cerrada")
-
-    usuario = db.get(Usuario, int(payload["sub"]))
-    if not usuario:
-        raise HTTPException(status_code=401, detail="Usuario no encontrado")
-
+def obtener_usuario_actual(usuario: Usuario = Depends(get_usuario_de_sesion)):
+    """Devuelve el usuario de la sesión, aprobado o no: con esto la app decide si muestra la
+    pantalla de "pendiente", la de "rechazada" o el sistema."""
     return usuario
 
 
@@ -437,7 +428,7 @@ def login_google(datos: GoogleTokenIn, response: Response, db: Session = Depends
         db.commit()
         db.refresh(usuario)
 
-    token = create_access_token({"sub": str(usuario.id), "email": usuario.email})
+    token = create_access_token({"sub": str(usuario.id), "email": usuario.email, "tipo": "sesion"})
     _set_session_cookie(response, token)
 
     return LoginOut(usuario=UsuarioOut.model_validate(usuario))
