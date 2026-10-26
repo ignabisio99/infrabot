@@ -74,7 +74,7 @@ export function ClaimPhotosManager({
         <PhotoDropzone
           onDrop={handleDrop}
           loading={subiendo}
-          helperText="JPG, PNG, WEBP, MP4, MOV o WEBM — hasta 50MB cada uno"
+          helperText="Fotos JPG, PNG o WEBP de hasta 10 MB; videos MP4, MOV o WEBM de hasta 25 MB"
         />
       )}
 

@@ -162,6 +162,15 @@ async def no_cache_api_responses(request, call_next):
     if not request.url.path.startswith("/uploads"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
         response.headers["Pragma"] = "no-cache"
+    else:
+        # Los archivos subidos se sirven desde el mismo origen que la API: que el navegador
+        # no adivine el tipo por el contenido y que, si algo se abre como página, no pueda
+        # correr scripts ni leer nada del sitio (segunda barrera; la primera es la
+        # validación al subir, en core/storage.py).
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        # Los PDF quedan afuera: con `sandbox`, Chrome bloquea su visor de PDF.
+        if not response.headers.get("content-type", "").startswith("application/pdf"):
+            response.headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
     return response
 
 app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR, check_dir=False), name="uploads")

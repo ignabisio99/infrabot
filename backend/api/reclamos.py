@@ -12,7 +12,7 @@ from core.dependencies import (
     get_current_inspector,
     get_current_user,
 )
-from core.storage import storage
+from core.storage import TIPOS_MEDIA, TIPOS_VIDEO, ArchivoInvalido, storage
 from core.email import enviar_solicitud_presupuesto
 from core.whatsapp_client import enviar_mensaje
 from core.whatsapp_handler import iniciar_espera_info
@@ -68,9 +68,6 @@ APP_URL = os.getenv("APP_URL", "http://localhost:3000")
 
 router = APIRouter(prefix="/reclamos", tags=["reclamos"])
 
-TIPOS_IMAGEN_PERMITIDOS = {"image/jpeg", "image/png", "image/webp"}
-TIPOS_VIDEO_PERMITIDOS = {"video/mp4", "video/quicktime", "video/webm", "video/3gpp"}
-TIPOS_MEDIA_PERMITIDOS = TIPOS_IMAGEN_PERMITIDOS | TIPOS_VIDEO_PERMITIDOS
 
 
 def _con_fotos(query):
@@ -374,18 +371,21 @@ def subir_foto(
             detail=f'No se pueden agregar fotos a un reclamo en estado "{reclamo.estado.etiqueta}"',
         )
 
-    if archivo.content_type not in TIPOS_MEDIA_PERMITIDOS:
-        raise HTTPException(
-            status_code=400,
-            detail="El archivo debe ser una imagen (jpg, png, webp) o video (mp4, mov, webm, 3gpp)",
-        )
-
-    tipo = TipoMedia.VIDEO if archivo.content_type in TIPOS_VIDEO_PERMITIDOS else TipoMedia.IMAGEN
-    url = storage.guardar(archivo, f"reclamos/{reclamo_id}")
+    # Tipo, tamaño y contenido los valida el storage; la extensión con la que se guarda
+    # sale del tipo, no del nombre que manda el cliente.
+    try:
+        url = storage.guardar(archivo, f"reclamos/{reclamo_id}", TIPOS_MEDIA)
+    except ArchivoInvalido as e:
+        detalle = e.mensaje
+        if e.status_code == 400 and "permitido" in detalle:
+            detalle = "El archivo debe ser una imagen (jpg, png, webp) o video (mp4, mov, webm, 3gpp)"
+        raise HTTPException(status_code=e.status_code, detail=detalle) from e
+    tipo = TipoMedia.VIDEO if archivo.content_type in TIPOS_VIDEO else TipoMedia.IMAGEN
 
     nueva_foto = FotoReclamo(
         reclamo_id=reclamo_id,
-        nombre_archivo=archivo.filename,
+        # Solo se muestra (texto); se guarda con un nombre generado.
+        nombre_archivo=(archivo.filename or "archivo")[:255],
         url=url,
         tipo=tipo,
         usuario_id=usuario.id,

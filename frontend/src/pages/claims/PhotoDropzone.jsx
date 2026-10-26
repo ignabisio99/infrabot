@@ -11,7 +11,8 @@ export function PhotoDropzone({ onDrop, loading = false, helperText }) {
       onDrop={onDrop}
       loading={loading}
       accept={ACCEPTED_MIME_TYPES}
-      maxSize={50 * 1024 ** 2}
+      // Mismo tope que el backend para los videos (core/storage.py); las fotos, 10 MB.
+      maxSize={25 * 1024 ** 2}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 80 }}>
         <Dropzone.Accept>

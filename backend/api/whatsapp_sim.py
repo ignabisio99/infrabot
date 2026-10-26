@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from core.database import get_db
 from core.dependencies import get_current_admin
-from core.storage import storage
+from core.storage import ArchivoInvalido, storage
 from core.whatsapp_handler import (
     procesar_audio_detalle,
     procesar_media,
@@ -140,7 +140,10 @@ def simular_media(
         _registrar_bot(db, origen, respuesta)
         return _salida(respuesta, transcripcion=texto, proveedor_stt=proveedor)
 
-    url = storage.guardar(archivo, "whatsapp-sim")
+    try:
+        url = storage.guardar(archivo, "whatsapp-sim")
+    except ArchivoInvalido as e:
+        raise HTTPException(status_code=e.status_code, detail=e.mensaje) from e
     tipo = convs._tipo_media(mime)
     con_ttl = convs.activa(db, origen) is not None
     convs.registrar_entrante(
