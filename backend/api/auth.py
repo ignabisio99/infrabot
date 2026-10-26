@@ -6,6 +6,7 @@ from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from core.auth import create_access_token, decode_access_token, hash_password, invalidar_token, verify_password
@@ -18,9 +19,11 @@ from core.email import (
     enviar_restablecer_password,
 )
 from models.contratista import Contratista
+from schemas.contratista import MIN_NOMBRE_EMPRESA
 from models.usuario import EstadoUsuario, TipoUsuario, Usuario
 from schemas.usuario import (
     CompletarPerfil,
+    normalizar_email,
     LoginOut,
     MensajeOut,
     OlvidePasswordIn,
@@ -61,9 +64,15 @@ def _clear_session_cookie(response: Response):
     response.delete_cookie(key=COOKIE_NAME, path="/")
 
 
+def _usuario_por_email(db: Session, email: str) -> Usuario | None:
+    """Busca sin distinguir mayúsculas: también encuentra cuentas guardadas antes de que
+    los emails se normalizaran."""
+    return db.query(Usuario).filter(func.lower(Usuario.email) == normalizar_email(email)).first()
+
+
 @router.post("/register", response_model=MensajeOut, status_code=201)
 def registrar_usuario(datos: UsuarioRegister, db: Session = Depends(get_db)):
-    existente = db.query(Usuario).filter(Usuario.email == datos.email).first()
+    existente = _usuario_por_email(db, datos.email)
     if existente and existente.estado == EstadoUsuario.RECHAZADO:
         raise HTTPException(
             status_code=409,
@@ -97,7 +106,7 @@ def registrar_usuario(datos: UsuarioRegister, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=LoginOut)
 def iniciar_sesion(datos: UsuarioLogin, response: Response, db: Session = Depends(get_db)):
-    usuario = db.query(Usuario).filter(Usuario.email == datos.email).first()
+    usuario = _usuario_por_email(db, datos.email)
     if not usuario or not verify_password(datos.password, usuario.password_hash):
         raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
 
@@ -169,7 +178,7 @@ def _usuario_del_link(token: str, db: Session) -> Usuario:
 def olvide_password(datos: OlvidePasswordIn, db: Session = Depends(get_db)):
     """Manda el link para elegir una contraseña nueva. La respuesta es la misma exista o
     no la cuenta, para no revelar qué emails están registrados."""
-    usuario = db.query(Usuario).filter(Usuario.email == datos.email).first()
+    usuario = _usuario_por_email(db, datos.email)
     if usuario is not None:
         token = create_access_token(
             {"sub": str(usuario.id), "tipo": "restablecer_password", "huella": _huella_password(usuario)},
@@ -201,7 +210,7 @@ def restablecer_password(datos: RestablecerPasswordIn, db: Session = Depends(get
 
 @router.post("/reenviar-confirmacion", response_model=MensajeOut)
 def reenviar_confirmacion(datos: UsuarioLogin, db: Session = Depends(get_db)):
-    usuario = db.query(Usuario).filter(Usuario.email == datos.email).first()
+    usuario = _usuario_por_email(db, datos.email)
     if not usuario or not verify_password(datos.password, usuario.password_hash):
         raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
 
@@ -358,9 +367,10 @@ def actualizar_usuario_actual(
 ):
     """Actualiza los datos de perfil del usuario logueado. No cambia email, tipo ni estado."""
     if usuario.tipo == TipoUsuario.CONTRATISTA:
-        if not datos.nombre_empresa or len(datos.nombre_empresa.strip()) < 2:
+        if not datos.nombre_empresa or len(datos.nombre_empresa.strip()) < MIN_NOMBRE_EMPRESA:
             raise HTTPException(
-                status_code=422, detail="Los contratistas deben especificar el nombre de la empresa"
+                status_code=422,
+                detail=f"El nombre de la empresa debe tener al menos {MIN_NOMBRE_EMPRESA} caracteres",
             )
         if not datos.especialidad or len(datos.especialidad.strip()) < 2:
             raise HTTPException(
@@ -371,15 +381,15 @@ def actualizar_usuario_actual(
     usuario.telefono = datos.telefono
     usuario.direccion = datos.direccion
     if usuario.tipo == TipoUsuario.CONTRATISTA:
-        usuario.nombre_empresa = datos.nombre_empresa
-        usuario.especialidad = datos.especialidad
+        usuario.nombre_empresa = datos.nombre_empresa.strip()
+        usuario.especialidad = datos.especialidad.strip()
 
     ficha = db.query(Contratista).filter(Contratista.usuario_id == usuario.id).first()
     if ficha is not None:
         ficha.telefono = datos.telefono
         ficha.direccion = datos.direccion
         if usuario.tipo == TipoUsuario.CONTRATISTA:
-            ficha.nombre_empresa = datos.nombre_empresa or ficha.nombre_empresa
+            ficha.nombre_empresa = usuario.nombre_empresa or ficha.nombre_empresa
             ficha.especialidad = datos.especialidad or ficha.especialidad
 
     db.commit()
@@ -403,10 +413,12 @@ def login_google(datos: GoogleTokenIn, response: Response, db: Session = Depends
     except ValueError:
         raise HTTPException(status_code=401, detail="Token de Google inválido")
 
-    email = idinfo["email"]
+    email = normalizar_email(idinfo["email"])
     nombre = idinfo.get("name", email.split("@")[0])
 
-    usuario = db.query(Usuario).filter(Usuario.email == email).first()
+    # Mismo criterio que el registro: si ya hay una cuenta con ese email (con o sin
+    # mayúsculas), Google entra a esa y no crea otra.
+    usuario = _usuario_por_email(db, email)
     if not usuario:
         usuario = Usuario(
             nombre=nombre,

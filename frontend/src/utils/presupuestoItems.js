@@ -62,8 +62,7 @@ export function serializarItems(materials, labor) {
 export function totalLineas(materials, labor) {
   const sumar = (filas) =>
     filas.reduce(
-      (acumulado, item) =>
-        acumulado + (Number(item.quantity) || 0) * (Number(item.unitCost) || 0),
+      (acumulado, item) => acumulado + (Number(item.quantity) || 0) * (Number(item.unitCost) || 0),
       0,
     );
   return sumar(materials) + sumar(labor);
@@ -84,15 +83,16 @@ export function validarLineasPresupuesto(materials, labor) {
     if (!item.unit?.trim()) {
       errors[`materials.${index}.unit`] = 'Ingrese la unidad';
     }
-    if (item.unitCost === '' || Number(item.unitCost) < 0) {
-      errors[`materials.${index}.unitCost`] = 'No puede ser negativo';
+    // Un ítem en $0 no es un presupuesto (mismo criterio que el backend).
+    if (item.unitCost === '' || Number(item.unitCost) <= 0) {
+      errors[`materials.${index}.unitCost`] = 'Debe ser mayor a 0';
     }
     if (
       item.description?.trim() &&
       Number(item.quantity) > 0 &&
       item.unit?.trim() &&
       item.unitCost !== '' &&
-      Number(item.unitCost) >= 0
+      Number(item.unitCost) > 0
     ) {
       hayCompleta = true;
     }
@@ -106,22 +106,22 @@ export function validarLineasPresupuesto(materials, labor) {
     if (item.quantity === '' || Number(item.quantity) <= 0) {
       errors[`labor.${index}.quantity`] = 'Debe ser mayor a 0';
     }
-    if (item.unitCost === '' || Number(item.unitCost) < 0) {
-      errors[`labor.${index}.unitCost`] = 'No puede ser negativo';
+    // Un ítem en $0 no es un presupuesto (mismo criterio que el backend).
+    if (item.unitCost === '' || Number(item.unitCost) <= 0) {
+      errors[`labor.${index}.unitCost`] = 'Debe ser mayor a 0';
     }
     if (
       item.description?.trim() &&
       Number(item.quantity) > 0 &&
       item.unitCost !== '' &&
-      Number(item.unitCost) >= 0
+      Number(item.unitCost) > 0
     ) {
       hayCompleta = true;
     }
   });
 
   if (!hayCompleta) {
-    errors.lineas =
-      'Agregá al menos un material o una línea de mano de obra.';
+    errors.lineas = 'Agregá al menos un material o una línea de mano de obra.';
   }
   return errors;
 }

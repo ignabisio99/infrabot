@@ -8,12 +8,24 @@ from models.presupuesto import EstadoPresupuesto, TipoItemPresupuesto
 from models.reclamo import EstadoReclamo
 
 
-class ItemPresupuestoCreate(BaseModel):
+class _ItemPresupuestoCampos(BaseModel):
     tipo: TipoItemPresupuesto = TipoItemPresupuesto.MATERIAL
     descripcion: str
     cantidad: Decimal
     unidad: str = "unidad"
     costo_unitario: Decimal
+
+
+# Topes razonables para una obra escolar, y por debajo de lo que entra en las columnas
+# (Numeric(10,2) y Numeric(12,2)): un número más grande no tiene sentido y haría fallar
+# el guardado con un error de la base.
+CANTIDAD_MAXIMA = Decimal("1000000")
+COSTO_UNITARIO_MAXIMO = Decimal("1000000000")
+
+
+class ItemPresupuestoCreate(_ItemPresupuestoCampos):
+    """Un ítem que se carga: las reglas valen al crear o editar, no al leer lo guardado
+    (por eso los de salida heredan solo los campos)."""
 
     @field_validator("descripcion")
     @classmethod
@@ -27,13 +39,18 @@ class ItemPresupuestoCreate(BaseModel):
     def validar_cantidad(cls, v):
         if v <= 0:
             raise ValueError("La cantidad debe ser mayor a 0")
+        if v > CANTIDAD_MAXIMA:
+            raise ValueError("La cantidad no puede superar 1.000.000")
         return v
 
     @field_validator("costo_unitario")
     @classmethod
     def validar_costo(cls, v):
-        if v < 0:
-            raise ValueError("El costo unitario no puede ser negativo")
+        # Un ítem en $0 no es un presupuesto: si algo no se cobra, que no vaya como ítem.
+        if v <= 0:
+            raise ValueError("El costo unitario debe ser mayor a 0")
+        if v > COSTO_UNITARIO_MAXIMO:
+            raise ValueError("El costo unitario no puede superar $1.000.000.000")
         return v
 
     @field_validator("unidad")
@@ -46,7 +63,7 @@ class ItemPresupuestoCreate(BaseModel):
         return v
 
 
-class ItemPresupuestoOut(ItemPresupuestoCreate):
+class ItemPresupuestoOut(_ItemPresupuestoCampos):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -128,7 +145,7 @@ class PresupuestoOut(BaseModel):
         return sum((item.subtotal for item in self.items), Decimal("0"))
 
 
-class ItemVersionOut(ItemPresupuestoCreate):
+class ItemVersionOut(_ItemPresupuestoCampos):
     @computed_field
     @property
     def subtotal(self) -> Decimal:

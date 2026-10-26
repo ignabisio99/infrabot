@@ -662,3 +662,33 @@ def test_escuela_cancela_al_contar_que_quedo_mal_igual_se_coordina(
 
     assert "nueva visita" in r
     assert reclamo.estado == EstadoReclamo.PENDIENTE_COORDINACION
+
+
+def test_los_horarios_que_propone_el_contratista_quedan_en_la_linea_de_tiempo(
+    db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista, crear_visita
+):
+    contratista = crear_contratista(nombre_empresa="Igna Repara SA")
+    contratista.telefono = "5491155660111"
+    reclamo = crear_reclamo(
+        estado=EstadoReclamo.PENDIENTE_COORDINACION, telefono_creador="5491155660122"
+    )
+    visita = crear_visita(
+        reclamo,
+        fecha_visita=None,
+        estado=EstadoVisita.ESPERANDO_DISPONIBILIDAD,
+        contratista=contratista,
+    )
+    reiniciar_conversacion(contratista.telefono)
+    registrar_estado_conversacion(
+        contratista.telefono, {"paso": "visita_disponibilidad", "visita_id": visita.id}
+    )
+    manana = datetime.now(timezone.utc) + timedelta(days=1)
+    opciones = [manana.strftime("%d/%m 10:00"), manana.strftime("%d/%m 15:30")]
+
+    with patch("services.coordinacion_visita._enviar"):
+        procesar_mensaje(db, ", ".join(opciones), usuario=contratista.telefono)
+        procesar_mensaje(db, "listo", usuario=contratista.telefono)
+
+    [nota] = db.query(ComentarioReclamo).filter_by(reclamo_id=reclamo.id).all()
+    assert nota.texto.startswith("[WhatsApp — Igna Repara SA]")
+    assert all(f"• {op}" in nota.texto for op in opciones)

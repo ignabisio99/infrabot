@@ -3,11 +3,7 @@ import { Button, Container, Stack, Text, TextInput, Title } from '@mantine/core'
 import { useForm } from '@mantine/form';
 
 import { actualizarPerfil, getMe } from '../../api/auth';
-import {
-  CODIGOS_PAIS,
-  componerTelefono,
-  partirTelefono,
-} from '../../components/PhoneInput';
+import { CODIGOS_PAIS, componerTelefono, partirTelefono } from '../../components/PhoneInput';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 
 export function ProfilePage() {
@@ -28,8 +24,10 @@ export function ProfilePage() {
       telefono: (value) =>
         (value || '').replace(/\D/g, '').length < 8 ? 'Ingresá un teléfono válido' : null,
       direccion: (value) => (value.trim().length < 5 ? 'Ingresá la dirección' : null),
-      nombre_empresa: (value, values) =>
-        esContratista && value.trim().length < 2 ? 'Ingresá el nombre de la empresa' : null,
+      nombre_empresa: (value) =>
+        esContratista && value.trim().length < 3
+          ? 'El nombre de la empresa debe tener al menos 3 caracteres'
+          : null,
       especialidad: (value) =>
         esContratista && value.trim().length < 2 ? 'Ingresá la especialidad' : null,
     },
@@ -90,7 +88,10 @@ export function ProfilePage() {
           />
           <div>
             <Text size="sm" fw={500} mb={4}>
-              Teléfono <Text span c="red">*</Text>
+              Teléfono{' '}
+              <Text span c="red">
+                *
+              </Text>
             </Text>
             <Text size="xs" c="dimmed" mb={6}>
               Código de país: Argentina (+54) por defecto.

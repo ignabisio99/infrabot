@@ -275,6 +275,9 @@ def finalizar_disponibilidad(db: Session, visita: Visita) -> tuple[bool, str | N
     # Actualizar para conservar solo las vigentes
     visita.disponibilidades = "\n".join(opciones_vigentes)
     visita.estado = EstadoVisita.ESPERANDO_ELECCION
+    contratista = db.get(Contratista, visita.contratista_id)
+    nombre = contratista.nombre_empresa if contratista else "el contratista"
+    _anotar_horarios_propuestos(db, reclamo, contratista, opciones_vigentes)
     db.commit()
 
     from core.whatsapp_handler import registrar_estado_conversacion
@@ -285,8 +288,6 @@ def finalizar_disponibilidad(db: Session, visita: Visita) -> tuple[bool, str | N
     )
 
     lineas = "\n".join(f"{i + 1}. {op}" for i, op in enumerate(opciones_vigentes))
-    contratista = db.get(Contratista, visita.contratista_id)
-    nombre = contratista.nombre_empresa if contratista else "el contratista"
     _enviar(
         reclamo.telefono_creador,
         f"🗓️ *Coordinación de visita — Reclamo #{reclamo.id}*\n\n"
@@ -295,6 +296,25 @@ def finalizar_disponibilidad(db: Session, visita: Visita) -> tuple[bool, str | N
         "Respondé con el *número* de la opción que te quede mejor (ej: *1*).",
     )
     return True, None
+
+
+def _anotar_horarios_propuestos(
+    db: Session, reclamo: Reclamo, contratista: Contratista | None, opciones: list[str]
+) -> None:
+    """Deja en la línea de tiempo del reclamo (bajo "Pendiente de coordinación") los
+    horarios que propuso el contratista. Cuál eligió la escuela queda en el motivo del
+    paso a "Visita coordinada"."""
+    from models.comentario_reclamo import ComentarioReclamo
+
+    empresa = (contratista.nombre_empresa if contratista else "Contratista").strip()
+    db.add(
+        ComentarioReclamo(
+            reclamo_id=reclamo.id,
+            usuario_id=getattr(contratista, "usuario_id", None),
+            texto=f"[WhatsApp — {empresa}]\nEl contratista propuso estos horarios para la visita:\n"
+            + "\n".join(f"• {op}" for op in opciones),
+        )
+    )
 
 
 def mensaje_visita_confirmada_creador(reclamo: Reclamo, elegido: str) -> str:

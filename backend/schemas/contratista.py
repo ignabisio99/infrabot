@@ -5,7 +5,21 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from core.telefonos import normalizar_telefono_ar
 
 
-class ContratistaCreate(BaseModel):
+# Mínimo para el nombre de la empresa, el mismo en todos lados: alta desde la web, registro,
+# completar el perfil y "Mi perfil" (la ficha de un contratista que se registra sale de ahí).
+MIN_NOMBRE_EMPRESA = 3
+
+
+def validar_nombre_empresa(v: str) -> str:
+    v = v.strip()
+    if len(v) < MIN_NOMBRE_EMPRESA:
+        raise ValueError(
+            f"El nombre de la empresa debe tener al menos {MIN_NOMBRE_EMPRESA} caracteres"
+        )
+    return v
+
+
+class _ContratistaCampos(BaseModel):
     nombre_empresa: str
     telefono: str
     direccion: str
@@ -13,12 +27,16 @@ class ContratistaCreate(BaseModel):
     calificacion: int | None = None
     observaciones_calificacion: str | None = None
 
+
+class ContratistaCreate(_ContratistaCampos):
+    """Lo que se carga. Las reglas valen al crear o editar, no al leer lo guardado: si el
+    de salida las heredara, un contratista viejo que no las cumpla (ej. un nombre de 2
+    letras) haría fallar todos los listados que lo incluyen."""
+
     @field_validator("nombre_empresa")
     @classmethod
     def validar_nombre_empresa(cls, v):
-        if len(v.strip()) < 3:
-            raise ValueError("El nombre de la empresa debe tener al menos 3 caracteres")
-        return v
+        return validar_nombre_empresa(v)
 
     @field_validator("telefono")
     @classmethod
@@ -32,14 +50,14 @@ class ContratistaCreate(BaseModel):
     def validar_direccion(cls, v):
         if len(v.strip()) < 3:
             raise ValueError("La dirección debe tener al menos 3 caracteres")
-        return v
+        return v.strip()
 
     @field_validator("especialidad")
     @classmethod
     def validar_especialidad(cls, v):
         if len(v.strip()) < 2:
             raise ValueError("La especialidad debe tener al menos 2 caracteres")
-        return v
+        return v.strip()
 
     @field_validator("calificacion")
     @classmethod
@@ -49,7 +67,7 @@ class ContratistaCreate(BaseModel):
         return v
 
 
-class ContratistaOut(ContratistaCreate):
+class ContratistaOut(_ContratistaCampos):
     model_config = ConfigDict(from_attributes=True)
 
     id: int

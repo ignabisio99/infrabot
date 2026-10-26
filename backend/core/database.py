@@ -166,3 +166,33 @@ def asegurar_valor_analisis_agente(bind=engine):
                     f"ALTER TYPE tipo_recomendacion_ia ADD VALUE IF NOT EXISTS '{valor.value}'"
                 )
             )
+
+
+def asegurar_emails_unicos(bind=engine):
+    """Pasa los emails a minúsculas y crea un índice único sobre lower(email).
+
+    La app ya normaliza los emails al registrar y al entrar con Google; el índice es la
+    última barrera para que no queden dos cuentas con el mismo email ("Juan@..." y
+    "juan@..."). Si la base ya tuviera duplicados así, no toca nada y lo deja en el log:
+    hay que resolverlos a mano (decidir con qué cuenta se queda la persona).
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+    with bind.begin() as conn:
+        duplicados = conn.execute(
+            text(
+                "SELECT lower(email) FROM usuario GROUP BY lower(email) HAVING count(*) > 1"
+            )
+        ).scalars().all()
+        if duplicados:
+            logger.error(
+                "Hay cuentas con el mismo email en distinta mayúscula: %s. No se crea el "
+                "índice único hasta resolverlas.",
+                ", ".join(duplicados),
+            )
+            return
+        conn.execute(text("UPDATE usuario SET email = lower(trim(email)) WHERE email <> lower(trim(email))"))
+        conn.execute(
+            text("CREATE UNIQUE INDEX IF NOT EXISTS uq_usuario_email_lower ON usuario (lower(email))")
+        )

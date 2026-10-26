@@ -5,6 +5,13 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from models.usuario import EstadoUsuario, TipoUsuario
 from core.telefonos import normalizar_telefono_ar
+from schemas.contratista import validar_nombre_empresa
+
+
+def normalizar_email(v: str) -> str:
+    """Los emails se guardan y se comparan en minúsculas y sin espacios: si no,
+    "Juan@gmail.com" (registro) y "juan@gmail.com" (Google) serían dos cuentas."""
+    return v.strip().lower()
 
 
 def validar_password_segura(v: str) -> str:
@@ -22,6 +29,12 @@ class UsuarioRegister(BaseModel):
     nombre: str
     email: EmailStr
     password: str
+
+    @field_validator("email")
+    @classmethod
+    def normalizar_email(cls, v):
+        return normalizar_email(v)
+
     telefono: str
     direccion: str
     tipo: TipoUsuario
@@ -57,9 +70,11 @@ class UsuarioRegister(BaseModel):
     @field_validator("nombre_empresa")
     @classmethod
     def validar_empresa(cls, v, info):
-        if info.data.get("tipo") == TipoUsuario.CONTRATISTA and (not v or len(v.strip()) < 2):
+        if info.data.get("tipo") != TipoUsuario.CONTRATISTA:
+            return v
+        if not v:
             raise ValueError("Los contratistas deben especificar el nombre de la empresa")
-        return v
+        return validar_nombre_empresa(v)
 
     @field_validator("especialidad")
     @classmethod
@@ -72,6 +87,11 @@ class UsuarioRegister(BaseModel):
 class UsuarioLogin(BaseModel):
     email: EmailStr
     password: str
+
+    @field_validator("email")
+    @classmethod
+    def normalizar_email(cls, v):
+        return normalizar_email(v)
 
 
 class CompletarPerfil(BaseModel):
@@ -98,9 +118,11 @@ class CompletarPerfil(BaseModel):
     @field_validator("nombre_empresa")
     @classmethod
     def validar_empresa(cls, v, info):
-        if info.data.get("tipo") == TipoUsuario.CONTRATISTA and (not v or len(v.strip()) < 2):
+        if info.data.get("tipo") != TipoUsuario.CONTRATISTA:
+            return v
+        if not v:
             raise ValueError("Los contratistas deben especificar el nombre de la empresa")
-        return v
+        return validar_nombre_empresa(v)
 
     @field_validator("especialidad")
     @classmethod
@@ -173,6 +195,11 @@ class MensajeOut(BaseModel):
 
 class OlvidePasswordIn(BaseModel):
     email: EmailStr
+
+    @field_validator("email")
+    @classmethod
+    def normalizar_email(cls, v):
+        return normalizar_email(v)
 
 
 class RestablecerPasswordIn(BaseModel):
