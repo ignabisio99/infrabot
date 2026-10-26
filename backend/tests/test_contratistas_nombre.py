@@ -71,3 +71,35 @@ def test_mi_perfil_de_contratista_pide_el_mismo_minimo(client, loguear):
 
     assert respuesta.status_code == 422
     assert "al menos 3 caracteres" in respuesta.json()["detail"]
+
+
+def test_el_nombre_de_la_persona_tambien_pide_3_caracteres(client, loguear):
+    with patch("api.auth.enviar_confirmacion", return_value=True):
+        registro = client.post(
+            "/auth/register",
+            json={
+                "nombre": " Jo ",
+                "email": "jo-obras@ejemplo.com",
+                "password": "Clave123!",
+                "telefono": "1155556666",
+                "direccion": "Calle Falsa 123",
+                "tipo": "CONTRATISTA",
+                "nombre_empresa": "Obras SA",
+                "especialidad": "Gas",
+            },
+        )
+    assert registro.status_code == 422
+    assert "El nombre debe tener al menos 3 caracteres" in registro.json()["detail"][0]["msg"]
+
+    loguear(TipoUsuario.CONTRATISTA)
+    perfil = client.put(
+        "/auth/me",
+        json={
+            "nombre": "Jo",
+            "telefono": "1155556666",
+            "direccion": "Calle Falsa 123",
+            "nombre_empresa": "Obras SA",
+            "especialidad": "Gas",
+        },
+    )
+    assert perfil.status_code == 422

@@ -14,6 +14,18 @@ def normalizar_email(v: str) -> str:
     return v.strip().lower()
 
 
+MIN_NOMBRE = 3
+
+
+def validar_nombre_persona(v: str) -> str:
+    """Nombre de la persona: mismo mínimo que el nombre de la empresa, sin contar espacios.
+    Vale al registrarse y al editar "Mi perfil"."""
+    v = v.strip()
+    if len(v) < MIN_NOMBRE:
+        raise ValueError(f"El nombre debe tener al menos {MIN_NOMBRE} caracteres")
+    return v
+
+
 def validar_password_segura(v: str) -> str:
     """Reglas de contraseña: las mismas al registrarse y al restablecerla."""
     if len(v) < 8:
@@ -44,9 +56,7 @@ class UsuarioRegister(BaseModel):
     @field_validator("nombre")
     @classmethod
     def validar_nombre(cls, v):
-        if len(v.strip()) < 2:
-            raise ValueError("El nombre debe tener al menos 2 caracteres")
-        return v
+        return validar_nombre_persona(v)
 
     @field_validator("password")
     @classmethod
@@ -142,9 +152,7 @@ class UsuarioUpdate(BaseModel):
     @field_validator("nombre")
     @classmethod
     def validar_nombre(cls, v):
-        if len(v.strip()) < 2:
-            raise ValueError("El nombre debe tener al menos 2 caracteres")
-        return v
+        return validar_nombre_persona(v)
 
     @field_validator("telefono")
     @classmethod

@@ -20,7 +20,8 @@ export function ProfilePage() {
       especialidad: '',
     },
     validate: {
-      nombre: (value) => (value.trim().length < 2 ? 'Ingresá tu nombre' : null),
+      nombre: (value) =>
+        value.trim().length < 3 ? 'El nombre debe tener al menos 3 caracteres' : null,
       telefono: (value) =>
         (value || '').replace(/\D/g, '').length < 8 ? 'Ingresá un teléfono válido' : null,
       direccion: (value) => (value.trim().length < 5 ? 'Ingresá la dirección' : null),

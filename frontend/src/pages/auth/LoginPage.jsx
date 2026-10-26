@@ -72,6 +72,16 @@ export function LoginPage({ onLogin }) {
     setError('');
     setSuccess('');
 
+    // Mismos mínimos que el backend, sin contar espacios.
+    if (registerForm.nombre.trim().length < 3) {
+      setError('El nombre debe tener al menos 3 caracteres');
+      return;
+    }
+    if (registerForm.tipo === 'CONTRATISTA' && registerForm.nombre_empresa.trim().length < 3) {
+      setError('El nombre de la empresa debe tener al menos 3 caracteres');
+      return;
+    }
+
     if (registerForm.password !== registerForm.confirmPassword) {
       setError('Las contraseñas no coinciden');
       return;
