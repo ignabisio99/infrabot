@@ -13,7 +13,8 @@ Los estados conversacionales viven en whatsapp_handler (_conversaciones). Acá e
 lógica de negocio y el envío de mensajes.
 """
 
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -84,7 +85,7 @@ def iniciar_coordinacion(db: Session, reclamo: Reclamo, contratista: Contratista
         f"📍 Ubicación: {reclamo.ubicacion}\n\n"
         "Para coordinar la visita de trabajo, indicanos tu disponibilidad horaria.\n\n"
         "📅 *Importante:* enviá cada opción en el formato *DD/MM HH:MM* "
-        "(día/mes y hora posterior a la actual). Por ejemplo:\n"
+        "o *DD/MM/AAAA HH:MM*. Por ejemplo:\n"
         f"_{f1}_\n"
         f"_{f2}_\n\n"
         "Podés mandarlas todas juntas separadas por coma, o una por mensaje.\n"
@@ -173,16 +174,12 @@ def avisar_visita_cancelada(db: Session, visita: Visita, motivo: str | None) -> 
 
 def _separar_opciones(texto: str) -> list[str]:
     """Divide un texto en varias opciones (por saltos de línea o comas)."""
-    import re
-
     partes = re.split(r"[\n,]+", texto)
     return [p.strip() for p in partes if p.strip()]
 
 
 def _mismo_numero(a: str, b: str) -> bool:
     """Compara dos teléfonos ignorando prefijos/formato (usa los últimos 8 dígitos)."""
-    import re
-
     da = re.sub(r"\D", "", a or "")
     db_ = re.sub(r"\D", "", b or "")
     if not da or not db_:
@@ -262,13 +259,11 @@ class FechaPasada(Exception):
 
 
 def ejemplo_formato_fecha() -> tuple[str, str]:
-    """Genera ejemplos de fecha y hora futuras en formato DD/MM HH:MM."""
-    from datetime import timedelta
-
+    """Ejemplos futuros en el formato que se guarda: DD/MM/AAAA HH:MM."""
     ahora_art = reloj.ahora_art()
-    f1 = (ahora_art + timedelta(days=1)).strftime("%d/%m 10:00")
-    f2 = (ahora_art + timedelta(days=2)).strftime("%d/%m 15:30")
-    return f1, f2
+    f1 = (ahora_art + timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
+    f2 = (ahora_art + timedelta(days=2)).replace(hour=15, minute=30, second=0, microsecond=0)
+    return reloj.formatear_art(f1), reloj.formatear_art(f2)
 
 
 def formato_valido(texto: str) -> bool:
@@ -300,19 +295,23 @@ def es_fecha_futura(texto_opcion: str) -> bool:
 
 
 def agregar_disponibilidad(db: Session, visita: Visita, texto: str) -> int:
-    """Suma una o varias franjas de disponibilidad. Devuelve cuántas agregó.
+    """Suma franjas nuevas y devuelve cuántas quedaron cargadas en total.
 
-    Acepta varias opciones en un mismo mensaje separadas por coma o salto de línea,
-    o una por mensaje. Guarda una por línea.
+    No repite un horario que ya estaba. Acepta varias opciones en un mensaje
+    separadas por coma o salto de línea.
     """
-    opciones = _separar_opciones(texto)
-    actuales = visita.disponibilidades or ""
-    for op in opciones:
-        prefijo = "\n" if actuales else ""
-        actuales = actuales + prefijo + op
-    visita.disponibilidades = actuales
+    cargadas = []
+    for op in _opciones_lista(visita):
+        canon = formatear_opcion(op) or op
+        if canon not in cargadas:
+            cargadas.append(canon)
+    for op in _separar_opciones(texto):
+        canon = formatear_opcion(op)
+        if canon and canon not in cargadas:
+            cargadas.append(canon)
+    visita.disponibilidades = "\n".join(cargadas) or None
     db.commit()
-    return len(opciones)
+    return len(cargadas)
 
 
 def _opciones_lista(visita: Visita) -> list[str]:
@@ -336,10 +335,14 @@ def finalizar_disponibilidad(db: Session, visita: Visita) -> tuple[bool, str | N
 
     # Filtrar solo opciones que sigan vigentes (futuras)
     ahora = reloj.ahora()
-    opciones_vigentes = [
-        op for op in opciones
-        if (dt := _parsear_fecha(op)) is not None and dt > ahora
-    ]
+    opciones_vigentes = []
+    for op in opciones:
+        dt = _parsear_fecha(op)
+        if dt is None or dt <= ahora:
+            continue
+        canon = reloj.formatear_art(dt)
+        if canon not in opciones_vigentes:
+            opciones_vigentes.append(canon)
 
     if not opciones_vigentes:
         visita.disponibilidades = None
@@ -426,7 +429,8 @@ def confirmar_eleccion(
     if fecha_dt is not None and fecha_dt <= ahora:
         raise FechaPasada(f"La opción elegida ({elegido}) ya pasó.")
 
-    visita.horario_confirmado = elegido
+    horario = reloj.formatear_art(fecha_dt) if fecha_dt is not None else elegido
+    visita.horario_confirmado = horario
     visita.estado = EstadoVisita.CONFIRMADA
     visita.fecha_visita = fecha_dt
 
@@ -444,7 +448,7 @@ def confirmar_eleccion(
                 db,
                 reclamo,
                 EstadoReclamo.VISITA_COORDINADA,
-                motivo=f"Visita de trabajo coordinada para: {elegido}",
+                motivo=f"Visita de trabajo coordinada para: {horario}",
                 origen=OrigenCambioEstado.AUTOMATICO,
             )
         except estados_reclamo.TransicionInvalida as e:
@@ -459,27 +463,71 @@ def confirmar_eleccion(
             f"✅ *Visita confirmada — Reclamo #{reclamo.id}*\n\n"
             f"🏫 Escuela: {reclamo.nombre_escuela}\n"
             f"📍 Ubicación: {reclamo.ubicacion}\n\n"
-            f"🗓️ Horario: {elegido}\n\n"
+            f"🗓️ Horario: {horario}\n\n"
             "Te vamos a recordar la visita el día anterior y el mismo día.",
         )
 
-    # Avisar al creador
+    # Avisar al creador. El handler lo pide en False para contestarle en el mismo mensaje.
     if avisar_creador and reclamo and reclamo.telefono_creador:
-        _enviar(reclamo.telefono_creador, mensaje_visita_confirmada_creador(reclamo, elegido))
+        _enviar(reclamo.telefono_creador, mensaje_visita_confirmada_creador(reclamo, horario))
 
-    return elegido
+    return horario
+
+
+def formatear_opcion(texto: str) -> str | None:
+    """Pasa un horario libre al texto que se guarda y se muestra: DD/MM/AAAA HH:MM."""
+    dt = _parsear_fecha(texto)
+    if dt is None:
+        return None
+    return reloj.formatear_art(dt)
+
+
+def normalizar_fechas_visitas(db: Session) -> int:
+    """Reescribe horarios ya guardados al formato con año.
+
+    Sin año, la fecha queda en el año en curso, salvo un enero cargado en diciembre,
+    que es el enero siguiente. Con el año escrito eso no se reinterpreta. Si la
+    visita ya tiene `fecha_visita`, ese instante manda sobre el texto.
+    """
+    cambiadas = 0
+    for visita in db.query(Visita).all():
+        cambio = False
+        if visita.fecha_visita is not None and visita.horario_confirmado:
+            canon = reloj.formatear_art(visita.fecha_visita)
+            if visita.horario_confirmado != canon:
+                visita.horario_confirmado = canon
+                cambio = True
+        elif visita.horario_confirmado:
+            canon = formatear_opcion(visita.horario_confirmado)
+            if canon and canon != visita.horario_confirmado:
+                visita.horario_confirmado = canon
+                cambio = True
+
+        if visita.disponibilidades:
+            lineas = []
+            for op in _opciones_lista(visita):
+                canon = formatear_opcion(op)
+                lineas.append(canon or op)
+                if canon and canon != op:
+                    cambio = True
+            if cambio:
+                visita.disponibilidades = "\n".join(lineas)
+        if cambio:
+            cambiadas += 1
+    if cambiadas:
+        db.commit()
+    return cambiadas
 
 
 def _parsear_fecha(texto: str) -> datetime | None:
-    """Intenta extraer una fecha/hora de un texto libre (dd/mm y HH:MM).
+    """Extrae una fecha/hora (dd/mm[/aaaa] y HH:MM) en UTC.
 
-    Es best-effort: si no puede, devuelve None y no habrá recordatorios automáticos
-    (la visita queda confirmada igual, solo sin aviso programado).
+    Sin año, usa el año en curso. Una fecha que ya pasó se queda en este año y
+    quien coordina la rechaza: un día anterior no salta al año siguiente.
+    La excepción es diciembre: un enero sin año es el enero que viene.
+    Para cualquier otra fecha del año siguiente hay que escribir el año.
+    Con año explícito se respeta, aunque sea pasado.
     """
-    import re
-    from datetime import timedelta
-
-    # Buscar dd/mm o dd/mm/aaaa
     m_fecha = re.search(r"(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?", texto)
     if not m_fecha:
         return None
@@ -492,17 +540,6 @@ def _parsear_fecha(texto: str) -> datetime | None:
     dia = int(m_fecha.group(1))
     mes = int(m_fecha.group(2))
     anio_txt = m_fecha.group(3)
-    art = timezone(timedelta(hours=-3))
-    ahora_art = reloj.ahora_art()
-
-    if anio_txt:
-        anio = int(anio_txt) + (2000 if len(anio_txt) == 2 else 0)
-    else:
-        # Si estamos en diciembre y el mes ingresado es enero, se asume el año siguiente
-        if ahora_art.month == 12 and mes == 1:
-            anio = ahora_art.year + 1
-        else:
-            anio = ahora_art.year
 
     if m_hora and m_hora.group(1):
         hora = int(m_hora.group(1))
@@ -510,12 +547,22 @@ def _parsear_fecha(texto: str) -> datetime | None:
     else:
         hora, minuto = 9, 0
 
-    try:
-        # Se guarda en UTC-3 (Argentina) convertido a UTC para comparar con utcnow.
-        fecha_local = datetime(anio, mes, dia, hora, minuto, tzinfo=art)
-        return fecha_local.astimezone(timezone.utc)
-    except ValueError:
-        return None
+    def _armar(anio: int) -> datetime | None:
+        try:
+            local = datetime(anio, mes, dia, hora, minuto, tzinfo=reloj.ART)
+        except ValueError:
+            return None
+        return local.astimezone(timezone.utc)
+
+    if anio_txt:
+        anio = int(anio_txt) + (2000 if len(anio_txt) == 2 else 0)
+        return _armar(anio)
+
+    ahora_art = reloj.ahora().astimezone(reloj.ART)
+    anio = ahora_art.year
+    if ahora_art.month == 12 and mes == 1:
+        anio += 1
+    return _armar(anio)
 
 
 # --- CU-05 paso 3: el contratista avisa por WhatsApp que arranca la obra ---------------
@@ -770,7 +817,7 @@ def mensaje_reprogramacion(reclamo: Reclamo) -> str:
         f"🏫 {reclamo.nombre_escuela}\n"
         f"📍 {reclamo.ubicacion}\n\n"
         "Indicá tu nueva disponibilidad en formato *DD/MM HH:MM* "
-        f"(ej: _{f1}_, podés mandar varias separadas por coma).\n"
-        "Recordá que las opciones deben ser posteriores a la fecha y hora actual.\n"
+        f"o *DD/MM/AAAA HH:MM* (ej: _{f1}_).\n"
+        "La fecha tiene que ser posterior a la actual.\n"
         "Cuando termines, escribí *listo*."
     )

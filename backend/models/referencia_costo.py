@@ -1,7 +1,8 @@
 """Tabla de costos históricos.
 
-Se alimenta con `backend/data/referencias_costo.csv` (seed inserta las que faltan;
-`POST /ai/referencias/csv` inserta y actualiza) y con sync desde presupuestos
+Se alimenta con `backend/data/referencias_costo.csv` (el seed y
+`POST /ai/referencias/csv` insertan, actualizan y apagan las filas de ese
+archivo que ya no están) y con sync desde presupuestos
 (`POST /ai/referencias/sync`, fuente=`presupuesto:{id}`).
 """
 

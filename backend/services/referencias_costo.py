@@ -28,6 +28,16 @@ def _es_de_presupuesto(fuente: str | None) -> bool:
     return (fuente or "").startswith("presupuesto:")
 
 
+def _es_reemplazable_por_csv(fuente: str | None) -> bool:
+    """Filas que salieron de este CSV y se pueden apagar si ya no están en el archivo."""
+    valor = fuente or ""
+    return (
+        valor == "seed_csv"
+        or valor.startswith("appmaestro:")
+        or valor.startswith("aberturaslyl:")
+    )
+
+
 def _parsear_monto(valor: str | None) -> Decimal | None:
     try:
         monto = Decimal(str(valor or "0"))
@@ -80,6 +90,7 @@ def sincronizar_desde_csv(
     creadas = 0
     actualizadas = 0
     omitidas = 0
+    claves_csv: set[tuple[str, str]] = set()
     with open(ruta, newline="", encoding="utf-8") as archivo:
         for fila in csv.DictReader(archivo):
             categoria = (fila.get("categoria") or "").strip()
@@ -93,6 +104,7 @@ def sincronizar_desde_csv(
             unidad = (fila.get("unidad") or "").strip() or None
             fuente = (fila.get("fuente") or "").strip() or "seed_csv"
             clave = _clave(categoria, descripcion)
+            claves_csv.add(clave)
             existente = por_clave.get(clave)
             if existente is None:
                 ref = ReferenciaCosto(
@@ -134,5 +146,14 @@ def sincronizar_desde_csv(
                 actualizadas += 1
             else:
                 omitidas += 1
+
+    if not solo_nuevas:
+        for ref in por_clave.values():
+            if _es_de_presupuesto(ref.fuente) or not _es_reemplazable_por_csv(ref.fuente):
+                continue
+            if _clave(ref.categoria, ref.descripcion) in claves_csv or not ref.activo:
+                continue
+            ref.activo = False
+            actualizadas += 1
 
     return ResultadoCsvReferencias(creadas, actualizadas, omitidas)

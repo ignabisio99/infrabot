@@ -523,7 +523,7 @@ def test_reprogramar_cuando_la_ficha_tiene_el_telefono_en_otro_formato(
         futura = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%d/%m 10:00")
         r = procesar_mensaje(db, futura, usuario=whatsapp)
 
-    assert "Anoté 1 opción" in r
+    assert "Van 1 opción" in r
 
 
 def test_escuela_elige_horario_y_recibe_un_solo_mensaje(
@@ -691,4 +691,5 @@ def test_los_horarios_que_propone_el_contratista_quedan_en_la_linea_de_tiempo(
 
     [nota] = db.query(ComentarioReclamo).filter_by(reclamo_id=reclamo.id).all()
     assert nota.texto.startswith("[WhatsApp — Igna Repara SA]")
-    assert all(f"• {op}" in nota.texto for op in opciones)
+    canon = [coordinacion_visita.formatear_opcion(op) for op in opciones]
+    assert all(op and f"• {op}" in nota.texto for op in canon)

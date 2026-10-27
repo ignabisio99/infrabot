@@ -86,6 +86,7 @@ for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
 async def lifespan(app: FastAPI):
     import asyncio
 
+    from services.coordinacion_visita import normalizar_fechas_visitas
     from services.instituciones import cargar_padron_si_vacio
     from services.recordatorios import loop_recordatorios
 
@@ -115,6 +116,7 @@ async def lifespan(app: FastAPI):
     _db_init = SessionLocal()
     try:
         cargar_padron_si_vacio(_db_init)
+        normalizar_fechas_visitas(_db_init)
     finally:
         _db_init.close()
     stop = asyncio.Event()

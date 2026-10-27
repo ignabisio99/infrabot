@@ -9,6 +9,46 @@ from models.visita import EstadoVisita
 from services import coordinacion_visita
 
 
+def test_fecha_pasada_sin_anio_no_salta_al_anio_siguiente(
+    db, crear_reclamo, crear_contratista, crear_visita
+):
+    from core import reloj
+
+    # 15/07/2026 12:00 ART
+    reloj.fijar_tiempo(datetime(2026, 7, 15, 15, 0, tzinfo=timezone.utc))
+    try:
+        assert coordinacion_visita.opciones_pasadas("12/05 10:00") == ["12/05 10:00"]
+        assert coordinacion_visita.formatear_opcion("12/05 10:00") == "12/05/2026 10:00"
+        assert coordinacion_visita.opciones_pasadas("14/07 10:00") == ["14/07 10:00"]
+        assert coordinacion_visita.opciones_pasadas("12/05/2027 10:00") == []
+        assert coordinacion_visita.formatear_opcion("12/05/2027 10:00") == "12/05/2027 10:00"
+
+        # En diciembre, enero sin año sigue siendo el enero que viene.
+        reloj.fijar_tiempo(datetime(2026, 12, 20, 15, 0, tzinfo=timezone.utc))
+        assert coordinacion_visita.formatear_opcion("08/01 09:00") == "08/01/2027 09:00"
+        assert coordinacion_visita.opciones_pasadas("19/12 10:00") == ["19/12 10:00"]
+
+        contratista = crear_contratista()
+        reclamo = crear_reclamo(estado=EstadoReclamo.PENDIENTE_COORDINACION)
+        visita = crear_visita(
+            reclamo,
+            fecha_visita=None,
+            estado=EstadoVisita.ESPERANDO_DISPONIBILIDAD,
+            contratista=contratista,
+        )
+        visita.disponibilidades = "15/01 10:00"
+        visita.horario_confirmado = "20/12 11:00"
+        visita.fecha_visita = datetime(2026, 12, 20, 14, 0, tzinfo=timezone.utc)
+        db.flush()
+
+        assert coordinacion_visita.normalizar_fechas_visitas(db) == 1
+        db.refresh(visita)
+        assert visita.disponibilidades == "15/01/2027 10:00"
+        assert visita.horario_confirmado == "20/12/2026 11:00"
+    finally:
+        reloj.resetear_tiempo()
+
+
 def test_opciones_pasadas_detecta_fechas_anteriores():
     # Fechas en el pasado
     texto_pasado = "10/01/2020 10:00"
@@ -38,9 +78,9 @@ def test_contratista_no_puede_cargar_fecha_pasada(
 
     with patch("core.whatsapp_client.enviar_mensaje"):
         # Intenta cargar fecha pasada
-        resp = procesar_mensaje(db, contratista.telefono, "01/01/2020 10:00")
+        resp = procesar_mensaje(db, "01/01/2020 10:00", usuario=contratista.telefono)
         assert "ya pasó" in resp
-        assert "No podés coordinar visitas en fechas pasadas" in resp
+        assert "con el año" in resp
 
         db.refresh(visita)
         assert visita.disponibilidades is None  # no se guardó
@@ -48,12 +88,17 @@ def test_contratista_no_puede_cargar_fecha_pasada(
         # Ahora carga una fecha futura válida
         art = timezone(timedelta(hours=-3))
         futura = (datetime.now(timezone.utc).astimezone(art) + timedelta(days=3)).strftime("%d/%m 10:00")
-        resp_ok = procesar_mensaje(db, contratista.telefono, futura)
-        assert "Anoté 1 opción" in resp_ok
+        resp_ok = procesar_mensaje(db, futura, usuario=contratista.telefono)
+        assert "Van 1 opción" in resp_ok
+
+        otra = (datetime.now(timezone.utc).astimezone(art) + timedelta(days=4)).strftime("%d/%m 11:00")
+        resp_dos = procesar_mensaje(db, otra, usuario=contratista.telefono)
+        assert "Van 2 opciones" in resp_dos
 
         db.refresh(visita)
-        assert visita.disponibilidades is not None
-        assert futura in visita.disponibilidades
+        assert visita.disponibilidades == "\n".join(
+            coordinacion_visita.formatear_opcion(op) for op in (futura, otra)
+        )
 
 
 def test_escuela_no_puede_elegir_opcion_que_ya_paso(
@@ -80,7 +125,7 @@ def test_escuela_no_puede_elegir_opcion_que_ya_paso(
 
     with patch("core.whatsapp_client.enviar_mensaje"):
         # La escuela intenta elegir la opción 1 (que ya pasó)
-        resp = procesar_mensaje(db, tel_escuela, "1")
+        resp = procesar_mensaje(db, "1", usuario=tel_escuela)
         assert "ya pasó y no se puede coordinar" in resp
         assert "opciones que siguen vigentes" in resp
 
@@ -89,12 +134,12 @@ def test_escuela_no_puede_elegir_opcion_que_ya_paso(
         assert visita.horario_confirmado is None
 
         # La escuela elige la opción 2 (futura)
-        resp_ok = procesar_mensaje(db, tel_escuela, "2")
+        resp_ok = procesar_mensaje(db, "2", usuario=tel_escuela)
         assert "Visita confirmada" in resp_ok
 
         db.refresh(visita)
         assert visita.estado == EstadoVisita.CONFIRMADA
-        assert visita.horario_confirmado == opcion_futura
+        assert visita.horario_confirmado == coordinacion_visita.formatear_opcion(opcion_futura)
 
 
 
