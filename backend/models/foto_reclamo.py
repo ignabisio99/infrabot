@@ -32,3 +32,8 @@ class FotoReclamo(Base):
     @property
     def autor(self) -> str | None:
         return self.usuario.nombre if self.usuario else None
+
+    @property
+    def autor_tipo(self):
+        # Para mostrar el rol al lado del nombre (ej. "Ana (inspector)").
+        return self.usuario.tipo if self.usuario else None

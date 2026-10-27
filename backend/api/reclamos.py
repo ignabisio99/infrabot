@@ -12,7 +12,7 @@ from core.dependencies import (
     get_current_inspector,
     get_current_user,
 )
-from core.storage import storage
+from core.storage import TIPOS_MEDIA, TIPOS_VIDEO, ArchivoInvalido, storage
 from core.email import enviar_solicitud_presupuesto
 from core.whatsapp_client import enviar_mensaje
 from core.whatsapp_handler import iniciar_espera_info
@@ -23,7 +23,7 @@ from models.lista_contratistas import ListaContratistas
 from models.presupuesto import Presupuesto
 from models.reclamo import EstadoReclamo, Reclamo
 from models.solicitud_presupuesto import SolicitudPresupuesto
-from models.usuario import TipoUsuario, Usuario
+from models.usuario import EstadoUsuario, TipoUsuario, Usuario
 from models.historial_estado_presupuesto import HistorialEstadoPresupuesto
 from models.historial_estado_reclamo import HistorialEstadoReclamo
 from schemas.lista_contratistas import (
@@ -41,10 +41,20 @@ from schemas.reclamo import (
     FotoReclamoOut,
     HistorialEstadoReclamoOut,
     MovimientoPresupuestoOut,
+    NotificarInspectoresIn,
+    NotificarInspectoresOut,
+    AvisoInspectorOut,
     ReclamoCreate,
     ReclamoOut,
+    SolicitudInspeccionOut,
 )
-from services import avisos_presupuesto, estados_presupuesto, estados_reclamo
+from services import (
+    acceso_reclamos,
+    avisos_presupuesto,
+    estados_presupuesto,
+    estados_reclamo,
+    solicitudes_inspeccion,
+)
 from services.ai.automatico import post_alta_reclamo, post_fotos_reclamo
 from services.reabrir_convocatoria import (
     ReaperturaInvalida,
@@ -58,9 +68,6 @@ APP_URL = os.getenv("APP_URL", "http://localhost:3000")
 
 router = APIRouter(prefix="/reclamos", tags=["reclamos"])
 
-TIPOS_IMAGEN_PERMITIDOS = {"image/jpeg", "image/png", "image/webp"}
-TIPOS_VIDEO_PERMITIDOS = {"video/mp4", "video/quicktime", "video/webm", "video/3gpp"}
-TIPOS_MEDIA_PERMITIDOS = TIPOS_IMAGEN_PERMITIDOS | TIPOS_VIDEO_PERMITIDOS
 
 
 def _con_fotos(query):
@@ -115,15 +122,18 @@ def crear_reclamo(reclamo: ReclamoCreate, db: Session = Depends(get_db), _admin:
 
 
 @router.get("", response_model=list[ReclamoOut])
-def listar_reclamos(db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
-    return _con_fotos(db.query(Reclamo)).order_by(Reclamo.fecha_creacion.desc()).all()
+def listar_reclamos(db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_user)):
+    # Un contratista solo ve los reclamos a los que lo convocaron.
+    query = acceso_reclamos.filtrar_visibles(db, _con_fotos(db.query(Reclamo)), usuario)
+    return query.order_by(Reclamo.fecha_creacion.desc()).all()
 
 
 @router.get("/{reclamo_id}", response_model=ReclamoOut)
-def obtener_reclamo(reclamo_id: int, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)):
+def obtener_reclamo(reclamo_id: int, db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_user)):
     reclamo = _con_fotos(db.query(Reclamo)).filter(Reclamo.id == reclamo_id).first()
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    acceso_reclamos.exigir_acceso(db, reclamo_id, usuario)
     return reclamo
 
 
@@ -237,10 +247,11 @@ def asignar_oferta_ya_enviada(
 
 @router.get("/{reclamo_id}/historial", response_model=list[HistorialEstadoReclamoOut])
 def listar_historial_reclamo(
-    reclamo_id: int, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)
+    reclamo_id: int, db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_user)
 ):
     if db.get(Reclamo, reclamo_id) is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    acceso_reclamos.exigir_acceso(db, reclamo_id, usuario)
     return (
         db.query(HistorialEstadoReclamo)
         .filter(HistorialEstadoReclamo.reclamo_id == reclamo_id)
@@ -284,10 +295,11 @@ def listar_movimientos_presupuestos(
 
 @router.get("/{reclamo_id}/comentarios", response_model=list[ComentarioReclamoOut])
 def listar_comentarios_reclamo(
-    reclamo_id: int, db: Session = Depends(get_db), _user: Usuario = Depends(get_current_user)
+    reclamo_id: int, db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_user)
 ):
     if db.get(Reclamo, reclamo_id) is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    acceso_reclamos.exigir_acceso(db, reclamo_id, usuario)
     return (
         db.query(ComentarioReclamo)
         .options(joinedload(ComentarioReclamo.usuario))
@@ -317,6 +329,7 @@ def crear_comentario_reclamo(
         reclamo_id=reclamo_id, usuario_id=usuario.id, texto=datos.texto
     )
     db.add(comentario)
+    solicitudes_inspeccion.marcar_atendidas(db, reclamo_id, usuario)
     db.commit()
     db.refresh(comentario)
     return comentario
@@ -358,23 +371,27 @@ def subir_foto(
             detail=f'No se pueden agregar fotos a un reclamo en estado "{reclamo.estado.etiqueta}"',
         )
 
-    if archivo.content_type not in TIPOS_MEDIA_PERMITIDOS:
-        raise HTTPException(
-            status_code=400,
-            detail="El archivo debe ser una imagen (jpg, png, webp) o video (mp4, mov, webm, 3gpp)",
-        )
-
-    tipo = TipoMedia.VIDEO if archivo.content_type in TIPOS_VIDEO_PERMITIDOS else TipoMedia.IMAGEN
-    url = storage.guardar(archivo, f"reclamos/{reclamo_id}")
+    # Tipo, tamaño y contenido los valida el storage; la extensión con la que se guarda
+    # sale del tipo, no del nombre que manda el cliente.
+    try:
+        url = storage.guardar(archivo, f"reclamos/{reclamo_id}", TIPOS_MEDIA)
+    except ArchivoInvalido as e:
+        detalle = e.mensaje
+        if e.status_code == 400 and "permitido" in detalle:
+            detalle = "El archivo debe ser una imagen (jpg, png, webp) o video (mp4, mov, webm, 3gpp)"
+        raise HTTPException(status_code=e.status_code, detail=detalle) from e
+    tipo = TipoMedia.VIDEO if archivo.content_type in TIPOS_VIDEO else TipoMedia.IMAGEN
 
     nueva_foto = FotoReclamo(
         reclamo_id=reclamo_id,
-        nombre_archivo=archivo.filename,
+        # Solo se muestra (texto); se guarda con un nombre generado.
+        nombre_archivo=(archivo.filename or "archivo")[:255],
         url=url,
         tipo=tipo,
         usuario_id=usuario.id,
     )
     db.add(nueva_foto)
+    solicitudes_inspeccion.marcar_atendidas(db, reclamo_id, usuario)
     db.commit()
     db.refresh(nueva_foto)
     if tipo == TipoMedia.IMAGEN:
@@ -428,6 +445,90 @@ def eliminar_foto(
     db.delete(foto)
     db.commit()
     storage.eliminar(url)
+
+
+def _solicitud_out(solicitud) -> SolicitudInspeccionOut:
+    return SolicitudInspeccionOut(
+        id=solicitud.id,
+        reclamo_id=solicitud.reclamo_id,
+        nombre_escuela=solicitud.reclamo.nombre_escuela,
+        estado_reclamo=solicitud.reclamo.estado,
+        inspector_id=solicitud.inspector_id,
+        inspector_nombre=solicitud.inspector.nombre,
+        solicitado_por_nombre=solicitud.solicitado_por.nombre if solicitud.solicitado_por else None,
+        mensaje=solicitud.mensaje,
+        fecha=solicitud.fecha,
+        atendida_en=solicitud.atendida_en,
+    )
+
+
+@router.get("/inspeccion/pendientes", response_model=list[SolicitudInspeccionOut])
+def listar_mis_pedidos_de_inspeccion(
+    db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_inspector)
+):
+    """Reclamos en los que le pidieron información al inspector y todavía no aportó nada."""
+    return [_solicitud_out(s) for s in solicitudes_inspeccion.pendientes_de(db, usuario)]
+
+
+@router.get("/{reclamo_id}/solicitudes-inspeccion", response_model=list[SolicitudInspeccionOut])
+def listar_solicitudes_inspeccion(
+    reclamo_id: int,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_admin_o_inspector),
+):
+    """Pedidos de información del reclamo: todos para el admin, los propios para el inspector."""
+    if db.get(Reclamo, reclamo_id) is None:
+        raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    return [
+        _solicitud_out(s) for s in solicitudes_inspeccion.del_reclamo(db, reclamo_id, usuario)
+    ]
+
+
+@router.post("/{reclamo_id}/notificar-inspectores", response_model=NotificarInspectoresOut)
+def notificar_inspectores(
+    reclamo_id: int,
+    datos: NotificarInspectoresIn,
+    db: Session = Depends(get_db),
+    admin: Usuario = Depends(get_current_admin),
+):
+    """Pide a inspectores información adicional del reclamo: les llega por WhatsApp y
+    email, y les aparece en la app hasta que comenten o suban una foto. Solo admins."""
+    reclamo = db.get(Reclamo, reclamo_id)
+    if reclamo is None:
+        raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    if reclamo.estado in estados_reclamo.ESTADOS_FINALES:
+        raise HTTPException(
+            status_code=409,
+            detail=f'No se puede pedir información de un reclamo en estado "{reclamo.estado.etiqueta}"',
+        )
+
+    ids = set(datos.inspector_ids)
+    inspectores = (
+        db.query(Usuario)
+        .filter(
+            Usuario.id.in_(ids),
+            Usuario.tipo == TipoUsuario.INSPECTOR,
+            Usuario.estado == EstadoUsuario.APROBADO,
+        )
+        .all()
+    )
+    if len(inspectores) != len(ids):
+        raise HTTPException(status_code=404, detail="Alguno de los inspectores elegidos no existe")
+
+    resultados = solicitudes_inspeccion.notificar(db, reclamo, inspectores, datos.mensaje, admin)
+    db.commit()
+    return NotificarInspectoresOut(
+        total=len(resultados),
+        resultados=[
+            AvisoInspectorOut(
+                inspector_id=r.inspector.id,
+                nombre=r.inspector.nombre,
+                whatsapp=r.whatsapp,
+                email=r.email,
+            )
+            for r in resultados
+        ],
+    )
 
 
 @router.post("/{reclamo_id}/notificar-contratistas", response_model=NotificarContratistasOut)
@@ -626,6 +727,7 @@ def solicitar_informacion(
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    acceso_reclamos.exigir_acceso(db, reclamo_id, usuario)
 
     if not reclamo.telefono_creador:
         raise HTTPException(
@@ -686,7 +788,7 @@ def solicitar_informacion(
 def obtener_visita_reclamo(
     reclamo_id: int,
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    usuario: Usuario = Depends(get_current_user),
 ):
     """Devuelve la coordinación de visita del reclamo (o null si no hay).
 
@@ -698,6 +800,7 @@ def obtener_visita_reclamo(
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    acceso_reclamos.exigir_acceso(db, reclamo_id, usuario)
 
     from models.visita import EstadoVisita
 

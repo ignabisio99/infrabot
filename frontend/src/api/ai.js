@@ -34,11 +34,10 @@ export async function obtenerEstimacion(reclamoId) {
   return leerJson(response, 'No se pudo obtener la estimación preliminar.');
 }
 
-export async function analizarMediaReclamo(reclamoId, { enriquecerDescripcion = false } = {}) {
-  const response = await fetchConAuth(
-    `${API_URL}/ai/reclamos/${reclamoId}/analizar-media?enriquecer_descripcion=${enriquecerDescripcion}`,
-    { method: 'POST' },
-  );
+export async function analizarMediaReclamo(reclamoId) {
+  const response = await fetchConAuth(`${API_URL}/ai/reclamos/${reclamoId}/analizar-media`, {
+    method: 'POST',
+  });
   return leerJson(response, 'No se pudieron analizar las fotos del reclamo.');
 }
 
@@ -62,9 +61,7 @@ export async function auditarPresupuesto(presupuestoId) {
 }
 
 export async function sugerirContratistas(reclamoId) {
-  const response = await fetchConAuth(
-    `${API_URL}/ai/reclamos/${reclamoId}/contratistas-sugeridos`,
-  );
+  const response = await fetchConAuth(`${API_URL}/ai/reclamos/${reclamoId}/contratistas-sugeridos`);
   return leerJson(response, 'No se pudieron obtener contratistas sugeridos.');
 }
 

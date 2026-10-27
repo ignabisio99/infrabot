@@ -22,13 +22,14 @@ import { IconExchange, IconEye } from '@tabler/icons-react';
 import { RowActionsMenu } from '../../components/RowActionsMenu';
 import { TarjetaMovil } from '../../components/TarjetaMovil';
 import { useEsMobile } from '../../hooks/useEsMobile';
-import { eliminarReclamo, listarReclamos } from '../../api/reclamos';
+import { eliminarReclamo, listarMisPedidosInspeccion, listarReclamos } from '../../api/reclamos';
 import { esInspector } from '../../utils/auth';
 import { fechaEnRango, idCoincideConBusqueda } from '../../utils/filtros';
 import { formatearIdReclamo } from '../../utils/ids';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 import { ChangeStatusModal } from './ChangeStatusModal';
 import { ClaimDetailDrawer } from './ClaimDetailDrawer';
+import { MisPedidosInspeccion } from './PedidosInspeccion';
 import { PriorityBadge } from './PriorityBadge';
 import { StatusBadge } from './StatusBadge';
 import { StatusFilterPopover } from './StatusFilterPopover';
@@ -195,6 +196,17 @@ export function ClaimsListPage() {
   const soloLectura = esInspector();
   const esMobile = useEsMobile();
 
+  // Inspector: reclamos en los que le pidieron información. Se recarga al cerrar el
+  // detalle, porque comentar o subir una foto ahí atiende el pedido.
+  const [pedidosInspeccion, setPedidosInspeccion] = useState([]);
+  const [recargaPedidos, setRecargaPedidos] = useState(0);
+  useEffect(() => {
+    if (!soloLectura) return;
+    listarMisPedidosInspeccion()
+      .then(setPedidosInspeccion)
+      .catch((err) => notifyError(err.message));
+  }, [soloLectura, recargaPedidos]);
+
   const accionesReclamo = (reclamo) =>
     !soloLectura && (
       <RowActionsMenu
@@ -221,6 +233,10 @@ export function ClaimsListPage() {
           <Button onClick={() => navigate('/reclamos/nuevo')}>+ Nuevo Reclamo</Button>
         )}
       </Group>
+
+      {soloLectura && (
+        <MisPedidosInspeccion pedidos={pedidosInspeccion} onAbrir={setReclamoIdSeleccionado} />
+      )}
 
       {!cargando && reclamos.length > 0 && (
         <Group mb="md" align="flex-end" wrap="wrap">
@@ -392,7 +408,10 @@ export function ClaimsListPage() {
 
       <ClaimDetailDrawer
         reclamoId={reclamoIdSeleccionado}
-        onClose={() => setReclamoIdSeleccionado(null)}
+        onClose={() => {
+          setReclamoIdSeleccionado(null);
+          if (soloLectura) setRecargaPedidos((n) => n + 1);
+        }}
         onAbrirReclamo={setReclamoIdSeleccionado}
         onReclamoActualizado={() => {
           listarReclamos()

@@ -1,4 +1,7 @@
+from decimal import Decimal
+
 import pytest
+from sqlalchemy.orm import object_session
 
 import api.presupuestos
 import services.avisos_presupuesto
@@ -66,6 +69,17 @@ def loguear_contratista(db, crear_contratista):
 
 
 def _cargar(client, reclamo, ficha, items=ITEMS):
+    """Carga una oferta como el contratista, convocándolo antes si hacía falta (un
+    contratista solo presupuesta los reclamos a los que lo convocaron)."""
+    db = object_session(reclamo)
+    convocado = (
+        db.query(SolicitudPresupuesto)
+        .filter_by(reclamo_id=reclamo.id, contratista_id=ficha.id)
+        .first()
+    )
+    if convocado is None:
+        db.add(SolicitudPresupuesto(reclamo_id=reclamo.id, contratista_id=ficha.id))
+        db.flush()
     return client.post(
         "/presupuestos",
         json={"reclamo_id": reclamo.id, "contratista_id": ficha.id, "items": items},
@@ -516,3 +530,48 @@ def test_la_campanita_cuenta_las_versiones_corregidas_hasta_que_se_decide(
     _rechazar(client, presupuesto["id"])
 
     assert client.get("/notificaciones/conteo").json()["versiones_por_decidir"] == 0
+
+
+@pytest.mark.parametrize(
+    ("cantidad", "costo", "mensaje"),
+    [
+        ("2", "0", "El costo unitario debe ser mayor a 0"),
+        ("2", "-5", "El costo unitario debe ser mayor a 0"),
+        ("0", "1000", "La cantidad debe ser mayor a 0"),
+        ("2", "1000000001", "El costo unitario no puede superar"),
+        ("1000001", "10", "La cantidad no puede superar"),
+    ],
+    ids=["costo-cero", "costo-negativo", "cantidad-cero", "costo-enorme", "cantidad-enorme"],
+)
+def test_no_se_carga_un_presupuesto_con_valores_en_cero_o_absurdos(
+    client, loguear_contratista, crear_reclamo, cantidad, costo, mensaje
+):
+    reclamo = crear_reclamo(estado=EstadoReclamo.PENDIENTE_PRESUPUESTO)
+    ficha = loguear_contratista()
+
+    respuesta = _cargar(
+        client,
+        reclamo,
+        ficha,
+        items=[{"descripcion": "Membrana", "cantidad": cantidad, "costo_unitario": costo}],
+    )
+
+    assert respuesta.status_code == 422
+    assert mensaje in respuesta.json()["detail"][0]["msg"]
+
+
+def test_un_presupuesto_viejo_con_un_item_en_cero_se_sigue_leyendo(
+    client, loguear, crear_reclamo, crear_presupuesto_aprobado
+):
+    """Las reglas valen al cargar: lo que ya estaba guardado no tiene que romper al leerse."""
+    reclamo = crear_reclamo(estado=EstadoReclamo.APROBADO)
+    presupuesto = crear_presupuesto_aprobado(
+        reclamo, items=[(1, 0), (2, 500)], fecha_aprobacion=reclamo.fecha_creacion
+    )
+
+    loguear(TipoUsuario.ADMINISTRADOR)
+
+    respuesta = client.get(f"/presupuestos/{presupuesto.id}")
+
+    assert respuesta.status_code == 200
+    assert Decimal(respuesta.json()["monto"]) == Decimal("1000")

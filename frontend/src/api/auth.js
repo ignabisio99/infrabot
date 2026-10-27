@@ -99,3 +99,50 @@ export async function actualizarPerfil(datos) {
 
   return response.json();
 }
+
+/** Pide el email con el link para restablecer la contraseña. Responde igual exista o no la cuenta. */
+export async function pedirRestablecerPassword(email) {
+  const response = await fetch(`${API_URL}/auth/olvide-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(
+      extraerMensajeError(error?.detail, 'No se pudo enviar el email. Intentá de nuevo.'),
+    );
+  }
+
+  return response.json();
+}
+
+/** Verifica que el link del email siga sirviendo. Devuelve el email de la cuenta. */
+export async function validarLinkRestablecer(token) {
+  const response = await fetch(
+    `${API_URL}/auth/restablecer-password?token=${encodeURIComponent(token)}`,
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(extraerMensajeError(error?.detail, 'El link no es válido o ya venció.'));
+  }
+
+  return response.json();
+}
+
+export async function restablecerPassword(token, password) {
+  const response = await fetch(`${API_URL}/auth/restablecer-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, password }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(extraerMensajeError(error?.detail, 'No se pudo cambiar la contraseña.'));
+  }
+
+  return response.json();
+}

@@ -31,6 +31,7 @@ from schemas.ai import (
     SeguimientoOut,
     TranscripcionOut,
 )
+from services import estados_reclamo
 from services.referencias_costo import sincronizar_desde_csv
 from services.ai import (
     agente,
@@ -49,6 +50,16 @@ from services.ai import (
 )
 
 router = APIRouter(prefix="/ai", tags=["ai"])
+
+
+def _validar_reclamo_abierto(reclamo: Reclamo, que_no_se_puede: str) -> None:
+    """Un reclamo cerrado conserva su último análisis, pero ya no se regenera: aplicar la
+    clasificación, por ejemplo, le cambiaría la categoría y la prioridad."""
+    if estados_reclamo.es_final(reclamo.estado):
+        raise HTTPException(
+            status_code=409,
+            detail=f'{que_no_se_puede} un reclamo en estado "{reclamo.estado.etiqueta}"',
+        )
 
 
 @router.post("/transcribir", response_model=TranscripcionOut)
@@ -113,6 +124,7 @@ def clasificar_reclamo(
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    _validar_reclamo_abierto(reclamo, "No se puede clasificar")
 
     resultado = clasificacion.clasificar_reclamo(reclamo, db)
     aplicada = False
@@ -157,6 +169,7 @@ def listar_duplicados(
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    # Sin _validar_reclamo_abierto: el panel de IA lo consulta al abrir cualquier reclamo.
 
     candidatos = duplicados.buscar_duplicados(db, reclamo)
     registro.registrar(
@@ -207,6 +220,7 @@ def crear_estimacion(
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    _validar_reclamo_abierto(reclamo, "No se puede regenerar la estimación de")
 
     nueva = estimacion.generar_estimacion(db, reclamo, transicionar=True)
     db.commit()
@@ -250,6 +264,7 @@ def auditar_presupuesto(
         ficha = db.query(Contratista).filter(Contratista.usuario_id == usuario.id).first()
         if ficha is None or presupuesto.contratista_id != ficha.id:
             raise HTTPException(status_code=403, detail="No tenés acceso a este presupuesto")
+    _validar_reclamo_abierto(presupuesto.reclamo, "No se puede auditar un presupuesto de")
 
     informe = auditoria.auditar_presupuesto(db, presupuesto)
     auditoria.persistir_informe(db, informe)
@@ -390,6 +405,7 @@ def orquestar_reclamo(
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    _validar_reclamo_abierto(reclamo, "No se puede volver a analizar")
     try:
         estado = grafo.ejecutar_pipeline(db, reclamo)
         db.commit()
@@ -425,6 +441,7 @@ def analizar_con_agente(
     reclamo = db.get(Reclamo, reclamo_id)
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    _validar_reclamo_abierto(reclamo, "No se puede volver a analizar")
     try:
         res = agente.analizar_reclamo(db, reclamo)
         db.commit()
@@ -503,10 +520,6 @@ def listar_contratistas_sugeridos(
 @router.post("/reclamos/{reclamo_id}/analizar-media", response_model=AnalisisMediaOut)
 def analizar_media_reclamo(
     reclamo_id: int,
-    enriquecer_descripcion: bool = Query(
-        False,
-        description="Si true, appende la sugerencia a observaciones (no pisa descripcion)",
-    ),
     db: Session = Depends(get_db),
     _admin: Usuario = Depends(get_current_admin),
 ):
@@ -518,6 +531,7 @@ def analizar_media_reclamo(
     )
     if reclamo is None:
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    _validar_reclamo_abierto(reclamo, "No se pueden analizar las fotos de")
 
     resultado = vision_reclamo.analizar_media_reclamo(db, reclamo)
     if resultado.fotos_analizadas == 0:
@@ -525,15 +539,6 @@ def analizar_media_reclamo(
             status_code=422,
             detail="El reclamo no tiene fotos de tipo IMAGEN disponibles en disco",
         )
-
-    enriquecido = False
-    if enriquecer_descripcion and resultado.sugerencia_descripcion:
-        nota = f"[IA visión] {resultado.sugerencia_descripcion}"
-        if reclamo.observaciones:
-            reclamo.observaciones = f"{reclamo.observaciones}\n{nota}"
-        else:
-            reclamo.observaciones = nota
-        enriquecido = True
 
     registro.registrar(
         db,
@@ -543,7 +548,6 @@ def analizar_media_reclamo(
             "severidad": resultado.severidad,
             "sugerencia_descripcion": resultado.sugerencia_descripcion,
             "fotos_analizadas": resultado.fotos_analizadas,
-            "enriquecido": enriquecido,
         },
         reclamo_id=reclamo.id,
         proveedor=resultado.proveedor,
@@ -557,7 +561,6 @@ def analizar_media_reclamo(
         sugerencia_descripcion=resultado.sugerencia_descripcion,
         fotos_analizadas=resultado.fotos_analizadas,
         proveedor=resultado.proveedor,
-        enriquecido=enriquecido,
     )
 
 

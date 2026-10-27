@@ -18,7 +18,13 @@ Como los volúmenes montan `./backend` y `./frontend`, instalar un paquete dentr
 
 ## Git
 
-Nunca hacer `git commit` ni `git push`. Cuando se pida ayuda con un mensaje de commit, dar el comando completo listo para copiar y pegar (ej. `git commit -m "..."`), no solo el mensaje — el usuario lo ejecuta (y el push) por su cuenta.
+Hacer `git commit` solo cuando el usuario lo pida explícitamente. Si solo pide ayuda con un mensaje de commit, dar el comando completo listo para copiar y pegar (ej. `git commit -m "..."`), no solo el mensaje. Nunca hacer `git push`: el push lo hace el usuario.
+
+El pre-commit (`frontend/.husky/pre-commit`) corre lint-staged (`eslint --fix` y `prettier --write`) sobre los `.js`/`.jsx` en stage y después los tests del frontend relacionados, en el contenedor. Un error de eslint que `--fix` no resuelve (ej. `react-hooks/set-state-in-effect`) frena el commit aunque sea de código que ya estaba en el archivo, así que conviene revisarlo antes:
+
+```sh
+docker compose exec frontend pnpm exec eslint <archivos>
+```
 
 ## Tests
 

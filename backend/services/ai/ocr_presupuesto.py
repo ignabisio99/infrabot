@@ -12,7 +12,13 @@ from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
 from core.ai.factory import get_llm_provider
-from core.storage import UPLOADS_DIR, storage
+from core.storage import (
+    TIPOS_IMAGEN,
+    ArchivoInvalido,
+    extension_de,
+    leer_archivo_validado,
+    storage,
+)
 from models.adjunto_presupuesto import AdjuntoPresupuesto, TipoAdjuntoPresupuesto
 from services.ai.prompts import SYSTEM_OCR_PRESUPUESTO
 
@@ -69,13 +75,17 @@ def extraer_items_desde_archivo(
     archivo: UploadFile,
 ) -> ResultadoExtraccion:
     """Guarda el adjunto y extrae ítems. No crea Presupuesto."""
-    filename = (archivo.filename or "adjunto").lower()
-    content_type = (archivo.content_type or "").lower()
-    data = archivo.file.read()
-    archivo.file.seek(0)
+    # Tipo, tamaño y contenido los valida el storage; la extensión sale del tipo.
+    try:
+        data, mime = leer_archivo_validado(archivo, TIPOS_IMAGEN | {"application/pdf"})
+    except ArchivoInvalido as e:
+        raise ExtraccionPresupuestoError(
+            "Formato no soportado. Usá imagen (JPEG/PNG/WebP) o PDF."
+            if "permitido" in e.mensaje
+            else e.mensaje
+        ) from e
 
-    es_pdf = filename.endswith(".pdf") or "pdf" in content_type
-    if es_pdf:
+    if mime == "application/pdf":
         tipo = TipoAdjuntoPresupuesto.PDF
         texto = _extraer_texto_pdf(data)
         if len(texto) < MIN_PDF_TEXT_CHARS:
@@ -83,7 +93,7 @@ def extraer_items_desde_archivo(
                 "El PDF no tiene texto extraíble suficiente. "
                 "Subí una foto/imagen del presupuesto o un PDF con texto seleccionable."
             )
-        url = storage.guardar(archivo, "presupuestos")
+        url = storage.guardar_bytes(data, "presupuestos", extension_de(mime))
         provider = get_llm_provider()
         raw = provider.complete_json(
             system=SYSTEM_OCR_PRESUPUESTO,
@@ -93,16 +103,8 @@ def extraer_items_desde_archivo(
         metodo = "pdf_texto+llm"
     else:
         tipo = TipoAdjuntoPresupuesto.IMAGEN
-        if content_type not in ("image/jpeg", "image/png", "image/webp", "image/jpg") and not any(
-            filename.endswith(ext) for ext in (".jpg", ".jpeg", ".png", ".webp")
-        ):
-            raise ExtraccionPresupuestoError(
-                "Formato no soportado. Usá imagen (JPEG/PNG/WebP) o PDF."
-            )
-        url = storage.guardar(archivo, "presupuestos")
-        path = UPLOADS_DIR / url.removeprefix("/uploads/")
-        raw_bytes = path.read_bytes() if path.is_file() else data
-        mime = content_type if content_type.startswith("image/") else "image/jpeg"
+        url = storage.guardar_bytes(data, "presupuestos", extension_de(mime))
+        raw_bytes = data
         provider = get_llm_provider()
         raw = provider.complete_json_with_images(
             system=SYSTEM_OCR_PRESUPUESTO,
@@ -131,7 +133,7 @@ def extraer_items_desde_archivo(
 
     adjunto = AdjuntoPresupuesto(
         presupuesto_id=None,
-        nombre_archivo=archivo.filename or Path(url).name,
+        nombre_archivo=(archivo.filename or Path(url).name)[:255],
         url=url,
         tipo=tipo,
     )

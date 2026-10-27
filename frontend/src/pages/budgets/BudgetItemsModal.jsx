@@ -24,6 +24,7 @@ import { formatoMoneda, formatoNumero } from '../../utils/formatters';
 import { notifyError } from '../../utils/notifications';
 import { esAdministrador } from '../../utils/auth';
 import { useEsMobile } from '../../hooks/useEsMobile';
+import { estadosFinales } from '../claims/estados';
 import { DecideBudgetModal } from './DecideBudgetModal';
 
 const colorPorRecomendacion = {
@@ -171,6 +172,7 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido, acciones })
   const mostrarAuditoria = esAdmin && !aprobado;
   const cargando = mostrarAuditoria && presupuesto !== null && cargadoPara !== presupuesto.id;
   const puedeDecidir = esAdmin && (presupuesto?.estados_posibles?.length ?? 0) > 0;
+  const reclamoCerrado = estadosFinales.includes(presupuesto?.reclamo?.estado);
 
   useEffect(() => {
     // La auditoría es una evaluación interna del organismo: el contratista no la ve.
@@ -341,7 +343,9 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido, acciones })
 
             {mostrarAuditoria && !cargando && !informe && (
               <Alert color="yellow" mb="sm" title="Sin auditoría guardada">
-                Al guardar el presupuesto se audita solo. Podés recalcular ahora.
+                {reclamoCerrado
+                  ? 'El reclamo está cerrado, así que ya no se puede auditar.'
+                  : 'Al guardar el presupuesto se audita solo. Podés recalcular ahora.'}
               </Alert>
             )}
           </Box>
@@ -356,7 +360,13 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido, acciones })
             </Text>
             <Group>
               {mostrarAuditoria && (
-                <Button variant="subtle" size="xs" loading={recalculando} onClick={recalcular}>
+                <Button
+                  variant="subtle"
+                  size="xs"
+                  loading={recalculando}
+                  disabled={reclamoCerrado}
+                  onClick={recalcular}
+                >
                   Recalcular auditoría
                 </Button>
               )}

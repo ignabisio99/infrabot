@@ -37,7 +37,7 @@ export function StagedPhotosPicker({ archivos, onChange }) {
     <div>
       <PhotoDropzone
         onDrop={handleDrop}
-        helperText="JPG, PNG o WEBP, hasta 5MB cada una. Se suben al enviar el reclamo."
+        helperText="JPG, PNG o WEBP, hasta 10 MB cada una. Se suben al enviar el reclamo."
       />
 
       <PhotoGrid items={items} onRemove={handleQuitar} />

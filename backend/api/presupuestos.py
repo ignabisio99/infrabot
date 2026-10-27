@@ -19,7 +19,7 @@ from schemas.presupuesto import (
     PresupuestoUpdate,
     VersionPresupuestoOut,
 )
-from services import avisos_presupuesto, estados_presupuesto, estados_reclamo
+from services import acceso_reclamos, avisos_presupuesto, estados_presupuesto, estados_reclamo
 from services.ai.automatico import post_presupuesto
 
 logger = logging.getLogger(__name__)
@@ -102,6 +102,10 @@ def crear_presupuesto(datos: PresupuestoCreate, db: Session = Depends(get_db), u
         datos.contratista_id if user.es_admin else _ficha_del_contratista(db, user).id
     )
     _validar_contratista(contratista_id, db)
+    # Un contratista solo presupuesta los reclamos a los que lo convocaron: si no, le
+    # alcanzaría con saber el ID. El organismo sí puede cargar una oferta por él.
+    if not user.es_admin and not acceso_reclamos.fue_convocado(db, reclamo.id, contratista_id):
+        raise HTTPException(status_code=403, detail=acceso_reclamos.SIN_ACCESO)
     _validar_puede_ofertar(reclamo, contratista_id)
 
     nuevo_presupuesto = Presupuesto(

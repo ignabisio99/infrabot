@@ -4,7 +4,9 @@ from models.reclamo import EstadoReclamo
 from models.usuario import TipoUsuario
 
 
-def test_varios_inspectores_comentan_y_se_listan_en_orden(client, loguear, crear_reclamo):
+def test_varios_inspectores_comentan_y_se_listan_en_orden(
+    client, loguear, crear_reclamo, loguear_contratista_convocado
+):
     reclamo = crear_reclamo()
 
     loguear(TipoUsuario.INSPECTOR, nombre="Ana")
@@ -16,7 +18,8 @@ def test_varios_inspectores_comentan_y_se_listan_en_orden(client, loguear, crear
     loguear(TipoUsuario.INSPECTOR, nombre="Beto")
     client.post(f"/reclamos/{reclamo.id}/comentarios", json={"texto": "Revisar instalación eléctrica"})
 
-    loguear(TipoUsuario.CONTRATISTA)
+    # Los ve también el contratista convocado a presupuestar.
+    loguear_contratista_convocado(reclamo)
     listado = client.get(f"/reclamos/{reclamo.id}/comentarios").json()
     assert [(c["autor"], c["texto"]) for c in listado] == [
         ("Ana", "Techo con filtraciones"),

@@ -1,4 +1,4 @@
-import { ActionIcon, Image, SimpleGrid, UnstyledButton } from '@mantine/core';
+import { ActionIcon, Image, SimpleGrid, Text, UnstyledButton } from '@mantine/core';
 import { IconPlayerPlay, IconTrash } from '@tabler/icons-react';
 
 function isVideo(item) {
@@ -54,31 +54,39 @@ function MediaThumbnail({ item, onClick }) {
 
 // Grilla de miniaturas con botón de borrar. `onSelect` es opcional (click para ampliar)
 // y `removingId` también (id del ítem que se está borrando, para mostrar loading).
-// Un ítem con `eliminable: false` no muestra el botón aunque haya `onRemove`.
+// Un ítem con `eliminable: false` no muestra el botón aunque haya `onRemove`, y si trae
+// `autor` se muestra debajo de la miniatura.
 export function PhotoGrid({ items, onRemove, onSelect, removingId }) {
   if (items.length === 0) return null;
 
   return (
     <SimpleGrid cols={{ base: 2, xs: 3, sm: 4 }} spacing="sm" mt="md">
       {items.map((item) => (
-        <div key={item.id} style={{ position: 'relative', aspectRatio: '1 / 1' }}>
-          <MediaThumbnail item={item} onClick={onSelect ? () => onSelect(item) : undefined} />
-          {onRemove && item.eliminable !== false && (
-            <ActionIcon
-              variant="filled"
-              color="red"
-              size="sm"
-              radius="xl"
-              loading={removingId === item.id}
-              onClick={(event) => {
-                event.stopPropagation();
-                onRemove(item.id);
-              }}
-              aria-label="Quitar archivo"
-              style={{ position: 'absolute', top: 4, right: 4 }}
-            >
-              <IconTrash size={14} />
-            </ActionIcon>
+        <div key={item.id}>
+          <div style={{ position: 'relative', aspectRatio: '1 / 1' }}>
+            <MediaThumbnail item={item} onClick={onSelect ? () => onSelect(item) : undefined} />
+            {onRemove && item.eliminable !== false && (
+              <ActionIcon
+                variant="filled"
+                color="red"
+                size="sm"
+                radius="xl"
+                loading={removingId === item.id}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onRemove(item.id);
+                }}
+                aria-label="Quitar archivo"
+                style={{ position: 'absolute', top: 4, right: 4 }}
+              >
+                <IconTrash size={14} />
+              </ActionIcon>
+            )}
+          </div>
+          {item.autor && (
+            <Text size="xs" c="dimmed" mt={4} truncate="end" title={`Subida por ${item.autor}`}>
+              {item.autor}
+            </Text>
           )}
         </div>
       ))}

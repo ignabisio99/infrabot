@@ -34,6 +34,7 @@ from core.database import (
     asegurar_columna_detalle_tarea,
     asegurar_columna_tipo_item,
     asegurar_columnas_seguimiento,
+    asegurar_emails_unicos,
     asegurar_tipo_usuario_inspector,
     asegurar_valor_analisis_agente,
     asegurar_valores_estado_presupuesto,
@@ -91,6 +92,7 @@ async def lifespan(app: FastAPI):
     asegurar_columna_detalle_tarea()
     asegurar_columna_autor_foto()
     asegurar_columnas_seguimiento()
+    asegurar_emails_unicos()
     asegurar_tipo_usuario_inspector()
     asegurar_valor_analisis_agente()
     asegurar_valores_estado_reclamo()
@@ -164,6 +166,15 @@ async def no_cache_api_responses(request, call_next):
     if not request.url.path.startswith("/uploads"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
         response.headers["Pragma"] = "no-cache"
+    else:
+        # Los archivos subidos se sirven desde el mismo origen que la API: que el navegador
+        # no adivine el tipo por el contenido y que, si algo se abre como página, no pueda
+        # correr scripts ni leer nada del sitio (segunda barrera; la primera es la
+        # validación al subir, en core/storage.py).
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        # Los PDF quedan afuera: con `sandbox`, Chrome bloquea su visor de PDF.
+        if not response.headers.get("content-type", "").startswith("application/pdf"):
+            response.headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
     return response
 
 app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR, check_dir=False), name="uploads")

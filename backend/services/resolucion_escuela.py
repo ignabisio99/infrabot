@@ -58,11 +58,65 @@ def reclamo_en_ejecucion_del_creador(db: Session, telefono: str) -> Reclamo | No
     return None
 
 
-def registrar_resolucion(db: Session, reclamo: Reclamo) -> bool:
+def mensaje_finalizado(reclamo: Reclamo) -> str:
+    """Confirmación de cierre para la escuela."""
+    return (
+        f"✅ *Reclamo #{reclamo.id} finalizado*\n\n"
+        f"🏫 {reclamo.nombre_escuela}\n\n"
+        "Gracias por confirmar que se resolvió. Si vuelve a presentarse el problema, "
+        "podés cargar un nuevo reclamo cuando quieras."
+    )
+
+
+def guardar_media_no_resuelto(db: Session, reclamo: Reclamo, url_local: str, mime_type: str) -> None:
+    """Foto o video que manda la escuela para mostrar qué quedó mal. Va al reclamo."""
+    from models.foto_reclamo import FotoReclamo, TipoMedia
+
+    db.add(
+        FotoReclamo(
+            reclamo_id=reclamo.id,
+            nombre_archivo=url_local.split("/")[-1],
+            url=url_local,
+            tipo=TipoMedia.VIDEO if "video" in (mime_type or "") else TipoMedia.IMAGEN,
+        )
+    )
+    db.commit()
+
+
+def registrar_no_resuelto(
+    db: Session, reclamo: Reclamo, *, detalle: str | None = None, cantidad_media: int = 0
+):
+    """La escuela dijo que no quedó resuelto: se coordina una nueva visita con el
+    contratista (ver coordinacion_visita.coordinar_nueva_visita) y se reactivan las
+    preguntas de avance para cuando vuelva a ejecución. Queda en la línea de tiempo del
+    reclamo, entre el "terminé" del contratista y lo que venga después.
+
+    Devuelve el contratista al que se le pidió la nueva visita, o None si no se pudo (sin
+    contratista o sin teléfono): ahí el reclamo sigue en ejecución con el seguimiento.
+    """
+    from services import coordinacion_visita, seguimiento
+
+    texto = "[WhatsApp — Escuela]\nLa escuela indicó que el problema no quedó resuelto."
+    if detalle:
+        texto += f"\nQué quedó mal: {detalle.strip()}"
+    if cantidad_media:
+        texto += f"\nFotos/videos enviados: {cantidad_media}"
+    db.add(ComentarioReclamo(reclamo_id=reclamo.id, usuario_id=None, texto=texto))
+    seguimiento.reactivar_seguimiento(db, reclamo)
+    contratista = coordinacion_visita.coordinar_nueva_visita(
+        db, reclamo, detalle=detalle, cantidad_media=cantidad_media
+    )
+    db.commit()
+    return contratista
+
+
+def registrar_resolucion(db: Session, reclamo: Reclamo, *, avisar_escuela: bool = True) -> bool:
     """La escuela confirmó que se resolvió: EN_EJECUCION -> FINALIZADO.
 
-    Deja un comentario de sistema y avisa al contratista y a la escuela. Devuelve True si
-    cambió el estado; False si el reclamo no estaba en EN_EJECUCION.
+    Deja un comentario de sistema y avisa al contratista y a la escuela. Con
+    `avisar_escuela=False` no le manda la confirmación a la escuela: lo usa el handler
+    cuando la escuela acaba de responder, para contestarle con un solo mensaje. Devuelve
+    True si cambió el estado; False si el reclamo no estaba en EN_EJECUCION.
     """
     if reclamo.estado != EstadoReclamo.EN_EJECUCION:
         return False
@@ -85,14 +139,8 @@ def registrar_resolucion(db: Session, reclamo: Reclamo) -> bool:
     db.commit()
 
     # Avisar a la escuela (confirmación de cierre).
-    if reclamo.telefono_creador:
-        _enviar(
-            reclamo.telefono_creador,
-            f"✅ *Reclamo #{reclamo.id} finalizado*\n\n"
-            f"🏫 {reclamo.nombre_escuela}\n\n"
-            "Gracias por confirmar que se resolvió. Si vuelve a presentarse el problema, "
-            "podés cargar un nuevo reclamo cuando quieras.",
-        )
+    if avisar_escuela and reclamo.telefono_creador:
+        _enviar(reclamo.telefono_creador, mensaje_finalizado(reclamo))
 
     # Avisar al contratista que la escuela dio por resuelto el trabajo (best-effort).
     presupuesto = (

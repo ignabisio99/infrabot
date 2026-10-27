@@ -90,7 +90,6 @@ def post_fotos_reclamo(db: Session, reclamo: Reclamo) -> None:
                 "severidad": resultado.severidad,
                 "sugerencia_descripcion": resultado.sugerencia_descripcion,
                 "fotos_analizadas": resultado.fotos_analizadas,
-                "enriquecido": False,
                 "automatico": True,
             },
             reclamo_id=reclamo.id,

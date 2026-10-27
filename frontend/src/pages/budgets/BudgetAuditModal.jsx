@@ -5,6 +5,7 @@ import { auditarPresupuesto, obtenerAuditoria } from '../../api/ai';
 import { formatoMoneda } from '../../utils/formatters';
 import { formatearIdReclamo } from '../../utils/ids';
 import { notifyError } from '../../utils/notifications';
+import { estadosFinales } from '../claims/estados';
 
 const colorPorRecomendacion = {
   APROBAR: 'green',
@@ -14,20 +15,19 @@ const colorPorRecomendacion = {
 
 export function BudgetAuditModal({ presupuesto, onClose }) {
   const [informe, setInforme] = useState(null);
-  const [cargando, setCargando] = useState(false);
+  const [cargadoPara, setCargadoPara] = useState(null);
   const [recalculando, setRecalculando] = useState(false);
+  const reclamoCerrado = estadosFinales.includes(presupuesto?.reclamo?.estado);
+  const cargando = presupuesto !== null && cargadoPara !== presupuesto.id;
 
   useEffect(() => {
-    if (!presupuesto) {
-      setInforme(null);
-      return;
-    }
+    if (!presupuesto) return;
     let vigente = true;
-    setCargando(true);
     obtenerAuditoria(presupuesto.id)
       .then((data) => {
         if (!vigente) return;
-        if (data) {
+        // Con el reclamo cerrado el backend ya no audita: se muestra lo guardado, si hay.
+        if (data || reclamoCerrado) {
           setInforme(data);
           return;
         }
@@ -39,12 +39,14 @@ export function BudgetAuditModal({ presupuesto, onClose }) {
         if (vigente) notifyError(err.message);
       })
       .finally(() => {
-        if (vigente) setCargando(false);
+        if (vigente) setCargadoPara(presupuesto.id);
       });
     return () => {
       vigente = false;
+      setInforme(null);
+      setCargadoPara(null);
     };
-  }, [presupuesto]);
+  }, [presupuesto, reclamoCerrado]);
 
   const recalcular = async () => {
     if (!presupuesto) return;
@@ -67,12 +69,16 @@ export function BudgetAuditModal({ presupuesto, onClose }) {
       opened={presupuesto !== null}
       onClose={onClose}
       title={
-        presupuesto
-          ? `Auditoría — ${formatearIdReclamo(presupuesto.reclamo.id)}`
-          : 'Auditoría'
+        presupuesto ? `Auditoría — ${formatearIdReclamo(presupuesto.reclamo.id)}` : 'Auditoría'
       }
     >
       {cargando && <Loader />}
+
+      {!cargando && !informe && reclamoCerrado && (
+        <Alert color="yellow" title="Sin auditoría guardada">
+          El reclamo está cerrado, así que ya no se puede auditar.
+        </Alert>
+      )}
 
       {!cargando && informe && (
         <Stack gap="sm">
@@ -120,7 +126,12 @@ export function BudgetAuditModal({ presupuesto, onClose }) {
           <Text size="sm">{informe.notas_tecnicas}</Text>
 
           <Group>
-            <Button variant="subtle" loading={recalculando} onClick={recalcular}>
+            <Button
+              variant="subtle"
+              loading={recalculando}
+              disabled={reclamoCerrado}
+              onClick={recalcular}
+            >
               Recalcular
             </Button>
             <Button variant="default" onClick={onClose}>

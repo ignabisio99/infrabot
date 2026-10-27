@@ -537,7 +537,11 @@ def _procesar_confirmar_duplicado(db: Session, usuario: str, conv: dict, datos: 
 
 
 def _formatear_reclamo(r: Reclamo) -> str:
-    fotos_count = len(r.fotos) if r.fotos else 0
+    # Fotos y videos se cuentan por separado y SIEMPRE se muestran (0 si no hay). No existe
+    # un ítem genérico de "archivos adjuntos": todo adjunto es foto o video.
+    medios = r.fotos or []
+    fotos_count = sum(1 for m in medios if m.tipo != TipoMedia.VIDEO)
+    videos_count = sum(1 for m in medios if m.tipo == TipoMedia.VIDEO)
     return (
         f"📋 *Reclamo #{r.id}*\n"
         f"🏫 Escuela: {r.nombre_escuela}\n"
@@ -546,7 +550,8 @@ def _formatear_reclamo(r: Reclamo) -> str:
         f"🚦 Prioridad: {r.prioridad.value}\n"
         f"🏷️ Categoría: {r.categoria}\n"
         f"📝 Descripción: {r.descripcion}\n"
-        f"📎 Fotos: {fotos_count}\n"
+        f"📷 Fotos: {fotos_count}\n"
+        f"🎥 Videos: {videos_count}\n"
         f"📅 Fecha de inicio: {reloj.formatear_art(r.fecha_creacion)}"
         + _linea_fecha_finalizacion(r)
     )
@@ -1252,10 +1257,11 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
             _encolar_post_ia(db, reclamo_id)
 
             del _conversaciones[usuario]
-            media_txt = f"\n📎 Archivos adjuntos: {media_guardados}" if media_guardados else ""
+            # El detalle de fotos/videos ya lo muestra _formatear_reclamo; no se agrega
+            # un ítem genérico de "archivos adjuntos" aparte.
             return (
                 f"🎉 *¡Reclamo #{reclamo_id} creado exitosamente!*\n\n"
-                f"{_formatear_reclamo(nuevo)}{media_txt}\n\n"
+                f"{_formatear_reclamo(nuevo)}\n\n"
                 f"Podés ver su estado con: *ver #{reclamo_id}*"
             )
         elif _es_comando(texto, "no", "n", "cancelar"):
@@ -1510,7 +1516,8 @@ def _procesar_visita_eleccion(db: Session, usuario: str, mensaje: str) -> str:
         return "⚠️ Respondé con el número de la opción que preferís (ej: *1*)."
 
     try:
-        elegido = coordinacion_visita.confirmar_eleccion(db, visita, indice)
+        # La confirmación va como respuesta a este mensaje, no aparte, para no mandarla dos veces.
+        elegido = coordinacion_visita.confirmar_eleccion(db, visita, indice, avisar_creador=False)
     except coordinacion_visita.FechaPasada:
         # La opción elegida ya venció. Ver si quedan otras opciones futuras.
         opciones = coordinacion_visita._opciones_lista(visita)
@@ -1563,10 +1570,8 @@ def _procesar_visita_eleccion(db: Session, usuario: str, mensaje: str) -> str:
         return "⚠️ Ese número no corresponde a ninguna opción. Probá de nuevo."
 
     del _conversaciones[usuario]
-    return (
-        f"✅ ¡Listo! Confirmé la visita para:\n*{elegido}*\n\n"
-        "El contratista fue notificado. Les vamos a recordar la visita el día "
-        "anterior y el mismo día."
+    return coordinacion_visita.mensaje_visita_confirmada_creador(
+        db.get(Reclamo, visita.reclamo_id), elegido
     )
 
 
@@ -1799,9 +1804,13 @@ def _procesar_cu05_reporte_avance(db: Session, usuario: str, reclamo: Reclamo, m
     )
 
 
+# Respuesta de la escuela a "¿quedó resuelto?" y, si dijo que no, qué quedó mal.
+PASOS_RESUELTO = ("cu05_resuelto", "cu05_no_resuelto_detalle", "cu05_no_resuelto_fotos")
+
+
 def _procesar_cu05_resuelto(db: Session, usuario: str, mensaje: str) -> str:
     """CU-05 pieza 3: respuesta de la escuela a '¿quedó resuelto?'."""
-    from services import resolucion_escuela, seguimiento
+    from services import resolucion_escuela
 
     conv = _conversaciones[usuario]
     reclamo = db.get(Reclamo, conv.get("reclamo_id"))
@@ -1809,24 +1818,64 @@ def _procesar_cu05_resuelto(db: Session, usuario: str, mensaje: str) -> str:
         del _conversaciones[usuario]
         return "⚠️ Ese reclamo ya no está en ejecución. Escribí *ayuda* para ver opciones."
 
-    if _es_confirmacion_si(mensaje):
-        resolucion_escuela.registrar_resolucion(db, reclamo)
-        del _conversaciones[usuario]
+    texto = (mensaje or "").strip()
+
+    # "No del todo": primero qué quedó mal (obligatorio), después fotos o videos (opcional).
+    # Ya dijo que no quedó resuelto: "cancelar" no deshace eso, sigue sin detalle ni fotos.
+    if conv["paso"] in PASOS_RESUELTO[1:] and _es_comando(texto, "cancelar"):
+        return _cerrar_no_resuelto(db, usuario, reclamo)
+
+    if conv["paso"] == "cu05_no_resuelto_detalle":
+        if len(texto) < 5:
+            return "⚠️ Contanos en pocas palabras qué quedó mal (mínimo 5 caracteres)."
+        conv["detalle"] = texto
+        conv["paso"] = "cu05_no_resuelto_fotos"
         return (
-            f"✅ ¡Gracias! El reclamo #{reclamo.id} quedó *finalizado*.\n"
-            "Si el problema vuelve a aparecer, podés cargar un nuevo reclamo cuando quieras."
+            "📷 Si querés, mandá fotos o videos de lo que quedó mal y escribí *listo* cuando "
+            "termines.\n"
+            "Si no tenés, escribí *omitir*."
         )
 
-    if _es_confirmacion_no(mensaje):
-        seguimiento.reactivar_seguimiento(db, reclamo)
-        db.commit()
+    if conv["paso"] == "cu05_no_resuelto_fotos":
+        if not (_es_comando_listo(texto) or _es_comando(texto, "omitir", "saltar", "no", "no tengo")):
+            return "📷 Mandá fotos o videos y escribí *listo*, o escribí *omitir* para seguir sin fotos."
+        return _cerrar_no_resuelto(db, usuario, reclamo)
+
+    if _es_confirmacion_si(mensaje):
+        # La confirmación va como respuesta a este mensaje, no aparte, para no mandarla dos veces.
+        resolucion_escuela.registrar_resolucion(db, reclamo, avisar_escuela=False)
         del _conversaciones[usuario]
+        return resolucion_escuela.mensaje_finalizado(reclamo)
+
+    if _es_confirmacion_no(mensaje):
+        conv.update({"paso": "cu05_no_resuelto_detalle", "media": 0})
+        return (
+            "Lamentamos que no haya quedado bien. 📝 Contanos brevemente *qué quedó mal* así se "
+            "lo pasamos al contratista."
+        )
+
+    return "Respondé con el botón, o escribí *sí* si quedó resuelto, o *no* si todavía no."
+
+
+def _cerrar_no_resuelto(db: Session, usuario: str, reclamo: Reclamo) -> str:
+    """La escuela terminó de contar qué quedó mal: se registra y se coordina una nueva visita."""
+    from services import resolucion_escuela
+
+    conv = _conversaciones.pop(usuario)
+    contratista = resolucion_escuela.registrar_no_resuelto(
+        db, reclamo, detalle=conv.get("detalle"), cantidad_media=conv.get("media", 0)
+    )
+    if contratista is None:
         return (
             "Entendido, lo dejamos en ejecución y seguimos el trabajo con el contratista. "
             "Te volveremos a consultar."
         )
-
-    return "Respondé con el botón, o escribí *sí* si quedó resuelto, o *no* si todavía no."
+    return (
+        f"Gracias. Le pasamos lo que nos contaste a *{contratista.nombre_empresa}* y le "
+        f"pedimos que coordine una nueva visita para terminar el trabajo del reclamo "
+        f"#{reclamo.id}.\n"
+        "Apenas mande sus horarios te los pasamos por acá para que elijas uno."
+    )
 
 
 def _reconstruir_cu05(db: Session, usuario: str, mensaje: str) -> str | None:
@@ -1932,6 +1981,8 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
         texto == "cancelar"
         and usuario in _conversaciones
         and _conversaciones[usuario].get("paso") != "visita_disponibilidad"
+        # La escuela ya dijo que no quedó resuelto: cancelar acá es seguir sin detalle.
+        and _conversaciones[usuario].get("paso") not in PASOS_RESUELTO[1:]
     ):
         del _conversaciones[usuario]
         return "❌ Operación cancelada. Escribí *ayuda* para ver los comandos."
@@ -2004,7 +2055,7 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
         return _procesar_cu05_termino(db, usuario, mensaje)
 
     # CU-05 pieza 3: escuela confirma si el problema quedó resuelto
-    if usuario in _conversaciones and _conversaciones[usuario].get("paso") == "cu05_resuelto":
+    if usuario in _conversaciones and _conversaciones[usuario].get("paso") in PASOS_RESUELTO:
         return _procesar_cu05_resuelto(db, usuario, mensaje)
 
     # Avance de obra: respuesta al recordatorio (paso en memoria o reconstruido)
@@ -2159,6 +2210,25 @@ def procesar_media(db: Session, usuario: str, url_local: str, mime_type: str, ca
         return ""
 
     _adoptar_estado(usuario)
+
+    # La escuela muestra qué quedó mal tras "no del todo": las fotos/videos van al reclamo.
+    if usuario in _conversaciones and _conversaciones[usuario].get("paso") in PASOS_RESUELTO[1:]:
+        from services import resolucion_escuela
+
+        conv = _conversaciones[usuario]
+        reclamo = db.get(Reclamo, conv.get("reclamo_id"))
+        if reclamo is None:
+            del _conversaciones[usuario]
+            return "⚠️ No encontré el reclamo. Escribí *ayuda* para ver los comandos."
+        resolucion_escuela.guardar_media_no_resuelto(db, reclamo, url_local, mime_type)
+        conv["media"] = conv.get("media", 0) + 1
+        tipo_str = "📹 Video" if "video" in (mime_type or "") else "📷 Foto"
+        if conv["paso"] == "cu05_no_resuelto_fotos":
+            return (
+                f"{tipo_str} recibida ✅ (total: {conv['media']})\n"
+                "Podés seguir enviando o escribí *listo* para continuar."
+            )
+        return f"{tipo_str} recibida ✅. Ahora contanos con un mensaje qué quedó mal."
 
     # Reporte de avance pedido tras "todavía no terminé": las fotos/videos van al reclamo.
     if usuario in _conversaciones and _conversaciones[usuario].get("paso") in PASOS_REPORTE_AVANCE:

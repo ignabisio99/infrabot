@@ -5,12 +5,48 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from models.usuario import EstadoUsuario, TipoUsuario
 from core.telefonos import normalizar_telefono_ar
+from schemas.contratista import validar_nombre_empresa
+
+
+def normalizar_email(v: str) -> str:
+    """Los emails se guardan y se comparan en minúsculas y sin espacios: si no,
+    "Juan@gmail.com" (registro) y "juan@gmail.com" (Google) serían dos cuentas."""
+    return v.strip().lower()
+
+
+MIN_NOMBRE = 3
+
+
+def validar_nombre_persona(v: str) -> str:
+    """Nombre de la persona: mismo mínimo que el nombre de la empresa, sin contar espacios.
+    Vale al registrarse y al editar "Mi perfil"."""
+    v = v.strip()
+    if len(v) < MIN_NOMBRE:
+        raise ValueError(f"El nombre debe tener al menos {MIN_NOMBRE} caracteres")
+    return v
+
+
+def validar_password_segura(v: str) -> str:
+    """Reglas de contraseña: las mismas al registrarse y al restablecerla."""
+    if len(v) < 8:
+        raise ValueError("La contraseña debe tener al menos 8 caracteres")
+    if not re.search(r"[A-Z]", v):
+        raise ValueError("La contraseña debe tener al menos una mayúscula")
+    if not re.search(r"[!@#$%^&*()\-_+=\[\]{};':\"\\|,.<>/?]", v):
+        raise ValueError("La contraseña debe tener al menos un símbolo especial")
+    return v
 
 
 class UsuarioRegister(BaseModel):
     nombre: str
     email: EmailStr
     password: str
+
+    @field_validator("email")
+    @classmethod
+    def normalizar_email(cls, v):
+        return normalizar_email(v)
+
     telefono: str
     direccion: str
     tipo: TipoUsuario
@@ -20,20 +56,12 @@ class UsuarioRegister(BaseModel):
     @field_validator("nombre")
     @classmethod
     def validar_nombre(cls, v):
-        if len(v.strip()) < 2:
-            raise ValueError("El nombre debe tener al menos 2 caracteres")
-        return v
+        return validar_nombre_persona(v)
 
     @field_validator("password")
     @classmethod
     def validar_password(cls, v):
-        if len(v) < 8:
-            raise ValueError("La contraseña debe tener al menos 8 caracteres")
-        if not re.search(r"[A-Z]", v):
-            raise ValueError("La contraseña debe tener al menos una mayúscula")
-        if not re.search(r"[!@#$%^&*()\-_+=\[\]{};':\"\\|,.<>/?]", v):
-            raise ValueError("La contraseña debe tener al menos un símbolo especial")
-        return v
+        return validar_password_segura(v)
 
     @field_validator("telefono")
     @classmethod
@@ -52,9 +80,11 @@ class UsuarioRegister(BaseModel):
     @field_validator("nombre_empresa")
     @classmethod
     def validar_empresa(cls, v, info):
-        if info.data.get("tipo") == TipoUsuario.CONTRATISTA and (not v or len(v.strip()) < 2):
+        if info.data.get("tipo") != TipoUsuario.CONTRATISTA:
+            return v
+        if not v:
             raise ValueError("Los contratistas deben especificar el nombre de la empresa")
-        return v
+        return validar_nombre_empresa(v)
 
     @field_validator("especialidad")
     @classmethod
@@ -67,6 +97,11 @@ class UsuarioRegister(BaseModel):
 class UsuarioLogin(BaseModel):
     email: EmailStr
     password: str
+
+    @field_validator("email")
+    @classmethod
+    def normalizar_email(cls, v):
+        return normalizar_email(v)
 
 
 class CompletarPerfil(BaseModel):
@@ -93,9 +128,11 @@ class CompletarPerfil(BaseModel):
     @field_validator("nombre_empresa")
     @classmethod
     def validar_empresa(cls, v, info):
-        if info.data.get("tipo") == TipoUsuario.CONTRATISTA and (not v or len(v.strip()) < 2):
+        if info.data.get("tipo") != TipoUsuario.CONTRATISTA:
+            return v
+        if not v:
             raise ValueError("Los contratistas deben especificar el nombre de la empresa")
-        return v
+        return validar_nombre_empresa(v)
 
     @field_validator("especialidad")
     @classmethod
@@ -115,9 +152,7 @@ class UsuarioUpdate(BaseModel):
     @field_validator("nombre")
     @classmethod
     def validar_nombre(cls, v):
-        if len(v.strip()) < 2:
-            raise ValueError("El nombre debe tener al menos 2 caracteres")
-        return v
+        return validar_nombre_persona(v)
 
     @field_validator("telefono")
     @classmethod
@@ -164,3 +199,28 @@ class TokenOut(BaseModel):
 
 class MensajeOut(BaseModel):
     mensaje: str
+
+
+class OlvidePasswordIn(BaseModel):
+    email: EmailStr
+
+    @field_validator("email")
+    @classmethod
+    def normalizar_email(cls, v):
+        return normalizar_email(v)
+
+
+class RestablecerPasswordIn(BaseModel):
+    token: str
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def validar_password(cls, v):
+        return validar_password_segura(v)
+
+
+class TokenRestablecerOut(BaseModel):
+    """El link es válido: a qué cuenta corresponde, para mostrarlo en la pantalla."""
+
+    email: str

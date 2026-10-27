@@ -21,7 +21,7 @@ from models.foto_reclamo import FotoReclamo
 from models.historial_estado_reclamo import OrigenCambioEstado
 from models.recordatorio_contratista import RecordatorioContratista
 from models.reclamo import EstadoReclamo
-from models.visita import EstadoVisita
+from models.visita import EstadoVisita, Visita
 from services import coordinacion_visita, cu05_botones, resolucion_escuela
 
 
@@ -136,6 +136,10 @@ def test_contratista_termino_consulta_a_la_escuela(
 
     # Sigue EN_EJECUCION hasta que la escuela confirme, y se le preguntó a la escuela.
     assert reclamo.estado == EstadoReclamo.EN_EJECUCION
+    # El ID del botón no se cuela en el comentario.
+    [nota] = db.query(ComentarioReclamo).filter_by(reclamo_id=reclamo.id).all()
+    assert cu05_botones.TERMINO_SI not in nota.texto
+    assert nota.texto.endswith("El contratista reportó que el trabajo está terminado.")
     fila = db.query(RecordatorioContratista).filter_by(reclamo_id=reclamo.id).one()
     assert fila.consulto_escuela is True
     botones.assert_called()  # pregunta a la escuela
@@ -259,10 +263,15 @@ def test_escuela_confirma_resuelto_finaliza(
     reiniciar_conversacion(telefono)
     registrar_estado_conversacion(telefono, {"paso": "cu05_resuelto", "reclamo_id": reclamo.id})
 
-    with patch("core.whatsapp_client.enviar_mensaje"), patch("core.whatsapp_client.enviar_botones"):
+    with patch("core.whatsapp_client.enviar_mensaje") as enviar, patch(
+        "core.whatsapp_client.enviar_botones"
+    ):
         r = procesar_mensaje(db, cu05_botones.RESUELTO_SI, usuario=telefono)
 
     assert "finalizado" in r.lower()
+    # Un solo mensaje a la escuela: la confirmación es la respuesta, no se manda aparte.
+    assert telefono not in {llamada.args[0] for llamada in enviar.call_args_list}
+    assert "5491122334455" in {llamada.args[0] for llamada in enviar.call_args_list}
     assert reclamo.estado == EstadoReclamo.FINALIZADO
     ultimo = reclamo.historial_estados[-1]
     assert ultimo.estado_nuevo == EstadoReclamo.FINALIZADO
@@ -292,12 +301,20 @@ def test_escuela_dice_no_reactiva_seguimiento(
     registrar_estado_conversacion(telefono, {"paso": "cu05_resuelto", "reclamo_id": reclamo.id})
 
     with patch("core.whatsapp_client.enviar_mensaje"), patch("core.whatsapp_client.enviar_botones"):
-        procesar_mensaje(db, cu05_botones.RESUELTO_NO, usuario=telefono)
+        r = procesar_mensaje(db, cu05_botones.RESUELTO_NO, usuario=telefono)
+        assert "qué quedó mal" in r
+        procesar_mensaje(db, "Sigue goteando el caño", usuario=telefono)
+        procesar_mensaje(db, "omitir", usuario=telefono)
 
     assert reclamo.estado == EstadoReclamo.EN_EJECUCION
     fila = db.query(RecordatorioContratista).filter_by(reclamo_id=reclamo.id).one()
     assert fila.consulto_escuela is False
     assert fila.cantidad_envios == 0
+    # Queda en la línea de tiempo del reclamo.
+    [nota] = db.query(ComentarioReclamo).filter_by(reclamo_id=reclamo.id).all()
+    assert nota.texto.startswith("[WhatsApp — Escuela]")
+    assert "no quedó resuelto" in nota.texto
+    assert "Qué quedó mal: Sigue goteando el caño" in nota.texto
 
 
 # --- Servicios directos (sin pasar por el handler) --------------------------------------
@@ -507,3 +524,172 @@ def test_reprogramar_cuando_la_ficha_tiene_el_telefono_en_otro_formato(
         r = procesar_mensaje(db, futura, usuario=whatsapp)
 
     assert "Van 1 opción" in r
+
+
+def test_escuela_elige_horario_y_recibe_un_solo_mensaje(
+    db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista, crear_visita
+):
+    contratista = crear_contratista()
+    contratista.telefono = "5491155660055"
+    escuela = "5491155660066"
+    reclamo = crear_reclamo(estado=EstadoReclamo.PENDIENTE_COORDINACION, telefono_creador=escuela)
+    crear_presupuesto_aprobado(
+        reclamo, items=[(1, 100)], fecha_aprobacion=reclamo.fecha_creacion, contratista=contratista
+    )
+    visita = crear_visita(
+        reclamo, fecha_visita=None, estado=EstadoVisita.ESPERANDO_ELECCION, contratista=contratista
+    )
+    visita.disponibilidades = (datetime.now(timezone.utc) + timedelta(days=2)).strftime(
+        "%d/%m 10:00"
+    )
+    db.flush()
+    reiniciar_conversacion(escuela)
+    registrar_estado_conversacion(escuela, {"paso": "visita_eleccion", "visita_id": visita.id})
+
+    with patch("services.coordinacion_visita._enviar") as enviar_aparte:
+        r = procesar_mensaje(db, "1", usuario=escuela)
+
+    assert "Visita confirmada" in r
+    destinos = {llamada.args[0] for llamada in enviar_aparte.call_args_list}
+    assert escuela not in destinos
+    assert contratista.telefono in destinos
+
+
+def test_escuela_dice_no_resuelto_se_coordina_una_nueva_visita_hasta_finalizar(
+    db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista, crear_visita
+):
+    contratista = crear_contratista(nombre_empresa="Igna Repara SA")
+    contratista.telefono = "5491155660077"
+    escuela = "5491155660088"
+    reclamo = crear_reclamo(estado=EstadoReclamo.EN_EJECUCION, telefono_creador=escuela)
+    crear_presupuesto_aprobado(
+        reclamo, items=[(1, 100)], fecha_aprobacion=reclamo.fecha_creacion, contratista=contratista
+    )
+    primera = crear_visita(
+        reclamo,
+        fecha_visita=datetime.now(timezone.utc) - timedelta(days=2),
+        estado=EstadoVisita.CONFIRMADA,
+        contratista=contratista,
+    )
+    primera.pregunta_inicio_enviada = datetime.now(timezone.utc) - timedelta(days=2)
+    db.add(
+        RecordatorioContratista(
+            reclamo_id=reclamo.id,
+            ultimo_envio=datetime.now(timezone.utc),
+            cantidad_envios=2,
+            consulto_escuela=True,
+        )
+    )
+    db.flush()
+    for tel in (contratista.telefono, escuela):
+        reiniciar_conversacion(tel)
+    registrar_estado_conversacion(escuela, {"paso": "cu05_resuelto", "reclamo_id": reclamo.id})
+
+    with patch("core.whatsapp_client.enviar_mensaje") as enviar, patch(
+        "core.whatsapp_client.enviar_botones"
+    ):
+        procesar_mensaje(db, cu05_botones.RESUELTO_NO, usuario=escuela)
+        procesar_mensaje(db, "Sigue saltando la térmica", usuario=escuela)
+        procesar_media(db, escuela, "/uploads/termica.mp4", "video/mp4")
+        r = procesar_mensaje(db, "listo", usuario=escuela)
+        assert "nueva visita" in r and "Igna Repara SA" in r
+        assert reclamo.estado == EstadoReclamo.PENDIENTE_COORDINACION
+        aviso = [c.args[1] for c in enviar.call_args_list if c.args[0] == contratista.telefono]
+        assert aviso and "no quedó resuelto" in aviso[0]
+        assert "Sigue saltando la térmica" in aviso[0] and "1 foto(s)/video(s)" in aviso[0]
+        assert db.query(FotoReclamo).filter_by(reclamo_id=reclamo.id).count() == 1
+
+        # Flujo de siempre: horarios del contratista, la escuela elige, arranca la obra.
+        futura = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%d/%m 10:00")
+        procesar_mensaje(db, futura, usuario=contratista.telefono)
+        procesar_mensaje(db, "listo", usuario=contratista.telefono)
+        procesar_mensaje(db, "1", usuario=escuela)
+        assert reclamo.estado == EstadoReclamo.VISITA_COORDINADA
+        nueva = db.query(Visita).filter_by(reclamo_id=reclamo.id).order_by(Visita.id.desc()).first()
+        assert nueva.id != primera.id and nueva.estado == EstadoVisita.CONFIRMADA
+
+        registrar_estado_conversacion(
+            contratista.telefono,
+            {"paso": "cu05_inicio", "visita_id": nueva.id, "reclamo_id": reclamo.id},
+        )
+        procesar_mensaje(db, cu05_botones.INICIO_SI, usuario=contratista.telefono)
+        assert reclamo.estado == EstadoReclamo.EN_EJECUCION
+        # El seguimiento arranca de cero: no le pregunta "¿terminaste?" apenas empieza.
+        fila = db.query(RecordatorioContratista).filter_by(reclamo_id=reclamo.id).one()
+        assert fila.cantidad_envios == 0 and fila.consulto_escuela is False
+
+        registrar_estado_conversacion(
+            contratista.telefono, {"paso": "cu05_termino", "reclamo_id": reclamo.id}
+        )
+        procesar_mensaje(db, cu05_botones.TERMINO_SI, usuario=contratista.telefono)
+        procesar_mensaje(db, cu05_botones.RESUELTO_SI, usuario=escuela)
+
+    assert reclamo.estado == EstadoReclamo.FINALIZADO
+    estados = [h.estado_nuevo for h in reclamo.historial_estados]
+    assert estados[-4:] == [
+        EstadoReclamo.PENDIENTE_COORDINACION,
+        EstadoReclamo.VISITA_COORDINADA,
+        EstadoReclamo.EN_EJECUCION,
+        EstadoReclamo.FINALIZADO,
+    ]
+    textos = [c.texto for c in db.query(ComentarioReclamo).filter_by(reclamo_id=reclamo.id)]
+    assert any(t.startswith("[WhatsApp — Escuela]") for t in textos)
+
+
+def test_escuela_cancela_al_contar_que_quedo_mal_igual_se_coordina(
+    db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista, crear_visita
+):
+    """'cancelar' después de decir que no quedó resuelto no lo deshace: sigue sin detalle."""
+    contratista = crear_contratista()
+    contratista.telefono = "5491155660099"
+    escuela = "5491155660010"
+    reclamo = crear_reclamo(estado=EstadoReclamo.EN_EJECUCION, telefono_creador=escuela)
+    crear_presupuesto_aprobado(
+        reclamo, items=[(1, 100)], fecha_aprobacion=reclamo.fecha_creacion, contratista=contratista
+    )
+    crear_visita(
+        reclamo,
+        fecha_visita=datetime.now(timezone.utc) - timedelta(days=1),
+        estado=EstadoVisita.CONFIRMADA,
+        contratista=contratista,
+    )
+    reiniciar_conversacion(escuela)
+    registrar_estado_conversacion(escuela, {"paso": "cu05_resuelto", "reclamo_id": reclamo.id})
+
+    with patch("core.whatsapp_client.enviar_mensaje"), patch("core.whatsapp_client.enviar_botones"):
+        procesar_mensaje(db, cu05_botones.RESUELTO_NO, usuario=escuela)
+        r = procesar_mensaje(db, "cancelar", usuario=escuela)
+
+    assert "nueva visita" in r
+    assert reclamo.estado == EstadoReclamo.PENDIENTE_COORDINACION
+
+
+def test_los_horarios_que_propone_el_contratista_quedan_en_la_linea_de_tiempo(
+    db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista, crear_visita
+):
+    contratista = crear_contratista(nombre_empresa="Igna Repara SA")
+    contratista.telefono = "5491155660111"
+    reclamo = crear_reclamo(
+        estado=EstadoReclamo.PENDIENTE_COORDINACION, telefono_creador="5491155660122"
+    )
+    visita = crear_visita(
+        reclamo,
+        fecha_visita=None,
+        estado=EstadoVisita.ESPERANDO_DISPONIBILIDAD,
+        contratista=contratista,
+    )
+    reiniciar_conversacion(contratista.telefono)
+    registrar_estado_conversacion(
+        contratista.telefono, {"paso": "visita_disponibilidad", "visita_id": visita.id}
+    )
+    manana = datetime.now(timezone.utc) + timedelta(days=1)
+    opciones = [manana.strftime("%d/%m 10:00"), manana.strftime("%d/%m 15:30")]
+
+    with patch("services.coordinacion_visita._enviar"):
+        procesar_mensaje(db, ", ".join(opciones), usuario=contratista.telefono)
+        procesar_mensaje(db, "listo", usuario=contratista.telefono)
+
+    [nota] = db.query(ComentarioReclamo).filter_by(reclamo_id=reclamo.id).all()
+    assert nota.texto.startswith("[WhatsApp — Igna Repara SA]")
+    canon = [coordinacion_visita.formatear_opcion(op) for op in opciones]
+    assert all(op and f"• {op}" in nota.texto for op in canon)

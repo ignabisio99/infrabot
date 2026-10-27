@@ -46,7 +46,8 @@ export const colorPorEstado = {
   CANCELADO: 'dark',
 };
 
-// Reclamos cerrados: ya no admiten comentarios de inspectores.
+// Reclamos cerrados: ya no admiten comentarios ni fotos de inspectores, y el análisis de
+// IA queda de solo lectura.
 export const estadosFinales = ['FINALIZADO', 'RECHAZADO', 'CANCELADO'];
 
 // Espejo de ESTADOS_CON_MOTIVO_OBLIGATORIO en backend/services/estados_reclamo.py.

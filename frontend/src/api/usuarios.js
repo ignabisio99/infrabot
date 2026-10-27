@@ -27,3 +27,15 @@ export async function listarAdministradores() {
 
   return response.json();
 }
+
+/** Lista los inspectores con la cuenta aprobada (solo admins). */
+export async function listarInspectores() {
+  const response = await fetchConAuth(`${API_URL}/auth/inspectores`);
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(extraerMensajeError(error?.detail, 'No se pudieron cargar los inspectores.'));
+  }
+
+  return response.json();
+}

@@ -8,7 +8,30 @@ import bcrypt
 import jwt
 from sqlalchemy.orm import Session
 
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-cambiar-en-produccion")
+CLAVE_DE_DESARROLLO = "dev-secret-key-cambiar-en-produccion"
+
+
+def _secret_key() -> str:
+    """Clave con la que se firman los JWT (sesiones y links de los emails).
+
+    En producción (COOKIE_SECURE=true, que es el default de docker-compose.prod.yml) es
+    obligatoria y no puede ser la de desarrollo: el backend no arranca. Ojo que si falta
+    en el .env, docker compose la pasa como cadena vacía y los tokens quedarían firmados
+    con una clave vacía, o sea que cualquiera podría fabricarse una sesión de admin.
+    """
+    clave = os.getenv("SECRET_KEY") or ""
+    produccion = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+    if clave and clave != CLAVE_DE_DESARROLLO:
+        return clave
+    if produccion:
+        raise RuntimeError(
+            "SECRET_KEY no está configurada (o es la de desarrollo). Generá una con "
+            "`python3 -c \"import secrets; print(secrets.token_urlsafe(48))\"` y cargala en el .env."
+        )
+    return CLAVE_DE_DESARROLLO
+
+
+SECRET_KEY = _secret_key()
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
@@ -21,9 +44,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
 
 
-def create_access_token(data: dict) -> str:
+def create_access_token(data: dict, expira_en: timedelta | None = None) -> str:
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
+    expire = datetime.now(timezone.utc) + (expira_en or timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS))
     to_encode.update({
         "exp": expire,
         "jti": uuid.uuid4().hex,

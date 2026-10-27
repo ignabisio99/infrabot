@@ -135,7 +135,7 @@ def test_escuela_no_puede_elegir_opcion_que_ya_paso(
 
         # La escuela elige la opción 2 (futura)
         resp_ok = procesar_mensaje(db, "2", usuario=tel_escuela)
-        assert "Confirmé la visita" in resp_ok
+        assert "Visita confirmada" in resp_ok
 
         db.refresh(visita)
         assert visita.estado == EstadoVisita.CONFIRMADA
