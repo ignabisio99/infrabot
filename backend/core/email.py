@@ -341,3 +341,29 @@ def enviar_reclamo_cancelado_presupuesto(
     </div>
     """
     return enviar_email(destinatario, f"Reclamo cancelado - Reclamo #{reclamo_id}", html)
+
+
+def enviar_reclamo_cancelado_asignado(
+    destinatario: str,
+    reclamo_id: int,
+    nombre_escuela: str,
+    horario_suspendido: str | None,
+    motivo: str | None,
+) -> bool:
+    visita = (
+        f'<p style="margin:4px 0;"><strong>🗓️ Visita suspendida:</strong> {escape(horario_suspendido)}</p>'
+        if horario_suspendido
+        else ""
+    )
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #132a4d;">Reclamo cancelado</h2>
+        <p>El <strong>reclamo #{reclamo_id}</strong> ({nombre_escuela}) se canceló, así que ya
+        no estás asignado a este trabajo.</p>
+        <div style="background:#f4f6fb; border-radius:8px; padding:16px; margin:16px 0;">
+            {visita}
+            <p style="margin:4px 0;"><strong>Motivo:</strong> {escape(motivo or "—")}</p>
+        </div>
+    </div>
+    """
+    return enviar_email(destinatario, f"Reclamo cancelado - Reclamo #{reclamo_id}", html)

@@ -1390,9 +1390,16 @@ def _procesar_info_adicional(db: Session, usuario: str, mensaje: str) -> str:
     )
 
 
+def _mensaje_visita_cancelada(visita) -> str:
+    return (
+        f"🚫 La visita del reclamo #{visita.reclamo_id} se canceló, así que ya no hace "
+        "falta coordinarla. Escribí *ayuda* para ver los comandos."
+    )
+
+
 def _procesar_visita_disponibilidad(db: Session, usuario: str, mensaje: str) -> str:
     """El contratista carga franjas de disponibilidad para la visita."""
-    from models.visita import Visita
+    from models.visita import EstadoVisita, Visita
     from services import coordinacion_visita
 
     conv = _conversaciones[usuario]
@@ -1400,6 +1407,9 @@ def _procesar_visita_disponibilidad(db: Session, usuario: str, mensaje: str) -> 
     if visita is None:
         del _conversaciones[usuario]
         return "⚠️ No encontré la visita a coordinar. Escribí *ayuda* para ver los comandos."
+    if visita.estado == EstadoVisita.CANCELADA:
+        del _conversaciones[usuario]
+        return _mensaje_visita_cancelada(visita)
 
     texto = mensaje.strip()
 
@@ -1505,6 +1515,10 @@ def _procesar_visita_eleccion(db: Session, usuario: str, mensaje: str) -> str:
     if visita is None:
         del _conversaciones[usuario]
         return "⚠️ No encontré la visita a coordinar. Escribí *ayuda* para ver los comandos."
+    # Sin este corte, elegir un horario volvería a dejar CONFIRMADA una visita cancelada.
+    if visita.estado == EstadoVisita.CANCELADA:
+        del _conversaciones[usuario]
+        return _mensaje_visita_cancelada(visita)
 
     texto = mensaje.strip().replace("#", "")
     try:

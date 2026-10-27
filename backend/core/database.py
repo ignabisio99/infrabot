@@ -216,3 +216,24 @@ def asegurar_emails_unicos(bind=engine):
         conn.execute(
             text("CREATE UNIQUE INDEX IF NOT EXISTS uq_usuario_email_lower ON usuario (lower(email))")
         )
+
+
+def cancelar_visitas_de_reclamos_cancelados(bind=engine):
+    """Da de baja las visitas que quedaron vivas en reclamos ya cancelados.
+
+    Antes, cancelar el reclamo no tocaba la visita y el scheduler seguía mandando los
+    recordatorios. Ahora lo hace `estados_reclamo.cambiar_estado`; esto arregla las que
+    quedaron de antes.
+    """
+    with bind.begin() as conn:
+        conn.execute(
+            text(
+                """
+                UPDATE visita SET estado = 'CANCELADA'
+                FROM reclamo
+                WHERE reclamo.id = visita.reclamo_id
+                  AND reclamo.estado = 'CANCELADO'
+                  AND visita.estado <> 'CANCELADA'
+                """
+            )
+        )

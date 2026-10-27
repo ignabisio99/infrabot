@@ -288,6 +288,10 @@ def cambiar_estado(
         from services.seguimiento import reiniciar_reloj_seguimiento
 
         reiniciar_reloj_seguimiento(db, reclamo)
+    if nuevo_estado is EstadoReclamo.CANCELADO:
+        from services.coordinacion_visita import cancelar_visitas
+
+        cancelar_visitas(db, reclamo)
     return evento
 
 

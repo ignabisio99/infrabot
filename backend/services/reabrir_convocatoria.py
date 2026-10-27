@@ -14,7 +14,6 @@ from models.historial_estado_reclamo import OrigenCambioEstado
 from models.presupuesto import EstadoPresupuesto, Presupuesto
 from models.reclamo import EstadoReclamo, Reclamo
 from models.recordatorio_contratista import RecordatorioContratista
-from models.visita import EstadoVisita, Visita
 from services import coordinacion_visita, estados_presupuesto, estados_reclamo
 from services.seguimiento import quitar_lineas_marca_intervencion
 
@@ -184,10 +183,7 @@ def _rechazar_aprobado_y_limpiar(
         usuario_id=usuario_id,
         origen=OrigenCambioEstado.AUTOMATICO,
     )
-    visitas = db.query(Visita).filter(Visita.reclamo_id == reclamo.id).all()
-    for visita in visitas:
-        if visita.estado != EstadoVisita.CANCELADA:
-            visita.estado = EstadoVisita.CANCELADA
+    coordinacion_visita.cancelar_visitas(db, reclamo)
     reclamo.observaciones = quitar_lineas_marca_intervencion(reclamo.observaciones)
     db.query(RecordatorioContratista).filter(
         RecordatorioContratista.reclamo_id == reclamo.id

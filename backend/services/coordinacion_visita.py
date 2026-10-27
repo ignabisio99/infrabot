@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from core import reloj
+from core.email import enviar_reclamo_cancelado_asignado
 from models.contratista import Contratista
 from models.reclamo import EstadoReclamo, Reclamo
 from models.visita import EstadoVisita, Visita
@@ -91,6 +92,83 @@ def iniciar_coordinacion(db: Session, reclamo: Reclamo, contratista: Contratista
         "Cuando termines de cargar tus opciones, escribí *listo*.",
     )
     return visita
+
+
+def cancelar_visitas(db: Session, reclamo: Reclamo) -> None:
+    """Da de baja las visitas del reclamo que siguen vivas. No hace commit.
+
+    Sin esto el scheduler de recordatorios (que sólo mira el estado de la visita)
+    seguiría avisando de una visita que ya no va a ocurrir.
+    """
+    visitas = (
+        db.query(Visita)
+        .filter(Visita.reclamo_id == reclamo.id, Visita.estado != EstadoVisita.CANCELADA)
+        .all()
+    )
+    for visita in visitas:
+        visita.estado = EstadoVisita.CANCELADA
+
+
+def visita_vigente(db: Session, reclamo: Reclamo) -> Visita | None:
+    """La última visita del reclamo que no está cancelada, o None."""
+    return (
+        db.query(Visita)
+        .filter(Visita.reclamo_id == reclamo.id, Visita.estado != EstadoVisita.CANCELADA)
+        .order_by(Visita.id.desc())
+        .first()
+    )
+
+
+def avisar_visita_cancelada(db: Session, visita: Visita, motivo: str | None) -> None:
+    """Se canceló el reclamo: el contratista y la escuela se enteran de que no va más.
+
+    Al contratista también por mail: si no le escribió al bot en las últimas 24 h el
+    WhatsApp no le llega, y podría presentarse igual en la escuela.
+    """
+    reclamo = db.get(Reclamo, visita.reclamo_id)
+    contratista = db.get(Contratista, visita.contratista_id)
+    if reclamo is None:
+        return
+
+    escuela = reclamo.nombre_escuela or "la escuela"
+    empresa = (contratista.nombre_empresa if contratista else None) or "el contratista"
+    # Si la visita ya pasó, lo que se corta es el trabajo en curso, no la visita.
+    horario_suspendido = (
+        visita.horario_confirmado
+        if visita.fecha_visita is not None and visita.fecha_visita > reloj.ahora()
+        else None
+    )
+    linea_visita = (
+        f"\n🗓️ La visita del {horario_suspendido} queda suspendida." if horario_suspendido else ""
+    )
+    pie = f"{linea_visita}\n\nMotivo: {motivo or '—'}"
+
+    if contratista and contratista.telefono:
+        _enviar(
+            contratista.telefono,
+            f"🚫 *Reclamo #{reclamo.id} — cancelado*\n\n"
+            f"🏫 Escuela: {escuela}\n\n"
+            f"Se canceló el reclamo, así que ya no estás asignado a este trabajo.{pie}",
+        )
+    if contratista:
+        # Import local: api.reclamos importa este módulo.
+        from api.reclamos import _email_del_contratista
+
+        email = _email_del_contratista(db, contratista)
+        if email:
+            try:
+                enviar_reclamo_cancelado_asignado(
+                    email, reclamo.id, escuela, horario_suspendido, motivo
+                )
+            except Exception as e:  # noqa: BLE001
+                print(f"[VISITA] No se pudo enviar mail a {email}: {e}")
+    if reclamo.telefono_creador:
+        _enviar(
+            reclamo.telefono_creador,
+            f"🚫 *Reclamo #{reclamo.id} — cancelado*\n\n"
+            f"🏫 Escuela: {escuela}\n\n"
+            f"Se canceló el reclamo, así que {empresa} ya no va a hacer el trabajo.{pie}",
+        )
 
 
 def _separar_opciones(texto: str) -> list[str]:

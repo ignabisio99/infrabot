@@ -53,6 +53,7 @@ from schemas.reclamo import (
 from services import (
     acceso_reclamos,
     avisos_presupuesto,
+    coordinacion_visita,
     estados_presupuesto,
     estados_reclamo,
     solicitudes_inspeccion,
@@ -167,6 +168,8 @@ def cambiar_estado_reclamo(
     # Las ofertas en carrera se quedan sin evaluación: sin el aviso, el contratista
     # seguiría esperando una decisión o corrigiendo algo que ya no sirve.
     vigentes = [p for p in reclamo.presupuestos if estados_presupuesto.esta_vigente(p)]
+    # Se busca antes del cambio: cancelar el reclamo cancela también la visita.
+    visita = coordinacion_visita.visita_vigente(db, reclamo)
 
     try:
         estados_reclamo.cambiar_estado(
@@ -182,6 +185,8 @@ def cambiar_estado_reclamo(
     if reclamo.estado is EstadoReclamo.CANCELADO:
         for presupuesto in vigentes:
             avisos_presupuesto.avisar_reclamo_cancelado(db, presupuesto, datos.motivo)
+        if visita is not None:
+            coordinacion_visita.avisar_visita_cancelada(db, visita, datos.motivo)
     return reclamo
 
 

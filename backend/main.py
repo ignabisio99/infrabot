@@ -40,6 +40,7 @@ from core.database import (
     asegurar_valor_analisis_agente,
     asegurar_valores_estado_presupuesto,
     asegurar_valores_estado_reclamo,
+    cancelar_visitas_de_reclamos_cancelados,
     engine,
 )
 from core.storage import UPLOADS_DIR
@@ -98,6 +99,7 @@ async def lifespan(app: FastAPI):
     asegurar_valor_analisis_agente()
     asegurar_valores_estado_reclamo()
     asegurar_valores_estado_presupuesto()
+    cancelar_visitas_de_reclamos_cancelados()
     db_roles = SessionLocal()
     try:
         from models.rol_mano_obra import asegurar_roles_iniciales
