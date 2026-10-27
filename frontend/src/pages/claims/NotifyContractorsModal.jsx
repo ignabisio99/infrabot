@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Group,
+  List,
   Loader,
   Modal,
   MultiSelect,
@@ -11,11 +12,30 @@ import {
   Stack,
   Text,
 } from '@mantine/core';
-import { IconBrandWhatsapp } from '@tabler/icons-react';
+import { IconAlertTriangle, IconBrandWhatsapp } from '@tabler/icons-react';
 
 import { listarContratistas } from '../../api/contratistas';
-import { listarListas, notificarContratistas } from '../../api/listasContratistas';
+import {
+  ContratistasYaNotificadosError,
+  listarListas,
+  notificarContratistas,
+} from '../../api/listasContratistas';
 import { notifyError, notifySuccess } from '../../utils/notifications';
+
+function cuandoSeNotifico(fecha) {
+  const minutos = Math.floor((Date.now() - new Date(fecha).getTime()) / 60000);
+  if (minutos < 1) return 'recién';
+  if (minutos < 60) return `hace ${minutos} min`;
+  if (minutos < 24 * 60) return `hace ${Math.floor(minutos / 60)} h`;
+  const dia = new Date(fecha).toLocaleString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  return `el ${dia}`;
+}
 
 export function NotifyContractorsModal({ reclamoId, opened, onClose }) {
   const [modo, setModo] = useState('seleccion'); // 'seleccion' | 'lista'
@@ -26,19 +46,30 @@ export function NotifyContractorsModal({ reclamoId, opened, onClose }) {
 
   const [seleccionados, setSeleccionados] = useState([]);
   const [listaElegida, setListaElegida] = useState('');
-  const [enviando, setEnviando] = useState(false);
+  // Con qué opción se está enviando ('preguntar' | 'reenviar' | 'omitir'), o null.
+  const [enviando, setEnviando] = useState(null);
+  // Los que el backend avisó que ya estaban notificados: mientras no sea null se pide
+  // confirmación en vez de mostrar el formulario.
+  const [yaNotificados, setYaNotificados] = useState(null);
 
   useEffect(() => {
     if (!opened) return;
-    setCargando(true);
-    setErrorCarga(null);
+    let vigente = true;
     Promise.all([listarContratistas(), listarListas()])
       .then(([contratistasData, listasData]) => {
+        if (!vigente) return;
         setContratistas(contratistasData);
         setListas(listasData);
       })
-      .catch((err) => setErrorCarga(err.message))
-      .finally(() => setCargando(false));
+      .catch((err) => {
+        if (vigente) setErrorCarga(err.message);
+      })
+      .finally(() => {
+        if (vigente) setCargando(false);
+      });
+    return () => {
+      vigente = false;
+    };
   }, [opened]);
 
   const opcionesContratistas = contratistas.map((c) => ({
@@ -51,21 +82,46 @@ export function NotifyContractorsModal({ reclamoId, opened, onClose }) {
     label: `${l.nombre} (${l.contratistas.length} contratistas)`,
   }));
 
-  const puedeEnviar =
-    modo === 'seleccion' ? seleccionados.length > 0 : listaElegida !== '';
+  const puedeEnviar = modo === 'seleccion' ? seleccionados.length > 0 : listaElegida !== '';
 
-  const handleEnviar = async () => {
-    setEnviando(true);
+  const cantidadDestinatarios =
+    modo === 'seleccion'
+      ? seleccionados.length
+      : (listas.find((l) => String(l.id) === listaElegida)?.contratistas.length ?? 0);
+  const cantidadNuevos = cantidadDestinatarios - (yaNotificados?.length ?? 0);
+
+  const cerrar = () => {
+    setSeleccionados([]);
+    setListaElegida('');
+    setYaNotificados(null);
+    setErrorCarga(null);
+    onClose();
+  };
+
+  const enviar = async (siYaNotificados) => {
+    setEnviando(siYaNotificados);
     try {
-      const payload =
+      const destinatarios =
         modo === 'seleccion'
           ? { contratistaIds: seleccionados.map(Number) }
           : { listaId: Number(listaElegida) };
 
-      const resultado = await notificarContratistas(reclamoId, payload);
-      notifySuccess(
-        `Notificación enviada a ${resultado.enviados} de ${resultado.total} contratista(s).`,
-      );
+      const resultado = await notificarContratistas(reclamoId, {
+        ...destinatarios,
+        yaNotificados: siYaNotificados,
+      });
+      const omitidos = siYaNotificados === 'omitir' ? yaNotificados.length : 0;
+      const aclaracion =
+        omitidos === 1
+          ? ' No se reenvió al que ya estaba notificado.'
+          : omitidos > 1
+            ? ` No se reenvió a los ${omitidos} que ya estaban notificados.`
+            : '';
+      if (resultado.enviados > 0) {
+        notifySuccess(
+          `Notificación enviada a ${resultado.enviados} de ${resultado.total} contratista(s).${aclaracion}`,
+        );
+      }
       if (resultado.enviados < resultado.total) {
         const fallidos = resultado.resultados
           .filter((r) => !r.enviado)
@@ -73,20 +129,22 @@ export function NotifyContractorsModal({ reclamoId, opened, onClose }) {
           .join(', ');
         notifyError(`No se pudo notificar a: ${fallidos}`);
       }
-      setSeleccionados([]);
-      setListaElegida('');
-      onClose();
+      cerrar();
     } catch (error) {
-      notifyError(error?.message);
+      if (error instanceof ContratistasYaNotificadosError) {
+        setYaNotificados(error.yaNotificados);
+      } else {
+        notifyError(error?.message);
+      }
     } finally {
-      setEnviando(false);
+      setEnviando(null);
     }
   };
 
   return (
     <Modal
       opened={opened}
-      onClose={onClose}
+      onClose={cerrar}
       title="Notificar contratistas para presupuestar"
       size="lg"
       centered
@@ -99,11 +157,69 @@ export function NotifyContractorsModal({ reclamoId, opened, onClose }) {
         </Alert>
       )}
 
-      {!cargando && !errorCarga && (
+      {!cargando && !errorCarga && yaNotificados && (
+        <Stack>
+          <Alert
+            color="yellow"
+            icon={<IconAlertTriangle size={18} />}
+            title={
+              yaNotificados.length === 1
+                ? 'Este contratista ya fue notificado para este reclamo'
+                : 'Estos contratistas ya fueron notificados para este reclamo'
+            }
+          >
+            <List size="sm">
+              {yaNotificados.map((c) => (
+                <List.Item key={c.contratista_id}>
+                  <Text span size="sm" fw={600}>
+                    {c.nombre_empresa}
+                  </Text>
+                  : {cuandoSeNotifico(c.fecha_ultimo_aviso)}
+                  {c.presupuesto_cargado && ' (ya mandó una oferta)'}
+                </List.Item>
+              ))}
+            </List>
+          </Alert>
+
+          <Text size="sm">
+            {yaNotificados.length === 1
+              ? '¿Querés volver a notificarlo?'
+              : '¿Querés volver a notificarlos?'}
+          </Text>
+
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setYaNotificados(null)} disabled={!!enviando}>
+              Cancelar
+            </Button>
+            {cantidadNuevos > 0 && (
+              <Button
+                variant="light"
+                color="teal"
+                onClick={() => enviar('omitir')}
+                loading={enviando === 'omitir'}
+                disabled={!!enviando}
+              >
+                Solo a los nuevos ({cantidadNuevos})
+              </Button>
+            )}
+            <Button
+              leftSection={<IconBrandWhatsapp size={18} />}
+              color="teal"
+              onClick={() => enviar('reenviar')}
+              loading={enviando === 'reenviar'}
+              disabled={!!enviando}
+            >
+              {cantidadNuevos > 0 ? 'Reenviar a todos' : 'Reenviar'}
+            </Button>
+          </Group>
+        </Stack>
+      )}
+
+      {!cargando && !errorCarga && !yaNotificados && (
         <Stack>
           <Text size="sm" c="dimmed">
-            Se enviará un mensaje de WhatsApp a los contratistas seleccionados invitándolos a
-            cargar su presupuesto para este reclamo.
+            Se enviará un mensaje de WhatsApp a los contratistas seleccionados invitándolos a cargar
+            su presupuesto para este reclamo.
           </Text>
 
           <SegmentedControl
@@ -139,14 +255,14 @@ export function NotifyContractorsModal({ reclamoId, opened, onClose }) {
           )}
 
           <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={onClose}>
+            <Button variant="default" onClick={cerrar}>
               Cancelar
             </Button>
             <Button
               leftSection={<IconBrandWhatsapp size={18} />}
               color="teal"
-              onClick={handleEnviar}
-              loading={enviando}
+              onClick={() => enviar('preguntar')}
+              loading={enviando === 'preguntar'}
               disabled={!puedeEnviar}
             >
               Enviar notificación

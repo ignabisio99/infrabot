@@ -33,6 +33,7 @@ from core.database import (
     asegurar_columna_autor_foto,
     asegurar_columna_detalle_tarea,
     asegurar_columna_tipo_item,
+    asegurar_columna_ultimo_aviso,
     asegurar_columnas_seguimiento,
     asegurar_emails_unicos,
     asegurar_tipo_usuario_inspector,
@@ -90,6 +91,7 @@ async def lifespan(app: FastAPI):
     asegurar_columna_tipo_item()
     asegurar_columna_detalle_tarea()
     asegurar_columna_autor_foto()
+    asegurar_columna_ultimo_aviso()
     asegurar_columnas_seguimiento()
     asegurar_emails_unicos()
     asegurar_tipo_usuario_inspector()

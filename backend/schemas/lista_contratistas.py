@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
@@ -37,9 +38,20 @@ class NotificarContratistasIn(BaseModel):
     """Notificar por WhatsApp a contratistas para que carguen presupuesto.
 
     Se debe enviar `contratista_ids` (selección manual) o `lista_id` (lista predefinida).
+    `ya_notificados` dice qué hacer con los que ya fueron convocados para el reclamo:
+    "preguntar" responde 409 con la lista sin enviar nada, "reenviar" les manda de nuevo
+    y "omitir" notifica solo a los demás.
     """
     contratista_ids: list[int] | None = None
     lista_id: int | None = None
+    ya_notificados: Literal["preguntar", "reenviar", "omitir"] = "preguntar"
+
+
+class ContratistaYaNotificado(BaseModel):
+    contratista_id: int
+    nombre_empresa: str
+    fecha_ultimo_aviso: datetime
+    presupuesto_cargado: bool
 
 
 class NotificacionResultado(BaseModel):

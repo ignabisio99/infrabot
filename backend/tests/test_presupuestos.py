@@ -1,9 +1,11 @@
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
 from sqlalchemy.orm import object_session
 
 import api.presupuestos
+import api.reclamos
 import services.avisos_presupuesto
 import services.coordinacion_visita
 from core.dependencies import get_current_user
@@ -338,6 +340,106 @@ def test_queda_convocado_si_le_llega_el_mail_aunque_falle_el_whatsapp(
     [solicitud] = client.get(f"/reclamos/{reclamo.id}/solicitudes-presupuesto").json()
     assert solicitud["contratista_id"] == ficha.id
 
+
+@pytest.fixture
+def whatsapps(monkeypatch):
+    """Anota los WhatsApps de convocatoria que salieron. Sin email: con un canal alcanza."""
+    enviados = []
+    monkeypatch.setattr(
+        api.reclamos,
+        "enviar_mensaje",
+        lambda telefono, texto: enviados.append(texto) or {"messages": [{}]},
+    )
+    monkeypatch.setattr(api.reclamos, "_email_del_contratista", lambda db, c: None)
+    return enviados
+
+
+def _notificar(client, reclamo, *contratistas, ya_notificados=None):
+    body = {"contratista_ids": [c.id for c in contratistas]}
+    if ya_notificados:
+        body["ya_notificados"] = ya_notificados
+    return client.post(f"/reclamos/{reclamo.id}/notificar-contratistas", json=body)
+
+
+def test_no_reenvia_a_un_contratista_ya_notificado_sin_confirmar(
+    client, whatsapps, crear_contratista, crear_reclamo
+):
+    reclamo = crear_reclamo(estado=EstadoReclamo.PENDIENTE_PRESUPUESTO)
+    ficha = crear_contratista("Techos Sur")
+    nuevo = crear_contratista("Nuevo")
+    _notificar(client, reclamo, ficha)
+
+    respuesta = _notificar(client, reclamo, ficha, nuevo)
+
+    assert respuesta.status_code == 409
+    [aviso] = respuesta.json()["detail"]["ya_notificados"]
+    assert aviso["contratista_id"] == ficha.id
+    assert aviso["nombre_empresa"] == "Techos Sur"
+    assert aviso["fecha_ultimo_aviso"]
+    assert aviso["presupuesto_cargado"] is False
+    assert len(whatsapps) == 1
+
+
+def test_avisa_si_el_contratista_ya_notificado_mando_una_oferta(
+    client, whatsapps, loguear_contratista, crear_reclamo
+):
+    # Solo se convoca con el reclamo pendiente de presupuesto, y vuelve ahí cuando no
+    # queda ninguna oferta vigente: la que mandó tiene que estar rechazada.
+    reclamo = crear_reclamo(estado=EstadoReclamo.PENDIENTE_PRESUPUESTO)
+    ficha = loguear_contratista()
+    _rechazar(client, _cargar(client, reclamo, ficha).json()["id"])
+
+    respuesta = _notificar(client, reclamo, ficha)
+
+    [aviso] = respuesta.json()["detail"]["ya_notificados"]
+    assert aviso["presupuesto_cargado"] is True
+
+
+def test_reenviar_vuelve_a_avisar_y_registra_la_fecha_del_aviso(
+    client, db, whatsapps, crear_contratista, crear_reclamo
+):
+    reclamo = crear_reclamo(estado=EstadoReclamo.PENDIENTE_PRESUPUESTO)
+    ficha = crear_contratista()
+    _notificar(client, reclamo, ficha)
+    solicitud = db.query(SolicitudPresupuesto).filter_by(reclamo_id=reclamo.id).one()
+    ayer = datetime.now(UTC) - timedelta(days=1)
+    solicitud.fecha_solicitud = solicitud.fecha_ultimo_aviso = ayer
+    db.flush()
+
+    respuesta = _notificar(client, reclamo, ficha, ya_notificados="reenviar")
+
+    assert respuesta.json()["enviados"] == 1
+    assert len(whatsapps) == 2
+    db.refresh(solicitud)
+    assert solicitud.fecha_solicitud == ayer
+    assert solicitud.fecha_ultimo_aviso > ayer
+
+
+def test_omitir_notifica_solo_a_los_que_no_tenian_aviso(
+    client, whatsapps, crear_contratista, crear_reclamo
+):
+    reclamo = crear_reclamo(estado=EstadoReclamo.PENDIENTE_PRESUPUESTO)
+    ficha = crear_contratista("Techos Sur")
+    nuevo = crear_contratista("Nuevo")
+    _notificar(client, reclamo, ficha)
+
+    respuesta = _notificar(client, reclamo, ficha, nuevo, ya_notificados="omitir")
+
+    assert [r["contratista_id"] for r in respuesta.json()["resultados"]] == [nuevo.id]
+    assert len(whatsapps) == 2
+
+
+def test_omitir_sin_contratistas_nuevos_no_envia_nada(
+    client, whatsapps, crear_contratista, crear_reclamo
+):
+    reclamo = crear_reclamo(estado=EstadoReclamo.PENDIENTE_PRESUPUESTO)
+    ficha = crear_contratista()
+    _notificar(client, reclamo, ficha)
+
+    respuesta = _notificar(client, reclamo, ficha, ya_notificados="omitir")
+
+    assert respuesta.status_code == 422
+    assert len(whatsapps) == 1
 
 
 def test_solicitudes_del_reclamo_muestran_tambien_las_ofertas_rechazadas(

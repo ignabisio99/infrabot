@@ -69,6 +69,26 @@ def asegurar_columna_detalle_tarea(bind=engine):
         conn.execute(text("ALTER TABLE presupuesto ADD COLUMN detalle_tarea TEXT"))
 
 
+def asegurar_columna_ultimo_aviso(bind=engine):
+    """Agrega `solicitud_presupuesto.fecha_ultimo_aviso` si la tabla ya existía sin esa
+    columna. Las solicitudes viejas toman la fecha del pedido: hasta ahora el reenvío no
+    quedaba registrado."""
+    inspector = inspect(bind)
+    if "solicitud_presupuesto" not in inspector.get_table_names():
+        return
+    columnas = {columna["name"] for columna in inspector.get_columns("solicitud_presupuesto")}
+    if "fecha_ultimo_aviso" in columnas:
+        return
+    with bind.begin() as conn:
+        conn.execute(
+            text(
+                "ALTER TABLE solicitud_presupuesto "
+                "ADD COLUMN fecha_ultimo_aviso TIMESTAMP WITH TIME ZONE"
+            )
+        )
+        conn.execute(text("UPDATE solicitud_presupuesto SET fecha_ultimo_aviso = fecha_solicitud"))
+
+
 def asegurar_columna_autor_foto(bind=engine):
     """Agrega `foto_reclamo.usuario_id` si la tabla ya existía sin esa columna."""
     inspector = inspect(bind)

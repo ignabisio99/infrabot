@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -27,6 +28,7 @@ from models.usuario import EstadoUsuario, TipoUsuario, Usuario
 from models.historial_estado_presupuesto import HistorialEstadoPresupuesto
 from models.historial_estado_reclamo import HistorialEstadoReclamo
 from schemas.lista_contratistas import (
+    ContratistaYaNotificado,
     NotificacionResultado,
     NotificarContratistasIn,
     NotificarContratistasOut,
@@ -577,6 +579,40 @@ def notificar_contratistas(
     if not contratistas:
         raise HTTPException(status_code=422, detail="No hay contratistas para notificar")
 
+    previas = {
+        s.contratista_id: s
+        for s in db.query(SolicitudPresupuesto).filter(
+            SolicitudPresupuesto.reclamo_id == reclamo_id,
+            SolicitudPresupuesto.contratista_id.in_([c.id for c in contratistas]),
+        )
+    }
+    if previas and datos.ya_notificados == "preguntar":
+        con_presupuesto = {
+            contratista_id
+            for (contratista_id,) in db.query(Presupuesto.contratista_id).filter(
+                Presupuesto.reclamo_id == reclamo_id,
+                Presupuesto.contratista_id.in_(previas),
+            )
+        }
+        ya_notificados = [
+            ContratistaYaNotificado(
+                contratista_id=c.id,
+                nombre_empresa=c.nombre_empresa,
+                fecha_ultimo_aviso=previas[c.id].fecha_ultimo_aviso,
+                presupuesto_cargado=c.id in con_presupuesto,
+            ).model_dump(mode="json")
+            for c in contratistas
+            if c.id in previas
+        ]
+        raise HTTPException(status_code=409, detail={"ya_notificados": ya_notificados})
+    if datos.ya_notificados == "omitir":
+        contratistas = [c for c in contratistas if c.id not in previas]
+        if not contratistas:
+            raise HTTPException(
+                status_code=422,
+                detail="Todos los contratistas elegidos ya fueron notificados para este reclamo",
+            )
+
     link = f"{APP_URL}/portal/reclamos/{reclamo_id}/presupuestar"
     mensaje = (
         f"🔔 Fue seleccionado para cargar el presupuesto del reclamo #{reclamo_id}.\n\n"
@@ -620,16 +656,9 @@ def notificar_contratistas(
         ok = ok or ok_email
         if ok:
             enviados += 1
-            # Registrar la solicitud (idempotente: no duplicar si ya existía)
-            ya_existe = (
-                db.query(SolicitudPresupuesto)
-                .filter(
-                    SolicitudPresupuesto.reclamo_id == reclamo_id,
-                    SolicitudPresupuesto.contratista_id == c.id,
-                )
-                .first()
-            )
-            if not ya_existe:
+            if c.id in previas:
+                previas[c.id].fecha_ultimo_aviso = datetime.now(timezone.utc)
+            else:
                 db.add(SolicitudPresupuesto(reclamo_id=reclamo_id, contratista_id=c.id))
 
         resultados.append(

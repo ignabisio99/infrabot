@@ -25,5 +25,9 @@ class SolicitudPresupuesto(Base):
         Integer, ForeignKey("contratista.id", ondelete="CASCADE"), nullable=False
     )
     fecha_solicitud = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    # Cambia con cada reenvío; `fecha_solicitud` queda como la del primer pedido.
+    fecha_ultimo_aviso = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
 
     contratista = relationship("Contratista")
