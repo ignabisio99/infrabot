@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, Integer, String
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 
 from core.database import Base
@@ -22,5 +22,12 @@ class Contratista(Base):
     usuario_id = Column(
         Integer, ForeignKey("usuario.id", ondelete="SET NULL"), nullable=True, unique=True
     )
+    # Un contratista no se borra: sus presupuestos y visitas son el expediente de los
+    # reclamos en que trabajó. Dado de baja no se lo convoca ni puede ofertar.
+    fecha_baja = Column(DateTime(timezone=True), nullable=True)
 
     usuario = relationship("Usuario")
+
+    @property
+    def dado_de_baja(self) -> bool:
+        return self.fecha_baja is not None

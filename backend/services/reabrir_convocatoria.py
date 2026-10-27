@@ -56,9 +56,11 @@ def listar_ofertas_reutilizables(db: Session, reclamo: Reclamo) -> list[OfertaRe
     filas = (
         db.query(Presupuesto)
         .options(joinedload(Presupuesto.contratista), joinedload(Presupuesto.items))
+        .join(Presupuesto.contratista)
         .filter(
             Presupuesto.reclamo_id == reclamo.id,
             Presupuesto.estado == EstadoPresupuesto.NO_SELECCIONADO,
+            Contratista.fecha_baja.is_(None),
         )
         .all()
     )
@@ -125,6 +127,8 @@ def asignar_oferta_existente(
         raise ReaperturaInvalida(
             "Solo se puede elegir una oferta que había quedado sin seleccionar"
         )
+    if elegido.contratista.dado_de_baja:
+        raise ReaperturaInvalida(f"{elegido.contratista.nombre_empresa} está dado de baja")
 
     anterior = aprobado.contratista
     _rechazar_aprobado_y_limpiar(db, reclamo, aprobado, texto, usuario_id)

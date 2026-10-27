@@ -76,6 +76,7 @@ class SolicitudPresupuestoOut(BaseModel):
     nombre_empresa: str
     especialidad: str
     telefono: str
+    contratista_dado_de_baja: bool = False
     fecha_solicitud: datetime
     presupuesto_cargado: bool
     presupuesto_id: int | None = None

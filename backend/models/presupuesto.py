@@ -57,7 +57,7 @@ class Presupuesto(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     reclamo_id = Column(Integer, ForeignKey("reclamo.id", ondelete="CASCADE"), nullable=False)
     contratista_id = Column(
-        Integer, ForeignKey("contratista.id", ondelete="CASCADE"), nullable=False
+        Integer, ForeignKey("contratista.id", ondelete="RESTRICT"), nullable=False
     )
     estado = Column(
         estado_presupuesto_enum,

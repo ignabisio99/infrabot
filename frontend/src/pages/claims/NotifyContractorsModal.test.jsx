@@ -146,4 +146,20 @@ describe('NotifyContractorsModal', () => {
     expect(await screen.findByRole('button', { name: 'Reenviar' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Solo a los nuevos/ })).not.toBeInTheDocument();
   });
+
+  it('en las listas sólo cuenta a los que se van a notificar', async () => {
+    listarListas.mockResolvedValue([
+      {
+        id: 9,
+        nombre: 'Techistas',
+        contratistas: [TECHOS_SUR, { ...PLOMERIA, fecha_baja: '2026-10-01T12:00:00Z' }],
+      },
+    ]);
+    const { user } = await renderModal();
+
+    await user.click(screen.getByText('Usar una lista'));
+    await user.click(screen.getByRole('combobox', { name: 'Lista predefinida' }));
+
+    expect(screen.getByRole('option', { name: 'Techistas (1 contratistas)' })).toBeInTheDocument();
+  });
 });

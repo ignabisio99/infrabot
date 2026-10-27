@@ -22,7 +22,7 @@ class SolicitudPresupuesto(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     reclamo_id = Column(Integer, ForeignKey("reclamo.id", ondelete="CASCADE"), nullable=False)
     contratista_id = Column(
-        Integer, ForeignKey("contratista.id", ondelete="CASCADE"), nullable=False
+        Integer, ForeignKey("contratista.id", ondelete="RESTRICT"), nullable=False
     )
     fecha_solicitud = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     # Cambia con cada reenvío; `fecha_solicitud` queda como la del primer pedido.

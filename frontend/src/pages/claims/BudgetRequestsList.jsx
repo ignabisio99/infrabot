@@ -7,6 +7,7 @@ import { obtenerPresupuesto } from '../../api/presupuestos';
 import { notifyError } from '../../utils/notifications';
 import { BudgetItemsModal } from '../budgets/BudgetItemsModal';
 import { BudgetStatusBadge } from '../budgets/BudgetStatusBadge';
+import { DadoDeBajaBadge } from '../contractors/DadoDeBajaBadge';
 
 export function BudgetRequestsList({ reclamoId }) {
   const [solicitudes, setSolicitudes] = useState([]);
@@ -81,12 +82,16 @@ export function BudgetRequestsList({ reclamoId }) {
                       Versión {s.version}
                     </Badge>
                   )}
+                  {s.contratista_dado_de_baja && <DadoDeBajaBadge />}
                   {cargado ? (
                     <BudgetStatusBadge estado={s.presupuesto_estado} variant="light" />
                   ) : (
-                    <Badge color="gray" variant="light" leftSection={<IconClock size={12} />}>
-                      Pendiente
-                    </Badge>
+                    // Dado de baja ya no puede ofertar: no hay respuesta que esperar.
+                    !s.contratista_dado_de_baja && (
+                      <Badge color="gray" variant="light" leftSection={<IconClock size={12} />}>
+                        Pendiente
+                      </Badge>
+                    )
                   )}
                   {cargado && <IconEye size={16} color="var(--mantine-color-teal-6)" />}
                 </Group>

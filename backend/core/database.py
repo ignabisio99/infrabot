@@ -237,3 +237,38 @@ def cancelar_visitas_de_reclamos_cancelados(bind=engine):
                 """
             )
         )
+
+
+def asegurar_baja_de_contratistas(bind=engine):
+    """Agrega `contratista.fecha_baja` y pasa a RESTRICT las FKs que cuelgan del contratista.
+
+    Con CASCADE, borrar un contratista se llevaba sus presupuestos, visitas y
+    convocatorias, y con ellos el expediente de reclamos ya cerrados.
+    """
+    inspector = inspect(bind)
+    tablas = inspector.get_table_names()
+    if "contratista" not in tablas:
+        return
+    with bind.begin() as conn:
+        conn.execute(
+            text(
+                "ALTER TABLE contratista "
+                "ADD COLUMN IF NOT EXISTS fecha_baja TIMESTAMP WITH TIME ZONE"
+            )
+        )
+        for tabla in ("presupuesto", "visita", "solicitud_presupuesto"):
+            if tabla not in tablas:
+                continue
+            for fk in inspector.get_foreign_keys(tabla):
+                if fk["referred_table"] != "contratista":
+                    continue
+                if fk["options"].get("ondelete") == "RESTRICT":
+                    continue
+                columnas = ", ".join(fk["constrained_columns"])
+                conn.execute(text(f'ALTER TABLE {tabla} DROP CONSTRAINT "{fk["name"]}"'))
+                conn.execute(
+                    text(
+                        f'ALTER TABLE {tabla} ADD CONSTRAINT "{fk["name"]}" '
+                        f"FOREIGN KEY ({columnas}) REFERENCES contratista(id) ON DELETE RESTRICT"
+                    )
+                )

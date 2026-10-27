@@ -77,9 +77,12 @@ export function NotifyContractorsModal({ reclamoId, opened, onClose }) {
     label: `${c.nombre_empresa} (${c.especialidad})`,
   }));
 
+  // Los dados de baja siguen en la lista, pero el backend no los notifica.
+  const activosDe = (lista) => lista.contratistas.filter((c) => !c.fecha_baja);
+
   const opcionesListas = listas.map((l) => ({
     value: String(l.id),
-    label: `${l.nombre} (${l.contratistas.length} contratistas)`,
+    label: `${l.nombre} (${activosDe(l).length} contratistas)`,
   }));
 
   const puedeEnviar = modo === 'seleccion' ? seleccionados.length > 0 : listaElegida !== '';
@@ -87,7 +90,7 @@ export function NotifyContractorsModal({ reclamoId, opened, onClose }) {
   const cantidadDestinatarios =
     modo === 'seleccion'
       ? seleccionados.length
-      : (listas.find((l) => String(l.id) === listaElegida)?.contratistas.length ?? 0);
+      : activosDe(listas.find((l) => String(l.id) === listaElegida) ?? { contratistas: [] }).length;
   const cantidadNuevos = cantidadDestinatarios - (yaNotificados?.length ?? 0);
 
   const cerrar = () => {

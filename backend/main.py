@@ -30,6 +30,7 @@ from api.simulador_tiempo import router as simulador_tiempo_router
 from core.database import (
     Base,
     SessionLocal,
+    asegurar_baja_de_contratistas,
     asegurar_columna_autor_foto,
     asegurar_columna_detalle_tarea,
     asegurar_columna_tipo_item,
@@ -100,6 +101,7 @@ async def lifespan(app: FastAPI):
     asegurar_valores_estado_reclamo()
     asegurar_valores_estado_presupuesto()
     cancelar_visitas_de_reclamos_cancelados()
+    asegurar_baja_de_contratistas()
     db_roles = SessionLocal()
     try:
         from models.rol_mano_obra import asegurar_roles_iniciales

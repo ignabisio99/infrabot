@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 from models.contratista import Contratista
 from models.presupuesto import Presupuesto
 from models.reclamo import Reclamo
+from services.baja_contratistas import solo_activos
 from services.estados_reclamo import ESTADOS_FINALES
 
 PUNTOS_ESPECIALIDAD = 50
@@ -32,7 +33,9 @@ def _normalizar(texto: str) -> str:
 
 
 def sugerir_para_reclamo(db: Session, reclamo: Reclamo) -> list[ContratistaSugerido]:
-    contratistas = db.query(Contratista).order_by(Contratista.nombre_empresa).all()
+    contratistas = (
+        solo_activos(db.query(Contratista)).order_by(Contratista.nombre_empresa).all()
+    )
     if not contratistas:
         return []
 

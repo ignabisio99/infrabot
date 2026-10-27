@@ -566,7 +566,13 @@ def notificar_contratistas(
         lista = db.get(ListaContratistas, datos.lista_id)
         if lista is None:
             raise HTTPException(status_code=404, detail="Lista no encontrada")
-        contratistas = list(lista.contratistas)
+        # Siguen en la lista por si se los reactiva, pero no se los convoca.
+        contratistas = [c for c in lista.contratistas if not c.dado_de_baja]
+        if lista.contratistas and not contratistas:
+            raise HTTPException(
+                status_code=422,
+                detail="Todos los contratistas de la lista están dados de baja",
+            )
     elif datos.contratista_ids:
         contratistas = db.query(Contratista).filter(Contratista.id.in_(datos.contratista_ids)).all()
         encontrados = {c.id for c in contratistas}
@@ -574,6 +580,13 @@ def notificar_contratistas(
         if faltantes:
             raise HTTPException(
                 status_code=404, detail=f"Contratistas no encontrados: {sorted(faltantes)}"
+            )
+        dados_de_baja = [c.nombre_empresa for c in contratistas if c.dado_de_baja]
+        if dados_de_baja:
+            raise HTTPException(
+                status_code=409,
+                detail=f"No se puede convocar a {', '.join(dados_de_baja)}: "
+                + ("está dado de baja" if len(dados_de_baja) == 1 else "están dados de baja"),
             )
     else:
         raise HTTPException(
@@ -728,6 +741,7 @@ def listar_solicitudes_presupuesto(
             nombre_empresa=c.nombre_empresa if c else "—",
             especialidad=c.especialidad if c else "—",
             telefono=c.telefono if c else "—",
+            contratista_dado_de_baja=bool(c and c.dado_de_baja),
             fecha_solicitud=s.fecha_solicitud,
         )
         ofertas = presupuestos_por_contratista.get(s.contratista_id, [])
@@ -771,6 +785,10 @@ def solicitar_informacion(
 
     # Nombre del contratista que solicita (si tiene ficha vinculada)
     ficha = db.query(Contratista).filter(Contratista.usuario_id == usuario.id).first()
+    if ficha is not None and ficha.dado_de_baja:
+        raise HTTPException(
+            status_code=403, detail="Tu ficha de contratista está dada de baja: no podés presupuestar."
+        )
     nombre_contratista = ficha.nombre_empresa if ficha else usuario.nombre
 
     mensaje = (

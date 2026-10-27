@@ -19,7 +19,13 @@ from schemas.presupuesto import (
     PresupuestoUpdate,
     VersionPresupuestoOut,
 )
-from services import acceso_reclamos, avisos_presupuesto, estados_presupuesto, estados_reclamo
+from services import (
+    acceso_reclamos,
+    avisos_presupuesto,
+    baja_contratistas,
+    estados_presupuesto,
+    estados_reclamo,
+)
 from services.ai.automatico import post_presupuesto
 
 logger = logging.getLogger(__name__)
@@ -90,8 +96,15 @@ def _validar_puede_ofertar(reclamo: Reclamo, contratista_id: int) -> None:
 
 
 def _validar_contratista(contratista_id: int, db: Session) -> None:
-    if db.get(Contratista, contratista_id) is None:
+    contratista = db.get(Contratista, contratista_id)
+    if contratista is None:
         raise HTTPException(status_code=404, detail="Contratista no encontrado")
+    try:
+        baja_contratistas.exigir_activo(contratista)
+    except baja_contratistas.ContratistaDadoDeBaja as error:
+        raise HTTPException(
+            status_code=409, detail=f"{error}: no puede cargar presupuestos"
+        ) from error
 
 
 @router.post("", response_model=PresupuestoOut, status_code=201)

@@ -12,7 +12,7 @@ from models.solicitud_presupuesto import SolicitudPresupuesto
 from models.usuario import Usuario
 from schemas.contratista import ContratistaCreate, ContratistaOut, MiSolicitudOut
 from schemas.presupuesto import PresupuestoOut
-from services import estados_presupuesto
+from services import baja_contratistas, estados_presupuesto
 
 router = APIRouter(prefix="/contratistas", tags=["contratistas"])
 
@@ -106,8 +106,11 @@ def listar_mis_solicitudes(db: Session = Depends(get_db), usuario: Usuario = Dep
                 presupuesto_id=presupuesto.id if presupuesto else None,
                 presupuesto_estado=presupuesto.estado.value if presupuesto else None,
                 version=presupuesto.version if presupuesto else 0,
-                puede_editar=presupuesto is not None and presupuesto.editable,
-                puede_ofertar=estados_presupuesto.puede_ofertar(reclamo, ficha.id),
+                puede_editar=presupuesto is not None
+                and presupuesto.editable
+                and not ficha.dado_de_baja,
+                puede_ofertar=estados_presupuesto.puede_ofertar(reclamo, ficha.id)
+                and not ficha.dado_de_baja,
             )
         )
     return resultado
@@ -154,8 +157,15 @@ def crear_contratista(contratista: ContratistaCreate, db: Session = Depends(get_
 
 
 @router.get("", response_model=list[ContratistaOut])
-def listar_contratistas(db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
-    return db.query(Contratista).order_by(Contratista.nombre_empresa).all()
+def listar_contratistas(
+    incluir_baja: bool = False,
+    db: Session = Depends(get_db),
+    _admin: Usuario = Depends(get_current_admin),
+):
+    query = db.query(Contratista)
+    if not incluir_baja:
+        query = baja_contratistas.solo_activos(query)
+    return query.order_by(Contratista.nombre_empresa).all()
 
 
 @router.get("/{contratista_id}", response_model=ContratistaOut)
@@ -181,9 +191,24 @@ def actualizar_contratista(
 
 
 @router.delete("/{contratista_id}", status_code=204)
-def eliminar_contratista(contratista_id: int, db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
+def dar_de_baja_contratista(contratista_id: int, db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
+    """Da de baja, no borra: ver `services.baja_contratistas`."""
     contratista = db.get(Contratista, contratista_id)
     if contratista is None:
         raise HTTPException(status_code=404, detail="Contratista no encontrado")
-    db.delete(contratista)
+    try:
+        baja_contratistas.dar_de_baja(db, contratista)
+    except baja_contratistas.ContratistaConTrabajoEnCurso as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     db.commit()
+
+
+@router.post("/{contratista_id}/reactivar", response_model=ContratistaOut)
+def reactivar_contratista(contratista_id: int, db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
+    contratista = db.get(Contratista, contratista_id)
+    if contratista is None:
+        raise HTTPException(status_code=404, detail="Contratista no encontrado")
+    baja_contratistas.reactivar(contratista)
+    db.commit()
+    db.refresh(contratista)
+    return contratista
