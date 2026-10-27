@@ -506,4 +506,4 @@ def test_reprogramar_cuando_la_ficha_tiene_el_telefono_en_otro_formato(
         futura = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%d/%m 10:00")
         r = procesar_mensaje(db, futura, usuario=whatsapp)
 
-    assert "Anoté 1 opción" in r
+    assert "Van 1 opción" in r

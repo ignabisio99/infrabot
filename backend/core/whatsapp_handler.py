@@ -1419,18 +1419,20 @@ def _procesar_visita_disponibilidad(db: Session, usuario: str, mensaje: str) -> 
         if motivo == "todas_pasadas":
             return (
                 "⚠️ Las opciones que habías cargado ya pasaron.\n"
-                f"Por favor ingresá al menos una opción con fecha y hora posterior a la actual (ej: _{f1}_)."
+                f"Ingresá una fecha posterior a la actual (ej: _{f1}_). "
+                "Si preferís ese día del año que viene, escribilo con el año."
             )
         return (
             "⚠️ Todavía no cargaste ninguna opción válida.\n"
-            f"Enviá al menos una en formato *DD/MM HH:MM* (ej: _{f1}_)."
+            f"Enviá al menos una en formato *DD/MM/AAAA HH:MM* (ej: _{f1}_)."
         )
 
-    # Validar el formato DD/MM HH:MM para poder programar recordatorios.
+    # Validar el formato para poder programar recordatorios.
     if not coordinacion_visita.formato_valido(texto):
         f1, _ = coordinacion_visita.ejemplo_formato_fecha()
         return (
-            "⚠️ No pude interpretar esa fecha. Usá el formato *DD/MM HH:MM*.\n"
+            "⚠️ No pude interpretar esa fecha. Usá el formato *DD/MM HH:MM* "
+            "o *DD/MM/AAAA HH:MM*.\n"
             f"Por ejemplo: _{f1}_\n\n"
             "Podés mandar varias juntas separadas por coma o en mensajes distintos."
         )
@@ -1441,20 +1443,21 @@ def _procesar_visita_disponibilidad(db: Session, usuario: str, mensaje: str) -> 
         f1, _ = coordinacion_visita.ejemplo_formato_fecha()
         if len(pasadas) == 1:
             return (
-                f"⚠️ La fecha y hora ingresada (*{pasadas[0]}*) ya pasó.\n\n"
-                "No podés coordinar visitas en fechas pasadas. "
-                f"Por favor ingresá una fecha y hora posterior a la actual (ej: _{f1}_)."
+                f"⚠️ La fecha y hora ingresada (*{pasadas[0]}*) ya pasó.\n"
+                "Si preferís anotarla, escribila con el año. "
+                f"Si no, ingresá una fecha posterior a la actual (ej: _{f1}_)."
             )
         pasadas_str = ", ".join(f"*{p}*" for p in pasadas)
         return (
-            f"⚠️ Las siguientes fechas ya pasaron: {pasadas_str}.\n\n"
-            f"Todas las opciones deben ser posteriores a la fecha y hora actual (ej: _{f1}_)."
+            f"⚠️ Las siguientes fechas ya pasaron: {pasadas_str}.\n"
+            "Si preferís anotar alguna, escribila con el año. "
+            f"Si no, usá una fecha posterior a la actual (ej: _{f1}_)."
         )
 
-    cantidad = coordinacion_visita.agregar_disponibilidad(db, visita, texto)
-    palabra = "opción" if cantidad == 1 else "opciones"
+    total = coordinacion_visita.agregar_disponibilidad(db, visita, texto)
+    palabra = "opción" if total == 1 else "opciones"
     return (
-        f"🗓️ Anoté {cantidad} {palabra}. Podés seguir cargando más "
+        f"🗓️ Van {total} {palabra}. Podés seguir cargando más "
         "o escribí *listo* cuando termines."
     )
 
@@ -1482,7 +1485,7 @@ def _retomar_carga_horario(db: Session, usuario: str, texto: str) -> str:
         f"📅 *Retomamos la visita del reclamo #{reclamo_id}*\n\n"
         f"{ya_cargadas}"
         "Mandá tus opciones de día y horario en formato *DD/MM HH:MM* "
-        f"(ej: _{f1}_, _{f2}_).\n"
+        f"o *DD/MM/AAAA HH:MM* (ej: _{f1}_, _{f2}_).\n"
         "Cuando termines, escribí *listo*. Para salir, escribí *cancelar*."
     )
 

@@ -102,3 +102,38 @@ def test_sincronizar_csv_no_pisa_presupuesto(db, tmp_path):
     db.flush()
     assert resultado.actualizadas == 0
     assert db.query(ReferenciaCosto).one().monto_ars == Decimal("999.00")
+
+
+def test_sincronizar_csv_apaga_seed_que_ya_no_esta(db, tmp_path):
+    vieja = ReferenciaCosto(
+        categoria="Electricidad",
+        descripcion="Tablero escolar viejo",
+        monto_ars=Decimal("180000"),
+        fecha_referencia=date(2024, 6, 1),
+        fuente="seed_csv",
+        activo=True,
+    )
+    manual = ReferenciaCosto(
+        categoria="Gas",
+        descripcion="Cargada a mano",
+        monto_ars=Decimal("1000"),
+        fecha_referencia=date(2024, 1, 1),
+        fuente="manual",
+        activo=True,
+    )
+    db.add_all([vieja, manual])
+    db.flush()
+
+    csv_path = Path(tmp_path) / "refs.csv"
+    csv_path.write_text(
+        "categoria,descripcion,monto_ars,fecha_referencia,unidad,fuente\n"
+        "Plomería,Pérdida en baño,57500,2026-10-22,baño,appmaestro:mo-2026-10\n",
+        encoding="utf-8",
+    )
+    resultado = sincronizar_desde_csv(db, str(csv_path))
+    db.flush()
+
+    assert resultado.creadas == 1
+    assert resultado.actualizadas == 1
+    assert vieja.activo is False
+    assert manual.activo is True

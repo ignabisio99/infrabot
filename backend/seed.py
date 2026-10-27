@@ -4,8 +4,9 @@ Uso:
     docker compose exec backend python seed.py           # solo si las tablas están vacías
     docker compose exec backend python seed.py --reset    # recrea el schema y recarga todo
 
-Los costos históricos salen de `data/referencias_costo.csv` y solo se insertan
-si todavía no hay una fila con la misma categoría y descripción.
+Los costos históricos salen de `data/referencias_costo.csv`. Cada corrida
+inserta filas nuevas, actualiza las de la misma categoría y descripción, y
+apaga las que este CSV ya no trae. No toca las que vinieron de un presupuesto.
 
 `--reset` borra y recrea las tablas a partir de los modelos, así que también sirve para
 poner al día una base que quedó desfasada porque un modelo cambió. Deja un admin de
@@ -53,7 +54,7 @@ from models import (
 )
 from models.rol_mano_obra import asegurar_roles_iniciales
 from services import coordinacion_visita, estados_presupuesto, estados_reclamo
-from services.referencias_costo import cargar_referencias_si_faltan
+from services.referencias_costo import cargar_referencias_si_faltan, sincronizar_desde_csv
 
 # Usuario administrador para poder entrar a la app en un entorno recién creado.
 # El registro por la UI no sirve para esto: deja la cuenta sin confirmar y esperando
@@ -614,10 +615,14 @@ def main():
         # al rol sin acceso a las tablas nuevas.
         reaplicar_permisos_solo_lectura(db)
 
-        creadas_refs = cargar_referencias_si_faltan(db)
-        if creadas_refs:
+        refs_csv = sincronizar_desde_csv(db)
+        if refs_csv.creadas or refs_csv.actualizadas:
             db.commit()
-            logger.info("Referencias de costo desde CSV: %d nuevas.", creadas_refs)
+            logger.info(
+                "Referencias de costo desde CSV: %d nuevas, %d actualizadas.",
+                refs_csv.creadas,
+                refs_csv.actualizadas,
+            )
 
         if not reiniciar and db.query(Reclamo).first() is not None:
             logger.info("Ya hay datos cargados. Usá --reset si querés borrar todo y recargar.")

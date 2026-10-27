@@ -1,13 +1,59 @@
 categoria,descripcion,monto_ars,fecha_referencia,unidad,fuente
-Electricidad,Reparación de tablero eléctrico principal escolar,180000,2024-06-01,trabajo,seed_csv
-Electricidad,Cambio de cables y tomas en aula,95000,2024-03-01,aula,seed_csv
-Plomería,Reparación de pérdida de agua en baño escolar,75000,2024-08-01,baño,seed_csv
-Plomería,Reemplazo de cañería PVC y grifería,110000,2024-01-01,trabajo,seed_csv
-Techos,Reparación de filtraciones y chapas en techo SUM,320000,2024-05-01,techo,seed_csv
-Techos,Sellado de goteras en aula,85000,2023-11-01,aula,seed_csv
-Gas,Revisión y reparación de instalación de gas escolar,150000,2024-04-01,trabajo,seed_csv
-Pintura,Pintura de aula estándar,60000,2024-02-01,aula,seed_csv
-Pisos,Reposición de baldosas en pasillo,140000,2024-07-01,pasillo,seed_csv
-Aberturas,Cambio de ventana de aula,200000,2024-09-01,ventana,seed_csv
-Infraestructura,Reparación de grieta estructural en pared de patio,250000,2023-12-01,trabajo,seed_csv
-Otro,Trabajo general de mantenimiento menor,50000,2024-10-01,trabajo,seed_csv
+Electricidad,Reparación de tablero eléctrico principal escolar (mano de obra: 3 llaves termomagnéticas a 32500 + disyuntor a 37025 + puesta a tierra a 58500),193025,2026-10-22,trabajo,appmaestro:mo-2026-10
+Electricidad,Cambio de cables y tomas en aula (mano de obra de cableado completo de un ambiente),175000,2026-10-22,aula,appmaestro:mo-2026-10
+Electricidad,Boca eléctrica con cañería cableado y llave (mano de obra por punto),44091,2026-10-22,punto,appmaestro:mo-2026-10
+Electricidad,Colocación de tomacorriente o interruptor (mano de obra por punto),17500,2026-10-22,punto,appmaestro:mo-2026-10
+Electricidad,Instalación de luminaria o plafón (mano de obra por unidad),22500,2026-10-22,unidad,appmaestro:mo-2026-10
+Electricidad,Cambio de llave térmica o disyuntor (mano de obra por unidad),33000,2026-10-22,unidad,appmaestro:mo-2026-10
+Electricidad,Diagnóstico de cortocircuito y reparación (mano de obra),56000,2026-10-22,trabajo,appmaestro:mo-2026-10
+Electricidad,Puesta a tierra con jabalina (mano de obra),58500,2026-10-22,unidad,appmaestro:mo-2026-10
+Electricidad,Certificado DCI de instalación eléctrica (mano de obra),180000,2026-10-22,unidad,appmaestro:mo-2026-10
+Electricidad,Instalación de pararrayos (mano de obra),272500,2026-10-22,unidad,appmaestro:mo-2026-10
+Electricidad,Instalación de detector de humo (mano de obra),55000,2026-10-22,unidad,appmaestro:mo-2026-10
+Electricidad,Instalación de ventilador de techo (mano de obra),58000,2026-10-22,unidad,appmaestro:mo-2026-10
+Plomería,Reparación de pérdida de agua en baño escolar (mano de obra de reparación de pérdida en cañería),57500,2026-10-22,baño,appmaestro:mo-2026-10
+Plomería,Reemplazo de grifería en baño escolar (mano de obra: canilla a 47500 + llave de paso a 39000 + sifón a 26000),112500,2026-10-22,baño,appmaestro:mo-2026-10
+Plomería,Destapación simple de pileta o inodoro (mano de obra),44000,2026-10-22,unidad,appmaestro:mo-2026-10
+Plomería,Destapación urgente o de guardia (mano de obra),72500,2026-10-22,unidad,appmaestro:mo-2026-10
+Plomería,Desobstrucción de cañería principal (mano de obra),95000,2026-10-22,trabajo,appmaestro:mo-2026-10
+Plomería,Colocación de inodoro (mano de obra),56500,2026-10-22,unidad,appmaestro:mo-2026-10
+Plomería,Cambio de pileta de cocina o baño (mano de obra),45000,2026-10-22,unidad,appmaestro:mo-2026-10
+Plomería,Instalación de mochila de inodoro (mano de obra),32000,2026-10-22,unidad,appmaestro:mo-2026-10
+Plomería,Instalación de termotanque eléctrico — conexión de agua (mano de obra),87500,2026-10-22,unidad,appmaestro:mo-2026-10
+Plomería,Cambio de bomba presurizadora (mano de obra),82500,2026-10-22,unidad,appmaestro:mo-2026-10
+Plomería,Visita de diagnóstico de plomería (mano de obra),21000,2026-10-22,unidad,appmaestro:mo-2026-10
+Gas,Revisión de instalación de gas escolar (mano de obra: prueba de hermeticidad a 93500 + mantenimiento preventivo a 67500),161000,2026-10-22,trabajo,appmaestro:mo-2026-10
+Gas,Visita de diagnóstico de gas (mano de obra),44000,2026-10-22,unidad,appmaestro:mo-2026-10
+Gas,Prueba de hermeticidad de la instalación de gas (mano de obra),93500,2026-10-22,unidad,appmaestro:mo-2026-10
+Gas,Habilitación o rehabilitación de gas (mano de obra),300000,2026-10-22,unidad,appmaestro:mo-2026-10
+Gas,Reconexión de gas (mano de obra),280000,2026-10-22,unidad,appmaestro:mo-2026-10
+Gas,Instalación de calefactor de tiro balanceado (mano de obra),110000,2026-10-22,unidad,appmaestro:mo-2026-10
+Gas,Instalación de calefactor de tiro natural (mano de obra),85500,2026-10-22,unidad,appmaestro:mo-2026-10
+Gas,Instalación de rejilla de ventilación de gas (mano de obra),69000,2026-10-22,unidad,appmaestro:mo-2026-10
+Gas,Instalación de cocina industrial a gas (mano de obra),165000,2026-10-22,unidad,appmaestro:mo-2026-10
+Gas,Instalación de termotanque a gas (mano de obra),95000,2026-10-22,unidad,appmaestro:mo-2026-10
+Gas,Instalación de calefón a gas (mano de obra),104000,2026-10-22,unidad,appmaestro:mo-2026-10
+Techos,Reparación de filtraciones y chapas en techo SUM (20 m²: impermeabilización a 45045/m² + membrana APP 4 mm aluminio a 7898/m²),1058860,2026-10-22,techo,appmaestro:mo+mat-2026-10
+Techos,Sellado de goteras en aula (6 m² de mano de obra de membrana líquida a 9750/m²),58500,2026-10-22,aula,appmaestro:mo-2026-10
+Techos,Colocación de membrana asfáltica en paño de 10 m² (mano de obra a 16500/m² + membrana APP 4 mm aluminio a 7898/m²),243980,2026-10-22,techo,appmaestro:mo+mat-2026-10
+Techos,Impermeabilización de azotea en paño de 15 m² (mano de obra a 43500/m²),652500,2026-10-22,techo,appmaestro:mo-2026-10
+Pintura,Pintura de aula estándar (mano de obra de pintura de un ambiente),102500,2026-10-22,aula,appmaestro:mo-2026-10
+Pintura,Pintura de dos ambientes y un baño (mano de obra),167500,2026-10-22,trabajo,appmaestro:mo-2026-10
+Pintura,Pintura látex exterior en paño de 20 m² (mano de obra a 8550/m²),171000,2026-10-22,m2,appmaestro:mo-2026-10
+Pintura,Enduido plástico y pintura en paño de 10 m² (mano de obra a 12250/m²),122500,2026-10-22,m2,appmaestro:mo-2026-10
+Pintura,Pintura de cielorraso de aula en 40 m² (mano de obra a 9000/m²),360000,2026-10-22,aula,appmaestro:mo-2026-10
+Pisos,Reposición de baldosas en pasillo (12 m²: colocación a 18750/m² + cerámica de piso a 12183/m²),371196,2026-10-22,pasillo,appmaestro:mo+mat-2026-10
+Pisos,Colocación de cerámica en piso en paño de 10 m² (mano de obra a 12750/m² + cerámica a 12183/m²),249330,2026-10-22,m2,appmaestro:mo+mat-2026-10
+Pisos,Carpeta cementicia en paño de 10 m² (mano de obra a 7000/m²),70000,2026-10-22,m2,appmaestro:mo-2026-10
+Pisos,Contrapiso de cascote en paño de 10 m² (mano de obra a 14350/m²),143500,2026-10-22,m2,appmaestro:mo-2026-10
+Aberturas,Cambio de ventana de aula (material: ventana de aluminio corrediza 1.50 x 1.10 m vidrio entero; no incluye colocación),239999,2026-10-24,ventana,aberturaslyl:2026-10-24
+Aberturas,Colocación de puerta placa (mano de obra),66000,2026-10-22,unidad,appmaestro:mo-2026-10
+Aberturas,Ajuste de puerta que no cierra (mano de obra),24500,2026-10-22,unidad,appmaestro:mo-2026-10
+Aberturas,Cambio de cerradura (mano de obra),25500,2026-10-22,unidad,appmaestro:mo-2026-10
+Infraestructura,Reparación de grieta en pared de patio (8 m² de mano de obra de reparación de paredes y grietas a 10750/m²),86000,2026-10-22,m2,appmaestro:mo-2026-10
+Infraestructura,Revoque grueso y fino a la cal en paño de 10 m² (mano de obra a 15000/m²),150000,2026-10-22,m2,appmaestro:mo-2026-10
+Infraestructura,Muro de ladrillo hueco de 12 cm en paño de 8 m² (mano de obra a 21500/m²),172000,2026-10-22,m2,appmaestro:mo-2026-10
+Infraestructura,Placa antihumedad en paño de 8 m² (mano de obra a 13500/m²),108000,2026-10-22,m2,appmaestro:mo-2026-10
+Infraestructura,Tabique de Durlock en paño de 10 m² (mano de obra a 21100/m² + placa STD 12.5 mm a 12844/m²),339440,2026-10-22,m2,appmaestro:mo+mat-2026-10
+Infraestructura,Cielorraso suspendido de Durlock en paño de 10 m² (mano de obra a 20930/m²),209300,2026-10-22,m2,appmaestro:mo-2026-10
+Otro,Trabajo general de mantenimiento menor (visita de diagnóstico eléctrico),36000,2026-10-22,unidad,appmaestro:mo-2026-10
