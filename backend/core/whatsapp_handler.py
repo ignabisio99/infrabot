@@ -727,10 +727,10 @@ def _mostrar_ayuda(variante: str = "menu"):
         body = "🤖 *InfraBot*\n\n¿Qué querés hacer?"
 
     # WhatsApp admite 3 botones: cargar, buscar y pasar a un humano. El resto sigue por
-    # texto (*recientes*, *ver #<id>*). Con IA, "Nuevo reclamo" arranca el modo asistido
-    # (contar el problema con sus palabras); el paso a paso sigue con *nuevo*.
+    # texto (*recientes*, *ver #<id>*). "Nuevo reclamo" es el alta paso a paso; el modo
+    # asistido se pide escribiendo *libre*.
     botones = [
-        {"id": "libre" if ai_config.ai_whatsapp_enabled() else "nuevo", "title": "📝 Nuevo reclamo"},
+        {"id": "nuevo", "title": "📝 Nuevo reclamo"},
         {"id": "buscar_reclamo", "title": "🔍 Buscar reclamo"},
         {"id": "operador", "title": "🙋 Hablar con humano"},
     ]
@@ -740,6 +740,25 @@ def _mostrar_ayuda(variante: str = "menu"):
         "body": body,
         "botones": botones,
     }
+
+
+# Mientras se carga un reclamo, el texto es el dato. "operador" suelto sigue
+# pidiendo una persona; la misma palabra dentro de una frase, no.
+PASOS_ALTA_RECLAMO = frozenset(
+    {
+        "escuela",
+        "libre",
+        "confirmar_escuela",
+        "escuela_no_encontrada",
+        "elegir_escuela",
+        "confirmar_duplicado",
+        "ubicacion",
+        "descripcion",
+        "faltantes",
+        "media",
+        "confirmacion",
+    }
+)
 
 
 # --- Flujo de creación de reclamo ---
@@ -1227,6 +1246,7 @@ def _procesar_creacion(db: Session, usuario: str, mensaje: str) -> str:
                 descripcion=descripcion,
                 observaciones=datos.get("observaciones"),
                 telefono_creador=usuario or None,
+                alta_whatsapp=True,
                 estado=estados_reclamo.ESTADO_INICIAL,
             )
             db.add(nuevo)
@@ -1428,6 +1448,12 @@ def _procesar_visita_disponibilidad(db: Session, usuario: str, mensaje: str) -> 
                 f"Ingresá una fecha posterior a la actual (ej: _{f1}_). "
                 "Si preferís ese día del año que viene, escribilo con el año."
             )
+        if motivo == "sin_contacto":
+            return (
+                "⚠️ Las fechas quedaron anotadas, pero este reclamo no tiene un WhatsApp "
+                "para que elijan un horario.\n"
+                "Cuando esté cargado el teléfono, escribí *listo* de nuevo."
+            )
         return (
             "⚠️ Todavía no cargaste ninguna opción válida.\n"
             f"Enviá al menos una en formato *DD/MM/AAAA HH:MM* (ej: _{f1}_)."
@@ -1496,6 +1522,36 @@ def _retomar_carga_horario(db: Session, usuario: str, texto: str) -> str:
     )
 
 
+def _retomar_eleccion_horario(db: Session, usuario: str, texto: str) -> str:
+    from services import coordinacion_visita
+
+    m = re.search(r"(\d+)", texto)
+    if m:
+        reclamo_id = int(m.group(1))
+        visita = coordinacion_visita.retomar_eleccion(db, usuario, reclamo_id)
+        if visita is None:
+            return f"❌ No tenés horarios para elegir en el reclamo #{reclamo_id}."
+    else:
+        pausadas = coordinacion_visita.elecciones_pausadas(db, usuario)
+        if not pausadas:
+            return "❌ No tenés una elección de horario pendiente."
+        if len(pausadas) > 1:
+            lineas = "\n".join(f"• *elegir horario {v.reclamo_id}*" for v in pausadas)
+            return "Tenés más de un horario en pausa. Elegí cuál retomar:\n\n" + lineas
+        visita = pausadas[0]
+        coordinacion_visita.retomar_eleccion(db, usuario, visita.reclamo_id)
+
+    _conversaciones[usuario] = {"paso": "visita_eleccion", "visita_id": visita.id}
+    opciones = coordinacion_visita._opciones_lista(visita)
+    lineas = "\n".join(f"{i + 1}. {op}" for i, op in enumerate(opciones))
+    return (
+        f"🗓️ *Retomamos la elección del reclamo #{visita.reclamo_id}*\n\n"
+        f"{lineas}\n\n"
+        "Respondé con el *número* de la opción que te quede mejor (ej: *1*).\n"
+        "Si ahora no podés elegir, escribí *cancelar*."
+    )
+
+
 def _procesar_visita_eleccion(db: Session, usuario: str, mensaje: str) -> str:
     """El creador del reclamo elige uno de los horarios propuestos."""
     from models.contratista import Contratista
@@ -1510,6 +1566,17 @@ def _procesar_visita_eleccion(db: Session, usuario: str, mensaje: str) -> str:
         return "⚠️ No encontré la visita a coordinar. Escribí *ayuda* para ver los comandos."
 
     texto = mensaje.strip().replace("#", "")
+
+    if _es_comando(texto, "cancelar"):
+        coordinacion_visita.pausar_eleccion(db, visita)
+        del _conversaciones[usuario]
+        return (
+            "👌 Ok, dejamos para más tarde la elección del horario del reclamo "
+            f"#{visita.reclamo_id}.\n\n"
+            "Cuando quieras elegir, escribí "
+            f"*elegir horario {visita.reclamo_id}*."
+        )
+
     try:
         indice = int(texto)
     except ValueError:
@@ -1914,9 +1981,10 @@ def _reconstruir_cu05(db: Session, usuario: str, mensaje: str) -> str | None:
                 }
                 return _procesar_cu05_inicio(db, usuario, mensaje)
 
-    # Botón de resuelto (escuela) o sí/no de la escuela creadora de un reclamo en ejecución.
+    # Botón de resuelto, o un sí/no, solo si ya le preguntamos a la escuela.
+    # Si no, "sí", "ok" o "dale" en plena ejecución no tienen que cerrar el reclamo.
     if raw in (cu05_botones.RESUELTO_SI, cu05_botones.RESUELTO_NO) or (es_si_no and not es_termino):
-        reclamo_r = resolucion_escuela.reclamo_en_ejecucion_del_creador(db, usuario)
+        reclamo_r = resolucion_escuela.reclamo_esperando_confirmacion(db, usuario)
         if reclamo_r is not None:
             _conversaciones[usuario] = {"paso": "cu05_resuelto", "reclamo_id": reclamo_r.id}
             return _procesar_cu05_resuelto(db, usuario, mensaje)
@@ -1932,6 +2000,26 @@ def _reconstruir_cu05(db: Session, usuario: str, mensaje: str) -> str | None:
             return _procesar_cu05_termino(db, usuario, mensaje)
 
     return None
+
+
+def _dejar_paso_al_pedir_operador(db: Session, usuario: str) -> None:
+    """No hay operador: el próximo mensaje no sigue el paso que estaba en curso."""
+    conv = _conversaciones.pop(usuario, None)
+    if not conv:
+        return
+    paso = conv.get("paso")
+    visita_id = conv.get("visita_id")
+    if paso not in ("visita_disponibilidad", "visita_eleccion") or not visita_id:
+        return
+    visita = db.get(Visita, visita_id)
+    if visita is None:
+        return
+    from services import coordinacion_visita
+
+    if paso == "visita_disponibilidad":
+        coordinacion_visita.pausar_disponibilidad(db, visita)
+    else:
+        coordinacion_visita.pausar_eleccion(db, visita)
 
 
 def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
@@ -1980,7 +2068,8 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
     if (
         texto == "cancelar"
         and usuario in _conversaciones
-        and _conversaciones[usuario].get("paso") != "visita_disponibilidad"
+        and _conversaciones[usuario].get("paso")
+        not in ("visita_disponibilidad", "visita_eleccion")
         # La escuela ya dijo que no quedó resuelto: cancelar acá es seguir sin detalle.
         and _conversaciones[usuario].get("paso") not in PASOS_RESUELTO[1:]
     ):
@@ -1992,11 +2081,22 @@ def procesar_mensaje(db: Session, mensaje: str, usuario: str = "") -> str:
     if texto.startswith("cargar horario"):
         return _retomar_carga_horario(db, usuario, texto)
 
-    if usuario and pedir_operador(texto):
+    if texto.startswith("elegir horario"):
+        return _retomar_eleccion_horario(db, usuario, texto)
+
+    paso_actual = _conversaciones.get(usuario, {}).get("paso") if usuario else None
+    if usuario and pedir_operador(texto, solo_comando=paso_actual in PASOS_ALTA_RECLAMO):
         from services.configuracion_atencion import dentro_de_atencion, mensaje_fuera_horario
 
         if not dentro_de_atencion(db):
-            return mensaje_fuera_horario(db)
+            _dejar_paso_al_pedir_operador(db, usuario)
+            # La charla siguiente arranca de cero: si no, todo lo que escriba cae en "no entendí".
+            _ultima_actividad.pop(usuario, None)
+            menu = _mostrar_ayuda(variante="menu")
+            return {
+                **menu,
+                "body": f"{mensaje_fuera_horario(db)}\n\n{menu['body']}".strip(),
+            }
         solicitar_operador(db, usuario)
         _conversaciones.pop(usuario, None)
         return {

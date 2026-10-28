@@ -110,18 +110,18 @@ def ejecutar_seguimiento(db: Session) -> ResultadoSeguimiento:
                     "reclamo_id": reclamo.id,
                     "detalle": f"❓ Pregunta de seguimiento ('¿Terminaste el trabajo?') enviada al contratista del Reclamo #{reclamo.id}",
                 })
-                # Agotados los intentos sin respuesta: el reclamo queda desierto para
-                # poder reconvocar (CU-05: el contratista dejó de responder).
-                if _requiere_intervencion(db, reclamo.id):
-                    if _escalar_desierto(db, reclamo):
-                        escalados += 1
-                        detalles.append({
-                            "tipo": "desierto",
-                            "reclamo_id": reclamo.id,
-                            "detalle": f"⚠️ Reclamo #{reclamo.id} pasó a desierto por falta de respuesta del contratista",
-                        })
             else:
                 omitidos += 1
+        elif _sin_respuesta_tras_ultimo_intento(db, reclamo, ahora, umbral):
+            # La quinta pregunta ya se mandó y pasó el plazo sin respuesta. No se cierra
+            # en el mismo envío: el contratista tiene que poder contestar esa última.
+            if _escalar_desierto(db, reclamo):
+                escalados += 1
+                detalles.append({
+                    "tipo": "desierto",
+                    "reclamo_id": reclamo.id,
+                    "detalle": f"⚠️ Reclamo #{reclamo.id} pasó a desierto por falta de respuesta del contratista",
+                })
         else:
             omitidos += 1
     return ResultadoSeguimiento(enviados=enviados, omitidos=omitidos, escalados=escalados, detalles=detalles)
@@ -220,13 +220,23 @@ def _enviar(db: Session, reclamo: Reclamo, ahora: datetime) -> bool:
     return True
 
 
-def _requiere_intervencion(db: Session, reclamo_id: int) -> bool:
+def _sin_respuesta_tras_ultimo_intento(
+    db: Session, reclamo: Reclamo, ahora: datetime, umbral: timedelta
+) -> bool:
+    """True si ya se hicieron todos los intentos y venció el plazo de la última pregunta."""
     fila = (
         db.query(RecordatorioContratista)
-        .filter(RecordatorioContratista.reclamo_id == reclamo_id)
+        .filter(RecordatorioContratista.reclamo_id == reclamo.id)
         .first()
     )
-    return bool(fila and (fila.cantidad_envios or 0) >= seguimiento_max_intentos())
+    if fila is None or (fila.cantidad_envios or 0) < seguimiento_max_intentos():
+        return False
+    if fila.consulto_escuela or fila.ultimo_envio is None:
+        return False
+    referencia = fila.ultimo_envio
+    if referencia.tzinfo is None:
+        referencia = referencia.replace(tzinfo=timezone.utc)
+    return ahora - referencia >= umbral
 
 
 def tiene_marca_intervencion(observaciones: str | None) -> bool:
@@ -339,7 +349,7 @@ def _escalar(db: Session, reclamo: Reclamo) -> bool:
 
 
 def _escalar_desierto(db: Session, reclamo: Reclamo) -> bool:
-    """Tras los intentos máximos sin respuesta del contratista: EN_EJECUCION -> DESIERTO.
+    """Vencido el plazo de la última pregunta sin respuesta: EN_EJECUCION -> DESIERTO.
 
     A diferencia de _escalar (intervención, forzada por el admin), este es el camino
     automático del seguimiento cuando el contratista dejó de contestar las preguntas de

@@ -6,6 +6,7 @@ from models.foto_reclamo import TipoMedia
 from models.historial_estado_reclamo import OrigenCambioEstado
 from models.presupuesto import EstadoPresupuesto
 from models.reclamo import EstadoReclamo, PrioridadReclamo
+from core.telefonos import normalizar_telefono_ar
 from models.usuario import TipoUsuario
 
 
@@ -16,6 +17,9 @@ class ReclamoCreate(BaseModel):
     categoria: str
     descripcion: str
     observaciones: str | None = None
+    # WhatsApp al que se le piden los horarios de la visita. En el alta web, si viene
+    # vacío, se usa el teléfono de quien carga el reclamo.
+    telefono_creador: str | None = None
 
     @field_validator("nombre_escuela")
     @classmethod
@@ -45,6 +49,13 @@ class ReclamoCreate(BaseModel):
             raise ValueError("La descripción debe tener al menos 10 caracteres")
         return v
 
+    @field_validator("telefono_creador")
+    @classmethod
+    def normalizar_telefono_creador(cls, v):
+        if v is None or not str(v).strip():
+            return None
+        return normalizar_telefono_ar(v)
+
 
 class FotoReclamoOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -65,8 +76,8 @@ class ReclamoOut(ReclamoCreate):
 
     id: int
     estado: EstadoReclamo
+    alta_whatsapp: bool = False
     requiere_revision: bool = False
-    telefono_creador: str | None = None
     fecha_creacion: datetime
     fotos: list[FotoReclamoOut] = []
     # Qué transiciones habilitar en la UI para este reclamo, según su estado actual.

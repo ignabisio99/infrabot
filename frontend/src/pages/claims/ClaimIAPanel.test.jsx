@@ -87,6 +87,31 @@ describe('ClaimIAPanel', () => {
     expect(screen.getByText('90%')).toBeInTheDocument();
   });
 
+  it('sin precedentes muestra el monto y una sola aclaración', async () => {
+    obtenerEstimacion.mockResolvedValue({
+      id: 4,
+      materiales: '62500.00',
+      mano_obra: '100000.00',
+      otros: '12500.00',
+      total: '175000.00',
+      confianza: 0.2,
+      sin_precedentes: true,
+      justificacion: 'Sin precedentes históricos. El monto es orientativo para el rubro.',
+      detalle: JSON.stringify({
+        justificacion: 'Sin precedentes históricos. El monto es orientativo para el rubro.',
+        validacion: { motivo: 'sin_referencias' },
+        referencias_ids: [],
+      }),
+    });
+
+    await renderPanel();
+
+    expect(screen.getByText(/Mano de obra/)).toBeInTheDocument();
+    expect(screen.getByText(/Total/)).toBeInTheDocument();
+    expect(screen.getByText('Sin precedentes históricos')).toBeInTheDocument();
+    expect(screen.getAllByText(/trabajo histórico parecido/)).toHaveLength(1);
+  });
+
   it('en solo lectura los clicks no llaman a la IA', async () => {
     await renderPanel({ soloLectura: true });
     buscarDuplicados.mockClear();

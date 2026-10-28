@@ -5,6 +5,7 @@ Descarga archivos multimedia enviados por usuarios.
 """
 
 import os
+import re
 import uuid
 from pathlib import Path
 
@@ -45,14 +46,24 @@ def registrar_saliente(
     return item
 
 
+def _clave_destino(telefono: str) -> str:
+    """Últimos 8 dígitos, para que sim011-4666-5678 y 541146665678 sean el mismo chat."""
+    digitos = re.sub(r"\D", "", telefono or "")
+    if digitos.startswith("54") and len(digitos) > 10:
+        digitos = digitos[2:]
+    digitos = digitos.lstrip("0")
+    if len(digitos) >= 8:
+        return digitos[-8:]
+    return digitos
+
+
 def obtener_historial_salientes(to: str | None = None, limite: int = 50) -> list[dict]:
     items = list(_HISTORIAL_SALIENTES)
     if to:
-        t = to.strip().lower()
-        items = [
-            it for it in items
-            if it["to"].strip().lower() == t or (len(t) >= 6 and it["to"].endswith(t[-8:]))
-        ]
+        clave = _clave_destino(to)
+        if not clave:
+            return []
+        items = [it for it in items if _clave_destino(it["to"]) == clave]
     return items[-limite:]
 
 

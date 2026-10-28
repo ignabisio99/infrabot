@@ -38,6 +38,14 @@ function ultimaDeTipo(recomendaciones, tipo) {
   return recomendaciones.find((item) => item.tipo === tipo);
 }
 
+const MENSAJE_SIN_PRECEDENTES =
+  'No hay un trabajo histórico parecido. El monto es orientativo para el rubro.';
+
+function monto(valor) {
+  const numero = Number(valor);
+  return Number.isFinite(numero) ? numero : 0;
+}
+
 function leerDetalleEstimacion(detalle) {
   if (!detalle) return { sinPrecedencias: false, aviso: null };
   try {
@@ -49,9 +57,9 @@ function leerDetalleEstimacion(detalle) {
       motivo === 'promedio_refs_invalido' ||
       (Array.isArray(refs) && refs.length === 0);
     let aviso = parsed.aviso || null;
+    if (typeof aviso === 'string' && /no aplica/i.test(aviso)) aviso = null;
     if (!aviso && sinPrecedencias) {
-      aviso =
-        'No hay datos históricos similares para basar esta estimación. Se recomienda inspección técnica presencial.';
+      aviso = MENSAJE_SIN_PRECEDENTES;
     }
     if (!aviso && motivo === 'desvio_vs_historicos') {
       aviso = 'El total se aleja de los costos históricos similares.';
@@ -99,6 +107,12 @@ export function ClaimIAPanel({
   const metaEstimacion = estimacion ? leerDetalleEstimacion(estimacion.detalle) : null;
   const sinPrecedencias = Boolean(estimacion?.sin_precedentes || metaEstimacion?.sinPrecedencias);
   const aviso = metaEstimacion?.aviso;
+  const sinMonto =
+    estimacion != null &&
+    monto(estimacion.total) === 0 &&
+    monto(estimacion.materiales) === 0 &&
+    monto(estimacion.mano_obra) === 0 &&
+    monto(estimacion.otros) === 0;
 
   useEffect(() => {
     let vigente = true;
@@ -329,12 +343,27 @@ export function ClaimIAPanel({
             Todavía no hay estimación para este reclamo.
           </Text>
         )}
-        {estimacion && (
+        {estimacion && sinMonto && (
+          <Text size="sm" c="dimmed" mb="xs">
+            Sin precedentes históricos. Regenerá la estimación para ver un monto orientativo.
+          </Text>
+        )}
+        {estimacion && !sinMonto && (
           <Stack gap={4} mb="xs">
             <Text size="sm">
-              Materiales {formatoMoneda.format(Number(estimacion.materiales))} · Mano de obra{' '}
-              {formatoMoneda.format(Number(estimacion.mano_obra))} · Otros{' '}
-              {formatoMoneda.format(Number(estimacion.otros))}
+              {[
+                monto(estimacion.materiales) > 0
+                  ? `Materiales ${formatoMoneda.format(monto(estimacion.materiales))}`
+                  : null,
+                monto(estimacion.mano_obra) > 0
+                  ? `Mano de obra ${formatoMoneda.format(monto(estimacion.mano_obra))}`
+                  : null,
+                monto(estimacion.otros) > 0
+                  ? `Otros ${formatoMoneda.format(monto(estimacion.otros))}`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </Text>
             <Group gap="xs">
               <Text size="sm" fw={700}>
@@ -354,12 +383,19 @@ export function ClaimIAPanel({
                 </Badge>
               )}
             </Group>
-            {aviso && (
+            {sinPrecedencias && (
+              <Text size="xs" c="dimmed">
+                {MENSAJE_SIN_PRECEDENTES}
+              </Text>
+            )}
+            {!sinPrecedencias && estimacion.justificacion && (
+              <Text size="sm">{estimacion.justificacion}</Text>
+            )}
+            {!sinPrecedencias && !estimacion.justificacion && aviso && (
               <Text size="xs" c="dimmed">
                 {aviso}
               </Text>
             )}
-            {estimacion.justificacion && <Text size="sm">{estimacion.justificacion}</Text>}
           </Stack>
         )}
         <Button

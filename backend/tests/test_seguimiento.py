@@ -1,8 +1,8 @@
 """Seguimiento de avance del contratista (CU-05 pieza 2).
 
-El bot pregunta "¿terminaste?" con botones. Sin respuesta tras SEGUIMIENTO_MAX_INTENTOS,
-el reclamo pasa a DESIERTO (reconvocar). La herramienta de admin forzar_intervencion
-sigue yendo a PENDIENTE_INTERVENCION.
+El bot pregunta "¿terminaste?" con botones. Sin respuesta al plazo de la última de
+SEGUIMIENTO_MAX_INTENTOS preguntas, el reclamo pasa a DESIERTO (reconvocar). La
+herramienta de admin forzar_intervencion sigue yendo a PENDIENTE_INTERVENCION.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
+from core import reloj
 from models.recordatorio_contratista import RecordatorioContratista
 from models.reclamo import EstadoReclamo
 from services.seguimiento import MARCA_INTERVENCION, ejecutar_seguimiento, forzar_intervencion
@@ -29,7 +30,7 @@ def _reclamo_en_obra(db, crear_reclamo, crear_presupuesto_aprobado, crear_contra
 
 
 @patch("core.whatsapp_client.enviar_botones")
-def test_al_quinto_intento_escala_a_desierto_y_no_sigue(
+def test_la_quinta_pregunta_queda_abierta_y_despues_pasa_a_desierto(
     mock_botones,
     db,
     crear_reclamo,
@@ -42,17 +43,19 @@ def test_al_quinto_intento_escala_a_desierto_y_no_sigue(
     reclamo = _reclamo_en_obra(db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista)
     mock_botones.return_value = {}
 
-    for n in range(5):
+    for _ in range(5):
         r = ejecutar_seguimiento(db)
         assert r.enviados == 1
-        if n < 4:
-            assert r.escalados == 0
-        else:
-            assert r.escalados == 1
+        assert r.escalados == 0
 
+    # La quinta pregunta queda abierta: el contratista todavía puede responder.
+    assert reclamo.estado == EstadoReclamo.EN_EJECUCION
+    assert mock_botones.call_count == 5
+
+    cierre = ejecutar_seguimiento(db)
+    assert cierre.enviados == 0
+    assert cierre.escalados == 1
     assert reclamo.estado == EstadoReclamo.DESIERTO
-    sexto = ejecutar_seguimiento(db)
-    assert sexto.enviados == 0
     assert mock_botones.call_count == 5
 
 
@@ -91,8 +94,10 @@ def test_tiempo_estimado_no_cambia_el_ritmo_de_24_horas(
     crear_reclamo,
     crear_presupuesto_aprobado,
     crear_contratista,
+    monkeypatch,
 ):
     """Aunque el contratista diga que le faltan 2 días, se le vuelve a preguntar a las 24 h."""
+    monkeypatch.setenv("SEGUIMIENTO_HORAS", "24")
     from services.seguimiento import registrar_tiempo_estimado
 
     reclamo = _reclamo_en_obra(db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista)
@@ -223,6 +228,40 @@ def test_admin_puede_volver_a_ejecucion_desde_intervencion(
     assert reclamo.estado == EstadoReclamo.EN_EJECUCION
     fila = db.query(RecordatorioContratista).filter_by(reclamo_id=reclamo.id).one()
     assert fila.cantidad_envios == 0
+
+
+def test_el_simulador_guarda_el_paso_a_desierto(
+    db, client, crear_reclamo, monkeypatch
+):
+    """Avanzar el reloj tiene que persistir DESIERTO: ese paso no envía un mensaje."""
+    monkeypatch.setenv("SEGUIMIENTO_HORAS", "48")
+    reloj.resetear_tiempo()
+    reclamo = crear_reclamo(estado=EstadoReclamo.EN_EJECUCION)
+    db.add(
+        RecordatorioContratista(
+            reclamo_id=reclamo.id,
+            ultimo_envio=datetime.now(timezone.utc) - timedelta(days=5),
+            cantidad_envios=5,
+        )
+    )
+    db.flush()
+    commits = {"n": 0}
+    original = db.commit
+
+    def contar():
+        commits["n"] += 1
+        return original()
+
+    db.commit = contar
+    try:
+        respuesta = client.post("/simulador-tiempo/avanzar", json={"dias": 2})
+        assert respuesta.status_code == 200
+        db.refresh(reclamo)
+        assert reclamo.estado == EstadoReclamo.DESIERTO
+        assert commits["n"] >= 1
+        assert any("desierto" in accion for accion in respuesta.json()["acciones_disparadas"])
+    finally:
+        reloj.resetear_tiempo()
 
 
 def test_seguimiento_horas_default_es_24(monkeypatch):

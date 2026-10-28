@@ -23,6 +23,20 @@ logger = logging.getLogger(__name__)
 
 UMBRAL_DESVIO_ESTIMACION = Decimal("0.20")
 
+# Sin un trabajo parecido el modelo no tiene ancla. Estos montos son orientativos
+# por rubro y la pantalla los marca como "sin precedentes históricos".
+_ORIENTATIVOS_ARS = {
+    "Electricidad": (Decimal("80000"), Decimal("120000"), Decimal("15000")),
+    "Plomería": (Decimal("60000"), Decimal("100000"), Decimal("10000")),
+    "Gas": (Decimal("90000"), Decimal("140000"), Decimal("20000")),
+    "Techos": (Decimal("150000"), Decimal("200000"), Decimal("25000")),
+    "Pintura": (Decimal("40000"), Decimal("70000"), Decimal("8000")),
+    "Pisos": (Decimal("100000"), Decimal("130000"), Decimal("15000")),
+    "Aberturas": (Decimal("110000"), Decimal("90000"), Decimal("12000")),
+    "Infraestructura": (Decimal("200000"), Decimal("250000"), Decimal("30000")),
+    "Otro": (Decimal("50000"), Decimal("80000"), Decimal("10000")),
+}
+
 _SCHEMA = {
     "task": "estimacion",
     "materiales": 0,
@@ -69,26 +83,31 @@ def generar_estimacion(
         if r.meta_inflacion:
             meta_inflacion = r.meta_inflacion
 
-    provider = get_llm_provider()
-    try:
-        raw = provider.complete_json(
-            system=SYSTEM_ESTIMACION,
-            user=user_estimacion(
-                descripcion=cuerpo,
-                categoria=reclamo.categoria,
-                prioridad=reclamo.prioridad.value,
-                escuela=reclamo.nombre_escuela,
-                referencias=contexto_refs,
-                confianza_sugerida=confianza_base,
-            ),
-            schema_hint=_SCHEMA,
-        )
-        proveedor_nombre = provider.name
-    except Exception:
-        logger.exception(
-            "LLM de estimación no disponible para reclamo %s; se usan solo históricos",
-            reclamo.id,
-        )
+    if refs:
+        provider = get_llm_provider()
+        try:
+            raw = provider.complete_json(
+                system=SYSTEM_ESTIMACION,
+                user=user_estimacion(
+                    descripcion=cuerpo,
+                    categoria=reclamo.categoria,
+                    prioridad=reclamo.prioridad.value,
+                    escuela=reclamo.nombre_escuela,
+                    referencias=contexto_refs,
+                    confianza_sugerida=confianza_base,
+                ),
+                schema_hint=_SCHEMA,
+            )
+            proveedor_nombre = provider.name
+        except Exception:
+            logger.exception(
+                "LLM de estimación no disponible para reclamo %s; se usan solo históricos",
+                reclamo.id,
+            )
+            raw = {}
+            proveedor_nombre = "historicos"
+    else:
+        # Sin un trabajo parecido no hay ancla: no se le pide al modelo que invente un monto.
         raw = {}
         proveedor_nombre = "historicos"
 
@@ -97,13 +116,15 @@ def generar_estimacion(
     otros = _as_decimal(raw.get("otros"))
     total = _as_decimal(raw.get("total"))
 
-    if total <= 0 and refs:
+    if not refs:
+        materiales, mano_obra, otros, total = _desglose_orientativo(
+            reclamo.categoria, reclamo.prioridad.value
+        )
+    elif total <= 0:
         promedio = sum((r.monto_ajustado for r in refs), Decimal("0")) / len(refs)
         materiales = (promedio * Decimal("0.40")).quantize(Decimal("0.01"))
         mano_obra = (promedio * Decimal("0.50")).quantize(Decimal("0.01"))
         otros = (promedio * Decimal("0.10")).quantize(Decimal("0.01"))
-        total = materiales + mano_obra + otros
-    elif total <= 0:
         total = materiales + mano_obra + otros
 
     try:
@@ -136,12 +157,7 @@ def generar_estimacion(
         "meta_inflacion": meta_inflacion,
         "validacion": validacion,
     }
-    if validacion.get("motivo") == "sin_referencias":
-        detalle["aviso"] = (
-            "No hay datos históricos similares para basar esta estimación. "
-            "Se recomienda inspección técnica presencial antes de la aprobación."
-        )
-    elif validacion.get("motivo") == "desvio_vs_historicos":
+    if validacion.get("motivo") == "desvio_vs_historicos":
         detalle["aviso"] = (
             "El total se aleja de los costos históricos similares; conviene revisarlo."
         )
@@ -335,6 +351,11 @@ def _justificacion_coherente(
     cuerpo = _alinear_confianza_en_justificacion(texto, confianza)
     cuerpo = _formatear_cifras_ars(cuerpo)
     cuerpo = _quitar_afirmaciones_contradictorias(cuerpo, validacion)
+    if validacion.get("motivo") in ("sin_referencias", "promedio_refs_invalido"):
+        return (
+            cuerpo
+            or "No hay trabajos históricos similares para estimar un costo."
+        )
     desglose = (
         f"El desglose de esta estimación es materiales {_fmt_ars(materiales)}, "
         f"mano de obra {_fmt_ars(mano_obra)} y otros {_fmt_ars(otros)} "
@@ -400,8 +421,8 @@ def _justificacion_estimacion(raw: dict, refs, validacion: dict) -> str:
     motivo = validacion.get("motivo")
     if motivo in ("sin_referencias", "promedio_refs_invalido"):
         return (
-            "No hay trabajos históricos similares para anclar los montos. "
-            "La cifra es orientativa; conviene una inspección técnica antes de aprobar."
+            "Sin precedentes históricos. El monto es orientativo para el rubro "
+            "y no sale de un trabajo parecido."
         )
     if refs:
         ancla = (
@@ -412,6 +433,16 @@ def _justificacion_estimacion(raw: dict, refs, validacion: dict) -> str:
             return f"{ancla} El total se aleja del promedio de esos trabajos; conviene revisarlo."
         return f"{ancla} El total quedó alineado con esos precedentes."
     return "Estimación preliminar sin ancla histórica suficiente."
+
+
+def _desglose_orientativo(categoria: str, prioridad: str) -> tuple[Decimal, Decimal, Decimal, Decimal]:
+    """Monto de referencia por rubro cuando no hay un trabajo histórico parecido."""
+    base = _ORIENTATIVOS_ARS.get(categoria) or _ORIENTATIVOS_ARS["Otro"]
+    factor = {"ALTA": Decimal("1.25"), "BAJA": Decimal("0.85")}.get(prioridad, Decimal("1"))
+    materiales = (base[0] * factor).quantize(Decimal("0.01"))
+    mano_obra = (base[1] * factor).quantize(Decimal("0.01"))
+    otros = (base[2] * factor).quantize(Decimal("0.01"))
+    return materiales, mano_obra, otros, materiales + mano_obra + otros
 
 
 def _as_decimal(value) -> Decimal:

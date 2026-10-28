@@ -25,6 +25,7 @@ vi.mock('../../layout/NotificationBell', () => ({ avisarNotificacionesCambiaron:
 vi.mock('../../utils/notifications', () => ({ notifyError: vi.fn(), notifySuccess: vi.fn() }));
 vi.mock('../../utils/auth', () => ({
   esAdministrador: () => true,
+  esContratista: () => false,
   esInspector: () => false,
   getUsuarioActual: () => ({ id: 1 }),
 }));

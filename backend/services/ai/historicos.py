@@ -44,7 +44,7 @@ def buscar_referencias(
     limit: int = 5,
     umbral: float = 0.15,
 ) -> list[ReferenciaAjustada]:
-    """Misma categoría + similitud Jaccard; montos ajustados por IPC."""
+    """Misma categoría y palabras en común; montos ajustados por IPC."""
     tokens_q = _tokens(descripcion)
     candidatos = (
         db.query(ReferenciaCosto)
@@ -60,11 +60,15 @@ def buscar_referencias(
 
     resultados: list[ReferenciaAjustada] = []
     for ref in candidatos:
-        sim = _jaccard(tokens_q, _tokens(ref.descripcion))
+        # El plus por categoría no alcanza para entrar: si no hay palabras en común,
+        # una fila genérica (por ejemplo un diagnóstico eléctrico en "Otro") se
+        # pegaba a cualquier reclamo de esa categoría y la estimación copiaba ese texto.
+        texto = _jaccard(tokens_q, _tokens(ref.descripcion))
+        if texto < umbral:
+            continue
+        sim = texto
         if categoria and ref.categoria.lower() == categoria.strip().lower():
             sim = min(1.0, sim + 0.15)
-        if sim < umbral and len(candidatos) > 3:
-            continue
         monto_aj, meta = inflacion.ajustar_monto(db, Decimal(ref.monto_ars), ref.fecha_referencia)
         resultados.append(
             ReferenciaAjustada(

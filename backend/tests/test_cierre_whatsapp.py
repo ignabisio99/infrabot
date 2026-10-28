@@ -250,6 +250,47 @@ def test_reporte_de_avance_100_por_ciento_y_termine_cierra(
 # --- Pieza 3: resolución de la escuela --------------------------------------------------
 
 
+def test_si_ok_o_dale_en_ejecucion_no_cierra_el_reclamo(db, crear_reclamo):
+    """Esas palabras solo cierran el reclamo si antes se preguntó si quedó resuelto."""
+    telefono = "5491177001122"
+    reclamo = crear_reclamo(estado=EstadoReclamo.EN_EJECUCION, telefono_creador=telefono)
+    reiniciar_conversacion(telefono)
+
+    for texto in ("si", "ok", "dale"):
+        reiniciar_conversacion(telefono)
+        procesar_mensaje(db, texto, usuario=telefono)
+        db.refresh(reclamo)
+        assert reclamo.estado == EstadoReclamo.EN_EJECUCION
+
+
+def test_si_cierra_si_ya_se_le_pregunto_a_la_escuela(
+    db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista
+):
+    contratista = crear_contratista()
+    contratista.telefono = "5491122334466"
+    telefono = "5491177001133"
+    reclamo = crear_reclamo(estado=EstadoReclamo.EN_EJECUCION, telefono_creador=telefono)
+    crear_presupuesto_aprobado(
+        reclamo, items=[(1, 100)], fecha_aprobacion=reclamo.fecha_creacion, contratista=contratista
+    )
+    db.add(
+        RecordatorioContratista(
+            reclamo_id=reclamo.id,
+            ultimo_envio=datetime.now(timezone.utc),
+            cantidad_envios=1,
+            consulto_escuela=True,
+        )
+    )
+    db.flush()
+    reiniciar_conversacion(telefono)
+
+    with patch("core.whatsapp_client.enviar_mensaje"), patch("core.whatsapp_client.enviar_botones"):
+        respuesta = procesar_mensaje(db, "dale", usuario=telefono)
+
+    assert "finalizado" in respuesta.lower()
+    assert reclamo.estado == EstadoReclamo.FINALIZADO
+
+
 def test_escuela_confirma_resuelto_finaliza(
     db, crear_reclamo, crear_presupuesto_aprobado, crear_contratista
 ):

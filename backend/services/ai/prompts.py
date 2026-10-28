@@ -57,6 +57,8 @@ está dentro del rango: el sistema valida el desvío. No inventes un desglose di
 al de materiales/mano_obra/otros/total que devolviste en el JSON.
 Si te pasan precedentes históricos ya ajustados por inflación, usalos como ancla
 (no te alejes más de ~30% del promedio salvo justificación).
+Si no hay precedentes, la estimación no aplica: devolvé materiales, mano de obra,
+otros y total en cero. No inventes un costo de mercado.
 No apruebes ni ejecutes trabajos; solo estimás."""
 
 SYSTEM_AUDITORIA_NOTAS = """Sos un auditor técnico-económico de presupuestos escolares.
@@ -215,7 +217,11 @@ def user_estimacion(
             "nunca por un id numérico interno ni por un número de confianza."
         )
     else:
-        partes.append("Sin precedentes históricos suficientes.")
+        partes.append(
+            "Sin precedentes históricos suficientes. "
+            "La estimación no aplica: devolvé materiales, mano de obra, otros y total en cero. "
+            "No inventes un monto."
+        )
     return "\n".join(partes)
 
 

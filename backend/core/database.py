@@ -89,9 +89,13 @@ def asegurar_columna_autor_foto(bind=engine):
 def asegurar_columnas_seguimiento(bind=engine):
     """Agrega las columnas del seguimiento de obra si las tablas ya existían sin ellas."""
     faltantes = {
+        "reclamo": {
+            "alta_whatsapp": "BOOLEAN NOT NULL DEFAULT FALSE",
+        },
         "visita": {
             "pregunta_inicio_enviada": "TIMESTAMP WITH TIME ZONE",
             "disponibilidad_pausada": "BOOLEAN NOT NULL DEFAULT FALSE",
+            "eleccion_pausada": "BOOLEAN NOT NULL DEFAULT FALSE",
         },
         "recordatorio_contratista": {
             "proxima_pregunta": "TIMESTAMP WITH TIME ZONE",
@@ -108,6 +112,13 @@ def asegurar_columnas_seguimiento(bind=engine):
             for columna, tipo in columnas.items():
                 if columna not in existentes:
                     conn.execute(text(f"ALTER TABLE {tabla} ADD COLUMN {columna} {tipo}"))
+        if "reclamo" in tablas:
+            conn.execute(
+                text(
+                    "UPDATE reclamo SET alta_whatsapp = TRUE "
+                    "WHERE alta_whatsapp = FALSE AND telefono_creador ILIKE 'sim%'"
+                )
+            )
 
 
 def asegurar_columna_pregunta_inicio_enviada(bind=engine):

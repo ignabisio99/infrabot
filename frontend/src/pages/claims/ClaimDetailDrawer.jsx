@@ -52,7 +52,7 @@ import { historialPorTelefono } from '../../api/conversaciones';
 import { formatoMoneda } from '../../utils/formatters';
 import { avisarNotificacionesCambiaron } from '../../layout/NotificationBell';
 import { formatearIdReclamo } from '../../utils/ids';
-import { esAdministrador, esInspector, getUsuarioActual } from '../../utils/auth';
+import { esAdministrador, esContratista, esInspector, getUsuarioActual } from '../../utils/auth';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 import { HiloChat } from '../conversaciones/HiloChat';
 import { BudgetRequestsList } from './BudgetRequestsList';
@@ -462,6 +462,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
   const proximoPaso = reclamo ? proximoPasoPorEstado[reclamo.estado] : null;
   const esAdmin = esAdministrador();
   const inspector = esInspector();
+  const contratista = esContratista();
   const puedeCambiarEstado = esAdmin && (reclamo?.estados_posibles?.length ?? 0) > 0;
   const puedeNotificar = esAdmin && reclamo?.estado === 'PENDIENTE_PRESUPUESTO';
   const pendienteIntervencion = reclamo?.estado === 'PENDIENTE_INTERVENCION';
@@ -594,7 +595,9 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
               <Group gap={6} c="dimmed">
                 <IconBrandWhatsapp size={15} color="var(--mantine-color-teal-6)" />
                 <Text size="sm">
-                  Creado desde WhatsApp por{' '}
+                  {reclamo.alta_whatsapp
+                    ? 'Creado desde WhatsApp por '
+                    : 'Creado desde la plataforma para '}
                   <Text span fw={600} c="dark">
                     {reclamo.telefono_creador}
                   </Text>
@@ -635,7 +638,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
             </Alert>
           )}
 
-          {proximoPaso && (
+          {proximoPaso && !contratista && (
             <Paper
               radius="md"
               p="sm"
@@ -760,11 +763,13 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
             )}
           </Paper>
 
-          <Tabs defaultValue="avance" classNames={tabsClasses}>
+          <Tabs defaultValue={contratista ? 'fotos' : 'avance'} classNames={tabsClasses}>
             <Tabs.List>
-              <Tabs.Tab value="avance" leftSection={<IconHistory size={16} />}>
-                Avance
-              </Tabs.Tab>
+              {!contratista && (
+                <Tabs.Tab value="avance" leftSection={<IconHistory size={16} />}>
+                  Avance
+                </Tabs.Tab>
+              )}
               <Tabs.Tab value="fotos" leftSection={<IconPhoto size={16} />}>
                 Fotos
               </Tabs.Tab>
@@ -779,7 +784,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
               >
                 Inspección
               </Tabs.Tab>
-              {!inspector && (
+              {esAdmin && (
                 <Tabs.Tab value="ia" leftSection={<IconSparkles size={16} />}>
                   IA
                 </Tabs.Tab>
@@ -791,6 +796,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
               )}
             </Tabs.List>
 
+            {!contratista && (
             <Tabs.Panel value="avance" pt="md">
               {historial.length === 0 ? (
                 <Text c="dimmed" size="sm">
@@ -838,6 +844,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
                 </Timeline>
               )}
             </Tabs.Panel>
+            )}
 
             <Tabs.Panel value="fotos" pt="md">
               <ClaimPhotosManager
@@ -883,7 +890,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
               />
             </Tabs.Panel>
 
-            {!inspector && (
+            {esAdmin && (
               <Tabs.Panel value="ia" pt="md">
                 <ClaimIAPanel
                   reclamo={reclamo}
