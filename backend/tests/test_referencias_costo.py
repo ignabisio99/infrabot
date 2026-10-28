@@ -3,7 +3,32 @@ from decimal import Decimal
 from pathlib import Path
 
 from models.referencia_costo import ReferenciaCosto
+from services.ai import historicos
 from services.referencias_costo import cargar_referencias_si_faltan, sincronizar_desde_csv
+
+
+def test_la_misma_categoria_sin_palabras_en_comun_no_es_un_precedente(db, monkeypatch):
+    monkeypatch.setattr(
+        "services.ai.historicos.inflacion.ajustar_monto",
+        lambda _db, monto, _fecha: (monto, {}),
+    )
+    db.add(
+        ReferenciaCosto(
+            categoria="Otro",
+            descripcion="Trabajo general de mantenimiento menor (visita de diagnóstico eléctrico)",
+            monto_ars=Decimal("36000"),
+            fecha_referencia=date(2026, 10, 22),
+            fuente="appmaestro:mo-2026-10",
+            activo=True,
+        )
+    )
+    db.flush()
+
+    refs = historicos.buscar_referencias(
+        db, categoria="Otro", descripcion="se murieron 3 pibes"
+    )
+
+    assert refs == []
 
 
 def test_carga_csv_solo_si_faltan(db, tmp_path):

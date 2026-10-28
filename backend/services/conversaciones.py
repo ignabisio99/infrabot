@@ -90,6 +90,20 @@ def variantes_telefono(telefono: str) -> list[str]:
     return list(variantes)
 
 
+def clave_telefono(telefono: str) -> str:
+    """Últimos 8 dígitos, sin el 54 ni los ceros de adelante.
+
+    Así +54123445444443, 123445444443 y sim123445444443 son la misma charla.
+    """
+    digitos = re.sub(r"\D", "", telefono or "")
+    if digitos.startswith("54") and len(digitos) > 10:
+        digitos = digitos[2:]
+    digitos = digitos.lstrip("0")
+    if len(digitos) >= 8:
+        return digitos[-8:]
+    return digitos
+
+
 def expiracion_media() -> datetime:
     return datetime.now(timezone.utc) + timedelta(days=media_ttl_dias())
 
@@ -579,11 +593,14 @@ def bandeja(db: Session, operador_id: int) -> dict[str, list[Conversacion]]:
 
 
 def _query_mensajes_telefono(db: Session, telefono: str):
-    return (
-        db.query(MensajeConversacion)
-        .options(joinedload(MensajeConversacion.operador))
-        .filter(MensajeConversacion.telefono.in_(variantes_telefono(telefono)))
-    )
+    q = db.query(MensajeConversacion).options(joinedload(MensajeConversacion.operador))
+    clave = clave_telefono(telefono)
+    if not clave:
+        return q.filter(MensajeConversacion.id == -1)
+    digitos = func.regexp_replace(MensajeConversacion.telefono, r"[^0-9]", "", "g")
+    if len(clave) >= 8:
+        return q.filter(func.right(digitos, 8) == clave)
+    return q.filter(digitos == clave)
 
 
 def mensajes_de_telefono(
@@ -811,7 +828,12 @@ _PEDIDO_OPERADOR = re.compile(
 )
 
 
-def pedir_operador(texto: str) -> bool:
+def pedir_operador(texto: str, *, solo_comando: bool = False) -> bool:
+    """True si el mensaje pide un operador.
+
+    Con `solo_comando` no mira el texto adentro de una frase: en el alta de un
+    reclamo, "se rompió el operador de la bomba" es la descripción, no un pedido.
+    """
     t = (texto or "").strip().lower()
     if not t:
         return False
@@ -823,6 +845,8 @@ def pedir_operador(texto: str) -> bool:
         "hablar con alguien",
     ):
         return True
+    if solo_comando:
+        return False
     return bool(_PEDIDO_OPERADOR.search(t))
 
 

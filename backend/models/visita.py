@@ -50,6 +50,9 @@ class Visita(Base):
     # El contratista escribió *cancelar* mientras cargaba disponibilidad: el bot no lo
     # vuelve a meter en la carga hasta que escriba *cargar horario <id del reclamo>*.
     disponibilidad_pausada = Column(Boolean, nullable=False, default=False)
+    # La escuela escribió *cancelar* mientras elegía un horario: el bot no la vuelve a
+    # meter en la elección hasta que escriba *elegir horario <id del reclamo>*.
+    eleccion_pausada = Column(Boolean, nullable=False, default=False)
 
     fecha_creacion = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

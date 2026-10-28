@@ -3,8 +3,11 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
+from core.dependencies import get_current_admin
 from core.whatsapp_handler import _conversaciones, procesar_mensaje, registrar_estado_conversacion
+from main import app
 from models.reclamo import EstadoReclamo
+from models.usuario import TipoUsuario, Usuario
 from models.visita import EstadoVisita
 from services import coordinacion_visita
 
@@ -187,6 +190,55 @@ def test_cancelar_la_carga_de_horario_no_lo_vuelve_a_meter_hasta_retomarla(
         assert _conversaciones[tel] == {"paso": "visita_disponibilidad", "visita_id": visita.id}
 
 
+def test_cancelar_la_eleccion_de_la_escuela_sale_hasta_que_la_retoma(
+    db, crear_reclamo, crear_contratista, crear_visita
+):
+    from core.whatsapp_handler import reiniciar_conversacion
+
+    escuela = "5491100007777"
+    contratista = crear_contratista()
+    reclamo = crear_reclamo(
+        estado=EstadoReclamo.PENDIENTE_COORDINACION, telefono_creador=escuela
+    )
+    visita = crear_visita(
+        reclamo,
+        fecha_visita=None,
+        estado=EstadoVisita.ESPERANDO_ELECCION,
+        contratista=contratista,
+    )
+    art = timezone(timedelta(hours=-3))
+    visita.disponibilidades = (datetime.now(timezone.utc).astimezone(art) + timedelta(days=3)).strftime(
+        "%d/%m/%Y 10:00"
+    )
+    db.flush()
+    reiniciar_conversacion(escuela)
+    registrar_estado_conversacion(escuela, {"paso": "visita_eleccion", "visita_id": visita.id})
+
+    respuesta = procesar_mensaje(db, "cancelar", usuario=escuela)
+
+    assert f"elegir horario {reclamo.id}" in respuesta
+    assert "número de la opción" not in respuesta
+    assert visita.eleccion_pausada is True
+    assert visita.estado == EstadoVisita.ESPERANDO_ELECCION
+    assert escuela not in _conversaciones
+
+    otro = procesar_mensaje(db, "hola", usuario=escuela)
+    assert escuela not in _conversaciones or _conversaciones[escuela].get("paso") != "visita_eleccion"
+
+    # Sin el estado en memoria (reinicio), "cancelar" tampoco se lee como un número.
+    visita.eleccion_pausada = False
+    db.flush()
+    respuesta = procesar_mensaje(db, "cancelar", usuario=escuela)
+    assert f"elegir horario {reclamo.id}" in respuesta
+    assert "número de la opción" not in respuesta
+    assert visita.eleccion_pausada is True
+
+    retomada = procesar_mensaje(db, f"elegir horario {reclamo.id}", usuario=escuela)
+    assert "1." in retomada
+    assert visita.eleccion_pausada is False
+    assert _conversaciones[escuela]["paso"] == "visita_eleccion"
+
+
 def test_cargar_horario_de_un_reclamo_ajeno_no_lo_retoma(
     db, crear_reclamo, crear_contratista, crear_visita
 ):
@@ -199,3 +251,73 @@ def test_cargar_horario_de_un_reclamo_ajeno_no_lo_retoma(
 
     assert "No tenés una visita pendiente" in r
     assert visita.disponibilidad_pausada is True
+
+
+def test_listo_sin_whatsapp_no_trata_las_fechas_como_invalidas(
+    db, crear_reclamo, crear_contratista, crear_visita
+):
+    contratista = crear_contratista()
+    contratista.telefono = "5491100006666"
+    reclamo = crear_reclamo(estado=EstadoReclamo.PENDIENTE_COORDINACION, telefono_creador=None)
+    visita = crear_visita(
+        reclamo,
+        fecha_visita=None,
+        estado=EstadoVisita.ESPERANDO_DISPONIBILIDAD,
+        contratista=contratista,
+    )
+    registrar_estado_conversacion(
+        contratista.telefono, {"paso": "visita_disponibilidad", "visita_id": visita.id}
+    )
+    art = timezone(timedelta(hours=-3))
+    futura = (datetime.now(timezone.utc).astimezone(art) + timedelta(days=3)).strftime("%d/%m 10:00")
+
+    with patch("services.coordinacion_visita._enviar"):
+        procesar_mensaje(db, futura, usuario=contratista.telefono)
+        respuesta = procesar_mensaje(db, "listo", usuario=contratista.telefono)
+
+    assert "WhatsApp" in respuesta
+    assert "opción válida" not in respuesta
+    db.refresh(visita)
+    assert visita.estado == EstadoVisita.ESPERANDO_DISPONIBILIDAD
+    assert visita.disponibilidades == coordinacion_visita.formatear_opcion(futura)
+
+    reclamo.telefono_creador = "5491199990000"
+    db.flush()
+    with patch("services.coordinacion_visita._enviar"):
+        respuesta = procesar_mensaje(db, "listo", usuario=contratista.telefono)
+
+    assert "Le pasé tus opciones" in respuesta
+    db.refresh(visita)
+    assert visita.estado == EstadoVisita.ESPERANDO_ELECCION
+
+
+_ALTA = {
+    "nombre_escuela": "Escuela Nueva",
+    "ubicacion": "Mitre 1",
+    "prioridad": "MEDIA",
+    "categoria": "Plomería",
+    "descripcion": "Pérdida de agua en el baño de planta baja.",
+}
+
+
+def test_alta_web_copia_el_telefono_del_usuario(client):
+    admin = Usuario(
+        nombre="Admin",
+        email="admin-tel@test.local",
+        password_hash="x",
+        tipo=TipoUsuario.ADMINISTRADOR,
+        telefono="011-4555-1234",
+    )
+    app.dependency_overrides[get_current_admin] = lambda: admin
+
+    respuesta = client.post("/reclamos", json=_ALTA)
+
+    assert respuesta.status_code == 201
+    assert respuesta.json()["telefono_creador"] == "+5401145551234"
+
+
+def test_alta_web_prioriza_el_whatsapp_del_formulario(client):
+    respuesta = client.post("/reclamos", json={**_ALTA, "telefono_creador": "11 9999-0000"})
+
+    assert respuesta.status_code == 201
+    assert respuesta.json()["telefono_creador"] == "+541199990000"

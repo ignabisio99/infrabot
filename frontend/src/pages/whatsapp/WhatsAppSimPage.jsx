@@ -106,11 +106,10 @@ export function WhatsAppSimPage() {
       if (salientes && salientes.length > 0) {
         setMensajes((actuales) => {
           const idsExistentes = new Set(actuales.map((m) => m.id));
-          const textosExistentes = new Set(actuales.filter((m) => m.de === 'bot').map((m) => m.texto));
           const nuevos = [];
 
           for (const s of salientes) {
-            if (!idsExistentes.has(s.id) && !textosExistentes.has(s.body)) {
+            if (!idsExistentes.has(s.id)) {
               nuevos.push({
                 id: s.id,
                 de: 'bot',
@@ -120,7 +119,6 @@ export function WhatsAppSimPage() {
                 tipo: s.tipo,
               });
               idsExistentes.add(s.id);
-              textosExistentes.add(s.body);
             }
           }
 
@@ -189,6 +187,7 @@ export function WhatsAppSimPage() {
 
     const tick = async () => {
       try {
+        await sincronizarMensajesBot(origen);
         const lista = await listarMensajesSim(origen, despuesDeRef.current || undefined);
         if (cancelado) return;
         const nuevos = lista.filter((m) => !idsServidor.current.has(m.id));

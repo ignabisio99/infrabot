@@ -24,7 +24,7 @@ def test_el_menu_es_siempre_nuevo_buscar_y_humano():
             "🔍 Buscar reclamo",
             "🙋 Hablar con humano",
         ]
-        assert botones[0]["id"] == ("libre" if ia else "nuevo")
+        assert botones[0]["id"] == "nuevo"
 
 
 def test_sin_consultas_muestra_los_ultimos_cargados(db, crear_reclamo):

@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
 import pytest
 
 from core.dependencies import get_current_admin
 from core.storage import UPLOADS_DIR
-from core.whatsapp_handler import procesar_mensaje
+from core.whatsapp_handler import procesar_mensaje, reiniciar_conversacion
 from main import app
 from models.conversacion import Conversacion, EstadoConversacion
 from models.mensaje_conversacion import AutorMensaje, MensajeConversacion, TipoMensaje
@@ -49,6 +50,28 @@ def test_menu_incluye_boton_hablar_con_humano(db):
 
     pedido = procesar_mensaje(db, "operador", usuario=ORIGEN)
     assert "operador" in str(pedido).lower()
+    assert convs.activa(db, ORIGEN) is not None
+
+
+def test_operador_en_una_frase_no_cancela_el_alta(db):
+    reiniciar_conversacion(ORIGEN)
+    procesar_mensaje(db, "nuevo", usuario=ORIGEN)
+
+    respuesta = procesar_mensaje(db, "Jardín del operador 12", usuario=ORIGEN)
+
+    assert convs.activa(db, ORIGEN) is None
+    cuerpo = respuesta["body"] if isinstance(respuesta, dict) else str(respuesta)
+    assert "pasando con un operador" not in cuerpo.lower()
+
+
+def test_operador_solo_sigue_pasando_a_una_persona_durante_el_alta(db):
+    reiniciar_conversacion(ORIGEN)
+    procesar_mensaje(db, "nuevo", usuario=ORIGEN)
+
+    respuesta = procesar_mensaje(db, "operador", usuario=ORIGEN)
+
+    cuerpo = respuesta["body"] if isinstance(respuesta, dict) else str(respuesta)
+    assert "pasando con un operador" in cuerpo.lower()
     assert convs.activa(db, ORIGEN) is not None
 
 
@@ -246,9 +269,32 @@ def test_fuera_de_horario_no_crea_conversacion(monkeypatch, db):
 
     respuesta = procesar_mensaje(db, "operador", usuario=ORIGEN)
     cuerpo = respuesta["body"] if isinstance(respuesta, dict) else respuesta
-    assert cuerpo == "Cerrado ahora, volvé mañana."
+    assert cuerpo.startswith("Cerrado ahora, volvé mañana.")
+    assert [b["id"] for b in respuesta["botones"]] == ["nuevo", "buscar_reclamo", "operador"]
     assert convs.activa(db, ORIGEN) is None
     assert db.query(Conversacion).filter(Conversacion.telefono == ORIGEN).count() == 0
+
+
+def test_fuera_de_horario_no_sigue_el_paso_del_alta(monkeypatch, db):
+    from core.whatsapp_handler import _conversaciones
+
+    reiniciar_conversacion(ORIGEN)
+    procesar_mensaje(db, "nuevo", usuario=ORIGEN)
+    assert _conversaciones[ORIGEN]["paso"] == "escuela"
+    monkeypatch.setattr(
+        "services.configuracion_atencion.dentro_de_atencion",
+        lambda _db, ahora=None: False,
+    )
+
+    procesar_mensaje(db, "operador", usuario=ORIGEN)
+    assert ORIGEN not in _conversaciones
+
+    siguiente = procesar_mensaje(db, "hola", usuario=ORIGEN)
+    cuerpo = siguiente["body"] if isinstance(siguiente, dict) else str(siguiente)
+    assert "No entendí" not in cuerpo
+    assert "Paso 2" not in cuerpo
+    assert _conversaciones.get(ORIGEN, {}).get("paso") != "ubicacion"
+    assert any(b["id"] == "nuevo" for b in (siguiente.get("botones") or []))
 
 
 def test_tomar_deja_el_nombre_del_operador_en_el_sistema(client, db):
@@ -343,6 +389,17 @@ def test_timeout_cierra_si_ultimo_es_operador(db):
     convs.correr_timeouts(db)
     db.refresh(conv)
     assert conv.estado == EstadoConversacion.CERRADA
+
+
+def test_el_chat_del_reclamo_encuentra_el_numero_del_simulador(client, db):
+    _admin_persistido(db, email="admin-clave-tel@test.local")
+    convs.registrar_entrante(db, "sim123445444443", texto="se rompió un caño")
+    db.commit()
+
+    respuesta = client.get(f"/conversaciones/telefono/{quote('+54123445444443')}/historial")
+
+    assert respuesta.status_code == 200
+    assert [m["texto"] for m in respuesta.json()["mensajes"]] == ["se rompió un caño"]
 
 
 def test_historial_telefono_devuelve_los_ultimos_y_pagina_hacia_atras(client, db):

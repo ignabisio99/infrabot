@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
 import { Calendar, dayjsLocalizer } from 'react-big-calendar';
 import dayjs from 'dayjs';
 import {
@@ -18,7 +17,6 @@ import {
 import { IconArrowRight } from '@tabler/icons-react';
 
 import { listarVisitas } from '../../api/visitas';
-import { esAdministrador } from '../../utils/auth';
 import { formatearIdReclamo } from '../../utils/ids';
 import { ClaimDetailDrawer } from '../claims/ClaimDetailDrawer';
 
@@ -102,7 +100,6 @@ function BarraCalendario({ date, label, onNavigate, onView, view }) {
 const componentes = { toolbar: BarraCalendario };
 
 export function CalendarPage() {
-  const navigate = useNavigate();
   const [fecha, setFecha] = useState(new Date());
   // En celular el mes queda en 7 columnas finitas: arranca en Agenda, que es una lista.
   const [vista, setVista] = useState(() =>
@@ -115,12 +112,8 @@ export function CalendarPage() {
   const [reclamoId, setReclamoId] = useState(null);
 
   const abrirReclamo = (id) => {
-    if (esAdministrador()) {
-      setVisitaSeleccionada(null);
-      setReclamoId(id);
-      return;
-    }
-    navigate(`/portal/reclamos/${id}/presupuestar`);
+    setVisitaSeleccionada(null);
+    setReclamoId(id);
   };
 
   useEffect(() => {

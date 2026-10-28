@@ -72,8 +72,11 @@ class Reclamo(Base):
     descripcion = Column(Text, nullable=False)
     observaciones = Column(Text, nullable=True)
     requiere_revision = Column(Boolean, nullable=False, default=False)
-    # Número de WhatsApp de quien creó el reclamo por el bot. Null si se creó desde la web.
+    # WhatsApp al que se le ofrecen los horarios de la visita. El bot lo llena con el
+    # número que escribe; el alta web, con el teléfono de quien carga el reclamo.
     telefono_creador = Column(String(50), nullable=True)
+    # True solo si el reclamo se cargó por el bot. El alta web queda en false.
+    alta_whatsapp = Column(Boolean, nullable=False, default=False, server_default="false")
     fecha_creacion = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     fotos = relationship(

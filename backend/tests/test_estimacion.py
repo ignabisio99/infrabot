@@ -185,11 +185,13 @@ def test_generar_sin_precedentes_confianza_baja_no_45(db, crear_reclamo, monkeyp
         estimacion = generar_estimacion(db, reclamo, transicionar=False)
 
         assert estimacion.requiere_revision is True
+        assert estimacion.total > 0
+        assert estimacion.materiales > 0
         assert estimacion.confianza <= 0.30
         assert estimacion.confianza != 0.45
         out = EstimacionPreliminarOut.model_validate(estimacion)
         assert out.sin_precedentes is True
         assert out.justificacion
-        assert "históric" in out.justificacion.lower() or "inspección" in out.justificacion.lower() or "mock" in out.justificacion.lower()
+        assert "sin precedentes históricos" in out.justificacion.lower()
     finally:
         reset_llm_provider_cache()

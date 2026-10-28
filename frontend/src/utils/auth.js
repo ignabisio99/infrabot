@@ -21,3 +21,8 @@ export function esInspector() {
   const usuario = getUsuarioActual();
   return usuario?.tipo === 'INSPECTOR';
 }
+
+export function esContratista() {
+  const usuario = getUsuarioActual();
+  return usuario?.tipo === 'CONTRATISTA';
+}

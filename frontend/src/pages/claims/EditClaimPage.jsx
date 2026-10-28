@@ -26,6 +26,7 @@ export function EditClaimPage() {
           category: reclamo.categoria,
           description: reclamo.descripcion,
           observations: reclamo.observaciones ?? '',
+          phone: reclamo.telefono_creador ?? '',
         }),
       )
       .catch((err) => setErrorCarga(err.message))

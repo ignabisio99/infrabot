@@ -219,6 +219,8 @@ def estado_conversacion_pendiente(db: Session, telefono: str) -> dict | None:
     )
     for visita in visitas_elec:
         reclamo = db.get(Reclamo, visita.reclamo_id)
+        if visita.eleccion_pausada:
+            continue
         if reclamo and _mismo_numero(reclamo.telefono_creador, telefono):
             return {"paso": "visita_eleccion", "visita_id": visita.id}
 
@@ -229,6 +231,45 @@ def pausar_disponibilidad(db: Session, visita: Visita) -> None:
     """El contratista canceló la carga: se la deja en pausa hasta que la retome."""
     visita.disponibilidad_pausada = True
     db.commit()
+
+
+def pausar_eleccion(db: Session, visita: Visita) -> None:
+    """La escuela canceló la elección: no se la vuelve a ofrecer hasta que la retome."""
+    visita.eleccion_pausada = True
+    db.commit()
+
+
+def _visitas_esperando_eleccion_de(db: Session, telefono: str) -> list[Visita]:
+    visitas = (
+        db.query(Visita)
+        .filter(Visita.estado == EstadoVisita.ESPERANDO_ELECCION)
+        .order_by(Visita.id.desc())
+        .all()
+    )
+    propias = []
+    for visita in visitas:
+        reclamo = db.get(Reclamo, visita.reclamo_id)
+        if reclamo and _mismo_numero(reclamo.telefono_creador, telefono):
+            propias.append(visita)
+    return propias
+
+
+def elecciones_pausadas(db: Session, telefono: str) -> list[Visita]:
+    return [
+        visita
+        for visita in _visitas_esperando_eleccion_de(db, telefono)
+        if visita.eleccion_pausada
+    ]
+
+
+def retomar_eleccion(db: Session, telefono: str, reclamo_id: int) -> Visita | None:
+    """*elegir horario <id>*: vuelve a la elección de la visita de ese reclamo."""
+    for visita in _visitas_esperando_eleccion_de(db, telefono):
+        if visita.reclamo_id == reclamo_id:
+            visita.eleccion_pausada = False
+            db.commit()
+            return visita
+    return None
 
 
 def retomar_disponibilidad(db: Session, telefono: str, reclamo_id: int) -> Visita | None:
@@ -356,6 +397,7 @@ def finalizar_disponibilidad(db: Session, visita: Visita) -> tuple[bool, str | N
     # Actualizar para conservar solo las vigentes
     visita.disponibilidades = "\n".join(opciones_vigentes)
     visita.estado = EstadoVisita.ESPERANDO_ELECCION
+    visita.eleccion_pausada = False
     contratista = db.get(Contratista, visita.contratista_id)
     nombre = contratista.nombre_empresa if contratista else "el contratista"
     _anotar_horarios_propuestos(db, reclamo, contratista, opciones_vigentes)
@@ -374,7 +416,8 @@ def finalizar_disponibilidad(db: Session, visita: Visita) -> tuple[bool, str | N
         f"🗓️ *Coordinación de visita — Reclamo #{reclamo.id}*\n\n"
         f"{nombre} propuso estos horarios para hacer la visita de trabajo:\n\n"
         f"{lineas}\n\n"
-        "Respondé con el *número* de la opción que te quede mejor (ej: *1*).",
+        "Respondé con el *número* de la opción que te quede mejor (ej: *1*).\n"
+        "Si ahora no podés elegir, escribí *cancelar*.",
     )
     return True, None
 
@@ -780,6 +823,7 @@ def reprogramar_visita(db: Session, visita: Visita, *, avisar: bool = True) -> b
     # Volver a dejar la visita pidiendo disponibilidad y limpiar lo coordinado.
     visita.estado = EstadoVisita.ESPERANDO_DISPONIBILIDAD
     visita.disponibilidad_pausada = False
+    visita.eleccion_pausada = False
     visita.disponibilidades = None
     visita.horario_confirmado = None
     visita.fecha_visita = None

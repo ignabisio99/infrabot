@@ -14,6 +14,7 @@ from core.dependencies import (
     get_current_user,
 )
 from core.storage import TIPOS_MEDIA, TIPOS_VIDEO, ArchivoInvalido, storage
+from core.telefonos import normalizar_telefono_ar
 from core.email import enviar_solicitud_presupuesto
 from core.whatsapp_client import enviar_mensaje
 from core.whatsapp_handler import iniciar_espera_info
@@ -108,8 +109,14 @@ def _email_del_contratista(db: Session, contratista: Contratista) -> str | None:
 
 
 @router.post("", response_model=ReclamoOut, status_code=201)
-def crear_reclamo(reclamo: ReclamoCreate, db: Session = Depends(get_db), _admin: Usuario = Depends(get_current_admin)):
-    nuevo_reclamo = Reclamo(**reclamo.model_dump(), estado=estados_reclamo.ESTADO_INICIAL)
+def crear_reclamo(reclamo: ReclamoCreate, db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_admin)):
+    datos = reclamo.model_dump()
+    # Sin este número el contratista carga fechas y el bot las descarta: no tiene a
+    # quién pedirle que elija un horario.
+    if not datos.get("telefono_creador"):
+        crudo = (usuario.telefono or "").strip()
+        datos["telefono_creador"] = normalizar_telefono_ar(crudo) if crudo else None
+    nuevo_reclamo = Reclamo(**datos, estado=estados_reclamo.ESTADO_INICIAL)
     db.add(nuevo_reclamo)
     estados_reclamo.registrar_estado_inicial(db, nuevo_reclamo)
     db.commit()
@@ -147,7 +154,8 @@ def actualizar_reclamo(reclamo_id: int, datos: ReclamoCreate, db: Session = Depe
         raise HTTPException(status_code=404, detail="Reclamo no encontrado")
     # `estado` no está en ReclamoCreate a propósito: sólo se mueve por
     # POST /reclamos/{id}/estado, que valida la transición y deja historial.
-    for campo, valor in datos.model_dump().items():
+    # Un PUT que no manda el teléfono (el formulario viejo) no tiene que borrarlo.
+    for campo, valor in datos.model_dump(exclude_unset=True).items():
         setattr(reclamo, campo, valor)
     db.commit()
     db.refresh(reclamo)

@@ -15,16 +15,19 @@ import { IconMicrophone } from '@tabler/icons-react';
 
 import { transcribirAudio } from '../../api/ai';
 import { buscarInstituciones } from '../../api/instituciones';
+import { PhoneInput } from '../../components/PhoneInput';
 import { useGrabarAudio } from '../../hooks/useGrabarAudio';
+import { getUsuarioActual } from '../../utils/auth';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 
-const valoresPorDefecto = {
+export const valoresPorDefecto = {
   schoolName: '',
   sector: '',
   priority: '',
   category: '',
   description: '',
   observations: '',
+  phone: '',
 };
 
 export function SchoolClaimForm({
@@ -37,7 +40,11 @@ export function SchoolClaimForm({
   const [transcribiendo, setTranscribiendo] = useState(false);
   const { grabando, empezar, detener } = useGrabarAudio();
   const form = useForm({
-    initialValues,
+    initialValues: {
+      ...valoresPorDefecto,
+      ...initialValues,
+      phone: initialValues.phone || getUsuarioActual()?.telefono || '',
+    },
     validate: {
       schoolName: (value) => (value.length < 3 ? 'Ingrese el nombre de la escuela' : null),
       sector: (value) => (value.length < 2 ? 'Ingrese la dirección de la escuela' : null),
@@ -110,12 +117,22 @@ export function SchoolClaimForm({
       categoria: values.category,
       descripcion: values.description,
       observaciones: values.observations.trim() === '' ? null : values.observations,
+      telefono_creador: values.phone.trim() === '' ? null : values.phone,
     });
   };
 
   return (
     <form onSubmit={form.onSubmit(handleSubmit)}>
       <Stack>
+        <PhoneInput
+          label="WhatsApp para coordinar la visita"
+          description="A este número el bot le manda los horarios para que elija uno. Si lo dejás vacío, usa el teléfono de tu usuario."
+          value={form.values.phone}
+          error={form.errors.phone}
+          onChange={(phone) => form.setFieldValue('phone', phone)}
+          onBlur={() => form.validateField('phone')}
+        />
+
         <Autocomplete
           label="Escuela"
           placeholder="Buscá por número o nombre, ej: Primaria 10"

@@ -218,7 +218,9 @@ def avanzar_tiempo(
         res_seguimiento = seguimiento.ejecutar_seguimiento(db)
         for d in res_seguimiento.detalles:
             acciones.append(d["detalle"])
-        if res_seguimiento.enviados > 0:
+        # El paso a desierto no manda un mensaje (enviados queda en 0). Sin este
+        # commit el cambio se pierde al cerrar la sesión y el reclamo sigue en ejecución.
+        if res_seguimiento.enviados > 0 or res_seguimiento.escalados > 0:
             db.commit()
     except Exception as e:
         acciones.append(f"⚠️ Error al ejecutar seguimiento: {e}")

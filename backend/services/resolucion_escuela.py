@@ -19,6 +19,7 @@ from models.comentario_reclamo import ComentarioReclamo
 from models.historial_estado_reclamo import OrigenCambioEstado
 from models.presupuesto import Presupuesto
 from models.reclamo import EstadoReclamo, Reclamo
+from models.recordatorio_contratista import RecordatorioContratista
 from services import estados_reclamo
 
 
@@ -56,6 +57,25 @@ def reclamo_en_ejecucion_del_creador(db: Session, telefono: str) -> Reclamo | No
         if reclamo.telefono_creador and _mismo_numero(reclamo.telefono_creador, telefono):
             return reclamo
     return None
+
+
+def reclamo_esperando_confirmacion(db: Session, telefono: str) -> Reclamo | None:
+    """Reclamo en ejecución al que ya se le preguntó a la escuela si quedó resuelto.
+
+    Un "sí", "ok" o "dale" suelto no alcanza: esa respuesta solo cierra el reclamo
+    después de la pregunta.
+    """
+    reclamo = reclamo_en_ejecucion_del_creador(db, telefono)
+    if reclamo is None:
+        return None
+    fila = (
+        db.query(RecordatorioContratista)
+        .filter(RecordatorioContratista.reclamo_id == reclamo.id)
+        .first()
+    )
+    if fila is None or not fila.consulto_escuela:
+        return None
+    return reclamo
 
 
 def mensaje_finalizado(reclamo: Reclamo) -> str:
