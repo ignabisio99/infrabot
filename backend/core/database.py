@@ -69,6 +69,26 @@ def asegurar_columna_detalle_tarea(bind=engine):
         conn.execute(text("ALTER TABLE presupuesto ADD COLUMN detalle_tarea TEXT"))
 
 
+def asegurar_columna_ultimo_aviso(bind=engine):
+    """Agrega `solicitud_presupuesto.fecha_ultimo_aviso` si la tabla ya existía sin esa
+    columna. Las solicitudes viejas toman la fecha del pedido: hasta ahora el reenvío no
+    quedaba registrado."""
+    inspector = inspect(bind)
+    if "solicitud_presupuesto" not in inspector.get_table_names():
+        return
+    columnas = {columna["name"] for columna in inspector.get_columns("solicitud_presupuesto")}
+    if "fecha_ultimo_aviso" in columnas:
+        return
+    with bind.begin() as conn:
+        conn.execute(
+            text(
+                "ALTER TABLE solicitud_presupuesto "
+                "ADD COLUMN fecha_ultimo_aviso TIMESTAMP WITH TIME ZONE"
+            )
+        )
+        conn.execute(text("UPDATE solicitud_presupuesto SET fecha_ultimo_aviso = fecha_solicitud"))
+
+
 def asegurar_columna_autor_foto(bind=engine):
     """Agrega `foto_reclamo.usuario_id` si la tabla ya existía sin esa columna."""
     inspector = inspect(bind)
@@ -207,3 +227,59 @@ def asegurar_emails_unicos(bind=engine):
         conn.execute(
             text("CREATE UNIQUE INDEX IF NOT EXISTS uq_usuario_email_lower ON usuario (lower(email))")
         )
+
+
+def cancelar_visitas_de_reclamos_cancelados(bind=engine):
+    """Da de baja las visitas que quedaron vivas en reclamos ya cancelados.
+
+    Antes, cancelar el reclamo no tocaba la visita y el scheduler seguía mandando los
+    recordatorios. Ahora lo hace `estados_reclamo.cambiar_estado`; esto arregla las que
+    quedaron de antes.
+    """
+    with bind.begin() as conn:
+        conn.execute(
+            text(
+                """
+                UPDATE visita SET estado = 'CANCELADA'
+                FROM reclamo
+                WHERE reclamo.id = visita.reclamo_id
+                  AND reclamo.estado = 'CANCELADO'
+                  AND visita.estado <> 'CANCELADA'
+                """
+            )
+        )
+
+
+def asegurar_baja_de_contratistas(bind=engine):
+    """Agrega `contratista.fecha_baja` y pasa a RESTRICT las FKs que cuelgan del contratista.
+
+    Con CASCADE, borrar un contratista se llevaba sus presupuestos, visitas y
+    convocatorias, y con ellos el expediente de reclamos ya cerrados.
+    """
+    inspector = inspect(bind)
+    tablas = inspector.get_table_names()
+    if "contratista" not in tablas:
+        return
+    with bind.begin() as conn:
+        conn.execute(
+            text(
+                "ALTER TABLE contratista "
+                "ADD COLUMN IF NOT EXISTS fecha_baja TIMESTAMP WITH TIME ZONE"
+            )
+        )
+        for tabla in ("presupuesto", "visita", "solicitud_presupuesto"):
+            if tabla not in tablas:
+                continue
+            for fk in inspector.get_foreign_keys(tabla):
+                if fk["referred_table"] != "contratista":
+                    continue
+                if fk["options"].get("ondelete") == "RESTRICT":
+                    continue
+                columnas = ", ".join(fk["constrained_columns"])
+                conn.execute(text(f'ALTER TABLE {tabla} DROP CONSTRAINT "{fk["name"]}"'))
+                conn.execute(
+                    text(
+                        f'ALTER TABLE {tabla} ADD CONSTRAINT "{fk["name"]}" '
+                        f"FOREIGN KEY ({columnas}) REFERENCES contratista(id) ON DELETE RESTRICT"
+                    )
+                )

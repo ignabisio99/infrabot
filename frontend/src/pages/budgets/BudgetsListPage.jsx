@@ -24,6 +24,7 @@ import { formatoMoneda } from '../../utils/formatters';
 import { TarjetaMovil } from '../../components/TarjetaMovil';
 import { useEsMobile } from '../../hooks/useEsMobile';
 import { StatusFilterPopover } from '../claims/StatusFilterPopover';
+import { DadoDeBajaBadge } from '../contractors/DadoDeBajaBadge';
 import { BudgetAuditModal } from './BudgetAuditModal';
 import { BudgetItemsModal } from './BudgetItemsModal';
 import { BudgetStatusBadge } from './BudgetStatusBadge';
@@ -222,7 +223,15 @@ export function BudgetsListPage() {
                   </>
                 }
                 campos={[
-                  { etiqueta: 'Contratista', valor: presupuesto.contratista.nombre_empresa },
+                  {
+                    etiqueta: 'Contratista',
+                    valor: (
+                      <>
+                        {presupuesto.contratista.nombre_empresa}
+                        {presupuesto.contratista.fecha_baja && <DadoDeBajaBadge ml={6} size="xs" />}
+                      </>
+                    ),
+                  },
                   { etiqueta: 'Monto', valor: formatoMoneda.format(Number(presupuesto.monto)) },
                   { etiqueta: 'Fecha', valor: new Date(presupuesto.fecha).toLocaleString('es-AR') },
                   {
@@ -275,6 +284,7 @@ export function BudgetsListPage() {
                     <Table.Td>{presupuesto.reclamo.nombre_escuela}</Table.Td>
                     <Table.Td>
                       {presupuesto.contratista.nombre_empresa}
+                      {presupuesto.contratista.fecha_baja && <DadoDeBajaBadge ml={6} size="xs" />}
                       {badgesOferta(presupuesto, anteriores)}
                     </Table.Td>
                     <Table.Td>{formatoMoneda.format(Number(presupuesto.monto))}</Table.Td>

@@ -6,10 +6,38 @@ const contratistasApi = crearRecursoApi({
 });
 
 export const crearContratista = contratistasApi.crear;
-export const listarContratistas = contratistasApi.listar;
 export const obtenerContratista = contratistasApi.obtener;
 export const actualizarContratista = contratistasApi.actualizar;
-export const eliminarContratista = contratistasApi.eliminar;
+
+/** Sin `incluirBaja`, sólo los activos: los que se pueden convocar. */
+export async function listarContratistas({ incluirBaja = false } = {}) {
+  const query = incluirBaja ? '?incluir_baja=true' : '';
+  const response = await fetchConAuth(`${API_URL}/contratistas${query}`);
+  if (!response.ok) {
+    throw new Error('No se pudo obtener el listado de contratistas.');
+  }
+  return response.json();
+}
+
+/** No lo borra: deja de aparecer para convocar y conserva su historial. */
+export async function darDeBajaContratista(id) {
+  const response = await fetchConAuth(`${API_URL}/contratistas/${id}`, { method: 'DELETE' });
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(extraerMensajeError(error?.detail, 'No se pudo dar de baja al contratista.'));
+  }
+}
+
+export async function reactivarContratista(id) {
+  const response = await fetchConAuth(`${API_URL}/contratistas/${id}/reactivar`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(extraerMensajeError(error?.detail, 'No se pudo reactivar al contratista.'));
+  }
+  return response.json();
+}
 
 /**
  * Devuelve la ficha de Contratista vinculada al usuario logueado.

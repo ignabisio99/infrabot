@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -28,6 +29,7 @@ from models.usuario import EstadoUsuario, TipoUsuario, Usuario
 from models.historial_estado_presupuesto import HistorialEstadoPresupuesto
 from models.historial_estado_reclamo import HistorialEstadoReclamo
 from schemas.lista_contratistas import (
+    ContratistaYaNotificado,
     NotificacionResultado,
     NotificarContratistasIn,
     NotificarContratistasOut,
@@ -52,6 +54,7 @@ from schemas.reclamo import (
 from services import (
     acceso_reclamos,
     avisos_presupuesto,
+    coordinacion_visita,
     estados_presupuesto,
     estados_reclamo,
     solicitudes_inspeccion,
@@ -173,6 +176,8 @@ def cambiar_estado_reclamo(
     # Las ofertas en carrera se quedan sin evaluación: sin el aviso, el contratista
     # seguiría esperando una decisión o corrigiendo algo que ya no sirve.
     vigentes = [p for p in reclamo.presupuestos if estados_presupuesto.esta_vigente(p)]
+    # Se busca antes del cambio: cancelar el reclamo cancela también la visita.
+    visita = coordinacion_visita.visita_vigente(db, reclamo)
 
     try:
         estados_reclamo.cambiar_estado(
@@ -188,6 +193,8 @@ def cambiar_estado_reclamo(
     if reclamo.estado is EstadoReclamo.CANCELADO:
         for presupuesto in vigentes:
             avisos_presupuesto.avisar_reclamo_cancelado(db, presupuesto, datos.motivo)
+        if visita is not None:
+            coordinacion_visita.avisar_visita_cancelada(db, visita, datos.motivo)
     return reclamo
 
 
@@ -567,7 +574,13 @@ def notificar_contratistas(
         lista = db.get(ListaContratistas, datos.lista_id)
         if lista is None:
             raise HTTPException(status_code=404, detail="Lista no encontrada")
-        contratistas = list(lista.contratistas)
+        # Siguen en la lista por si se los reactiva, pero no se los convoca.
+        contratistas = [c for c in lista.contratistas if not c.dado_de_baja]
+        if lista.contratistas and not contratistas:
+            raise HTTPException(
+                status_code=422,
+                detail="Todos los contratistas de la lista están dados de baja",
+            )
     elif datos.contratista_ids:
         contratistas = db.query(Contratista).filter(Contratista.id.in_(datos.contratista_ids)).all()
         encontrados = {c.id for c in contratistas}
@@ -575,6 +588,13 @@ def notificar_contratistas(
         if faltantes:
             raise HTTPException(
                 status_code=404, detail=f"Contratistas no encontrados: {sorted(faltantes)}"
+            )
+        dados_de_baja = [c.nombre_empresa for c in contratistas if c.dado_de_baja]
+        if dados_de_baja:
+            raise HTTPException(
+                status_code=409,
+                detail=f"No se puede convocar a {', '.join(dados_de_baja)}: "
+                + ("está dado de baja" if len(dados_de_baja) == 1 else "están dados de baja"),
             )
     else:
         raise HTTPException(
@@ -584,6 +604,40 @@ def notificar_contratistas(
 
     if not contratistas:
         raise HTTPException(status_code=422, detail="No hay contratistas para notificar")
+
+    previas = {
+        s.contratista_id: s
+        for s in db.query(SolicitudPresupuesto).filter(
+            SolicitudPresupuesto.reclamo_id == reclamo_id,
+            SolicitudPresupuesto.contratista_id.in_([c.id for c in contratistas]),
+        )
+    }
+    if previas and datos.ya_notificados == "preguntar":
+        con_presupuesto = {
+            contratista_id
+            for (contratista_id,) in db.query(Presupuesto.contratista_id).filter(
+                Presupuesto.reclamo_id == reclamo_id,
+                Presupuesto.contratista_id.in_(previas),
+            )
+        }
+        ya_notificados = [
+            ContratistaYaNotificado(
+                contratista_id=c.id,
+                nombre_empresa=c.nombre_empresa,
+                fecha_ultimo_aviso=previas[c.id].fecha_ultimo_aviso,
+                presupuesto_cargado=c.id in con_presupuesto,
+            ).model_dump(mode="json")
+            for c in contratistas
+            if c.id in previas
+        ]
+        raise HTTPException(status_code=409, detail={"ya_notificados": ya_notificados})
+    if datos.ya_notificados == "omitir":
+        contratistas = [c for c in contratistas if c.id not in previas]
+        if not contratistas:
+            raise HTTPException(
+                status_code=422,
+                detail="Todos los contratistas elegidos ya fueron notificados para este reclamo",
+            )
 
     link = f"{APP_URL}/portal/reclamos/{reclamo_id}/presupuestar"
     mensaje = (
@@ -628,16 +682,9 @@ def notificar_contratistas(
         ok = ok or ok_email
         if ok:
             enviados += 1
-            # Registrar la solicitud (idempotente: no duplicar si ya existía)
-            ya_existe = (
-                db.query(SolicitudPresupuesto)
-                .filter(
-                    SolicitudPresupuesto.reclamo_id == reclamo_id,
-                    SolicitudPresupuesto.contratista_id == c.id,
-                )
-                .first()
-            )
-            if not ya_existe:
+            if c.id in previas:
+                previas[c.id].fecha_ultimo_aviso = datetime.now(timezone.utc)
+            else:
                 db.add(SolicitudPresupuesto(reclamo_id=reclamo_id, contratista_id=c.id))
 
         resultados.append(
@@ -702,6 +749,7 @@ def listar_solicitudes_presupuesto(
             nombre_empresa=c.nombre_empresa if c else "—",
             especialidad=c.especialidad if c else "—",
             telefono=c.telefono if c else "—",
+            contratista_dado_de_baja=bool(c and c.dado_de_baja),
             fecha_solicitud=s.fecha_solicitud,
         )
         ofertas = presupuestos_por_contratista.get(s.contratista_id, [])
@@ -745,6 +793,10 @@ def solicitar_informacion(
 
     # Nombre del contratista que solicita (si tiene ficha vinculada)
     ficha = db.query(Contratista).filter(Contratista.usuario_id == usuario.id).first()
+    if ficha is not None and ficha.dado_de_baja:
+        raise HTTPException(
+            status_code=403, detail="Tu ficha de contratista está dada de baja: no podés presupuestar."
+        )
     nombre_contratista = ficha.nombre_empresa if ficha else usuario.nombre
 
     mensaje = (

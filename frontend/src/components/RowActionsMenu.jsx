@@ -3,6 +3,7 @@ import { IconDots, IconEdit, IconTrash } from '@tabler/icons-react';
 
 // `extraItems` permite sumar acciones propias de una entidad (ej. cambiar el estado
 // de un reclamo) sin que este componente, que es compartido, las tenga que conocer.
+// Sin `onDelete` no se muestra la acción de eliminar.
 export function RowActionsMenu({
   onEdit,
   onDelete,
@@ -10,6 +11,8 @@ export function RowActionsMenu({
   extraItems,
   editDisabled = false,
   deleteDisabled = false,
+  deleteLabel = 'Eliminar',
+  deletingLabel = 'Eliminando...',
 }) {
   return (
     <Menu position="bottom-end" withinPortal shadow="sm">
@@ -28,14 +31,16 @@ export function RowActionsMenu({
           Editar
         </Menu.Item>
         {extraItems}
-        <Menu.Item
-          color="red"
-          leftSection={<IconTrash size={14} />}
-          onClick={onDelete}
-          disabled={deleting || deleteDisabled}
-        >
-          {deleting ? 'Eliminando...' : 'Eliminar'}
-        </Menu.Item>
+        {onDelete && (
+          <Menu.Item
+            color="red"
+            leftSection={<IconTrash size={14} />}
+            onClick={onDelete}
+            disabled={deleting || deleteDisabled}
+          >
+            {deleting ? deletingLabel : deleteLabel}
+          </Menu.Item>
+        )}
       </Menu.Dropdown>
     </Menu>
   );

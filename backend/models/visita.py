@@ -26,7 +26,7 @@ class Visita(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     reclamo_id = Column(Integer, ForeignKey("reclamo.id", ondelete="CASCADE"), nullable=False)
     contratista_id = Column(
-        Integer, ForeignKey("contratista.id", ondelete="CASCADE"), nullable=False
+        Integer, ForeignKey("contratista.id", ondelete="RESTRICT"), nullable=False
     )
     estado = Column(
         Enum(EstadoVisita, name="estado_visita"),

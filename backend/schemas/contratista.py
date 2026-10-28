@@ -72,6 +72,7 @@ class ContratistaOut(_ContratistaCampos):
 
     id: int
     usuario_id: int | None = None
+    fecha_baja: datetime | None = None
 
 
 class MiSolicitudOut(BaseModel):

@@ -32,8 +32,7 @@ export function ContractorListsPage() {
   const [guardando, setGuardando] = useState(false);
   const [eliminandoId, setEliminandoId] = useState(null);
 
-  const cargar = () => {
-    setCargando(true);
+  const cargar = () =>
     Promise.all([listarListas(), listarContratistas()])
       .then(([listasData, contratistasData]) => {
         setListas(listasData);
@@ -41,7 +40,6 @@ export function ContractorListsPage() {
       })
       .catch((err) => setErrorCarga(err.message))
       .finally(() => setCargando(false));
-  };
 
   useEffect(() => {
     cargar();
@@ -68,6 +66,7 @@ export function ContractorListsPage() {
       setModalAbierto(false);
       setNombre('');
       setSeleccionados([]);
+      setCargando(true);
       cargar();
     } catch (error) {
       notifyError(error?.message);
@@ -106,7 +105,9 @@ export function ContractorListsPage() {
       )}
 
       {!cargando && !errorCarga && listas.length === 0 && (
-        <Text c="dimmed">Todavía no hay listas creadas. Creá una para notificar contratistas más rápido.</Text>
+        <Text c="dimmed">
+          Todavía no hay listas creadas. Creá una para notificar contratistas más rápido.
+        </Text>
       )}
 
       <Stack>
@@ -119,6 +120,11 @@ export function ContractorListsPage() {
                 <Text size="sm" c="dimmed">
                   ({lista.contratistas.length} contratistas)
                 </Text>
+                {lista.contratistas.some((c) => c.fecha_baja) && (
+                  <Text size="sm" c="dimmed">
+                    · los dados de baja no se notifican
+                  </Text>
+                )}
               </Group>
               <ActionIcon
                 color="red"
@@ -131,7 +137,11 @@ export function ContractorListsPage() {
               </ActionIcon>
             </Group>
             <Text size="sm" c="dimmed">
-              {lista.contratistas.map((c) => c.nombre_empresa).join(', ')}
+              {lista.contratistas
+                .map((c) =>
+                  c.fecha_baja ? `${c.nombre_empresa} (dado de baja)` : c.nombre_empresa,
+                )
+                .join(', ')}
             </Text>
           </Card>
         ))}

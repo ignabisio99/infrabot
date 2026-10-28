@@ -141,6 +141,14 @@ export function PresupuestarReclamoPage() {
       .then(([reclamoData, fichaData, base]) => {
         setReclamo(reclamoData);
         setMiFicha(fichaData);
+        if (fichaData.fecha_baja) {
+          setCerrado({
+            titulo: 'Tu ficha de contratista está dada de baja',
+            texto:
+              'No podés cargar ni modificar presupuestos. Si creés que es un error, contactá a un administrador.',
+          });
+          return;
+        }
         if (!base) return;
         if (!base.editable) {
           // Una oferta rechazada o sin seleccionar no impide cargar otra mientras la

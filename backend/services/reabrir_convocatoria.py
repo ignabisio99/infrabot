@@ -14,7 +14,6 @@ from models.historial_estado_reclamo import OrigenCambioEstado
 from models.presupuesto import EstadoPresupuesto, Presupuesto
 from models.reclamo import EstadoReclamo, Reclamo
 from models.recordatorio_contratista import RecordatorioContratista
-from models.visita import EstadoVisita, Visita
 from services import coordinacion_visita, estados_presupuesto, estados_reclamo
 from services.seguimiento import quitar_lineas_marca_intervencion
 
@@ -57,9 +56,11 @@ def listar_ofertas_reutilizables(db: Session, reclamo: Reclamo) -> list[OfertaRe
     filas = (
         db.query(Presupuesto)
         .options(joinedload(Presupuesto.contratista), joinedload(Presupuesto.items))
+        .join(Presupuesto.contratista)
         .filter(
             Presupuesto.reclamo_id == reclamo.id,
             Presupuesto.estado == EstadoPresupuesto.NO_SELECCIONADO,
+            Contratista.fecha_baja.is_(None),
         )
         .all()
     )
@@ -126,6 +127,8 @@ def asignar_oferta_existente(
         raise ReaperturaInvalida(
             "Solo se puede elegir una oferta que había quedado sin seleccionar"
         )
+    if elegido.contratista.dado_de_baja:
+        raise ReaperturaInvalida(f"{elegido.contratista.nombre_empresa} está dado de baja")
 
     anterior = aprobado.contratista
     _rechazar_aprobado_y_limpiar(db, reclamo, aprobado, texto, usuario_id)
@@ -184,10 +187,7 @@ def _rechazar_aprobado_y_limpiar(
         usuario_id=usuario_id,
         origen=OrigenCambioEstado.AUTOMATICO,
     )
-    visitas = db.query(Visita).filter(Visita.reclamo_id == reclamo.id).all()
-    for visita in visitas:
-        if visita.estado != EstadoVisita.CANCELADA:
-            visita.estado = EstadoVisita.CANCELADA
+    coordinacion_visita.cancelar_visitas(db, reclamo)
     reclamo.observaciones = quitar_lineas_marca_intervencion(reclamo.observaciones)
     db.query(RecordatorioContratista).filter(
         RecordatorioContratista.reclamo_id == reclamo.id

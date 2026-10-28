@@ -14,7 +14,7 @@ import {
 } from '@mantine/core';
 import { IconMapPin } from '@tabler/icons-react';
 
-import { listarMisSolicitudes } from '../../api/contratistas';
+import { listarMisSolicitudes, obtenerMiFicha } from '../../api/contratistas';
 import { formatearIdReclamo } from '../../utils/ids';
 import { BudgetStatusBadge } from '../budgets/BudgetStatusBadge';
 import { estaVigente } from '../budgets/estados';
@@ -39,10 +39,14 @@ export function MySolicitudesPage() {
   const [solicitudes, setSolicitudes] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
+  const [dadoDeBaja, setDadoDeBaja] = useState(false);
 
   useEffect(() => {
-    listarMisSolicitudes()
-      .then(setSolicitudes)
+    Promise.all([listarMisSolicitudes(), obtenerMiFicha()])
+      .then(([solicitudesData, ficha]) => {
+        setSolicitudes(solicitudesData);
+        setDadoDeBaja(Boolean(ficha.fecha_baja));
+      })
       .catch((err) => setError(err.message))
       .finally(() => setCargando(false));
   }, []);
@@ -58,6 +62,13 @@ export function MySolicitudesPage() {
       {error && (
         <Alert color="red" title="No se pudieron cargar tus solicitudes">
           {error}
+        </Alert>
+      )}
+
+      {dadoDeBaja && (
+        <Alert color="gray" title="Tu ficha de contratista está dada de baja" mb="md">
+          No podés cargar ni modificar presupuestos. Si creés que es un error, contactá a un
+          administrador.
         </Alert>
       )}
 
@@ -98,9 +109,11 @@ export function MySolicitudesPage() {
                   )}
                 </Group>
               ) : (
-                <Badge color="orange" variant="light">
-                  Pendiente de cargar
-                </Badge>
+                !dadoDeBaja && (
+                  <Badge color="orange" variant="light">
+                    Pendiente de cargar
+                  </Badge>
+                )
               )}
             </Group>
 

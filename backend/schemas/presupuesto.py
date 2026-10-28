@@ -116,6 +116,7 @@ class ContratistaResumen(BaseModel):
 
     id: int
     nombre_empresa: str
+    fecha_baja: datetime | None = None
 
 
 class PresupuestoOut(BaseModel):
