@@ -9,7 +9,7 @@ import { BudgetItemsModal } from '../budgets/BudgetItemsModal';
 import { BudgetStatusBadge } from '../budgets/BudgetStatusBadge';
 import { DadoDeBajaBadge } from '../contractors/DadoDeBajaBadge';
 
-export function BudgetRequestsList({ reclamoId }) {
+export function BudgetRequestsList({ reclamoId, onDecidido }) {
   const [solicitudes, setSolicitudes] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
@@ -120,6 +120,7 @@ export function BudgetRequestsList({ reclamoId }) {
           listarSolicitudesPresupuesto(reclamoId)
             .then(setSolicitudes)
             .catch(() => {});
+          onDecidido?.();
         }}
       />
     </>

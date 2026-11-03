@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buscarDuplicados, listarRecomendaciones, obtenerEstimacion } from '../../api/ai';
 import { listarSolicitudesPresupuesto } from '../../api/listasContratistas';
+import { obtenerPresupuesto } from '../../api/presupuestos';
 import {
   listarComentariosReclamo,
   listarSolicitudesInspeccion,
@@ -21,6 +22,11 @@ vi.mock('../../api/conversaciones');
 vi.mock('../../api/listasContratistas');
 vi.mock('../../api/presupuestos');
 vi.mock('../../api/reclamos');
+// Solo interesa que avise que se decidió; los modales de decisión tienen sus propios tests.
+vi.mock('../budgets/BudgetItemsModal', () => ({
+  BudgetItemsModal: ({ presupuesto, onDecidido }) =>
+    presupuesto ? <button onClick={onDecidido}>Decidir (simulado)</button> : null,
+}));
 vi.mock('../../layout/NotificationBell', () => ({ avisarNotificacionesCambiaron: vi.fn() }));
 vi.mock('../../utils/notifications', () => ({ notifyError: vi.fn(), notifySuccess: vi.fn() }));
 vi.mock('../../utils/auth', () => ({
@@ -102,5 +108,43 @@ describe('ClaimDetailDrawer', () => {
     expect(
       screen.queryByRole('button', { name: 'Cambiar estado del reclamo' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('al decidir un presupuesto recarga el reclamo y avisa al listado', async () => {
+    obtenerReclamo
+      .mockResolvedValueOnce(
+        crearReclamo({ estado: 'EN_EVALUACION', estados_posibles: ['CANCELADO'] }),
+      )
+      .mockResolvedValue(crearReclamo({ estado: 'APROBADO', estados_posibles: ['CANCELADO'] }));
+    listarSolicitudesPresupuesto.mockResolvedValue([
+      {
+        contratista_id: 2,
+        nombre_empresa: 'Plomería Integral',
+        especialidad: 'Plomería',
+        presupuesto_cargado: true,
+        presupuesto_id: 7,
+        presupuesto_estado: 'RECIBIDO',
+        presupuesto_fecha: '2026-11-03T10:00:00Z',
+        version: 1,
+      },
+    ]);
+    obtenerPresupuesto.mockResolvedValue({ id: 7 });
+    const onReclamoActualizado = vi.fn();
+    const { user } = render(
+      <ClaimDetailDrawer
+        reclamoId={1}
+        onClose={vi.fn()}
+        onReclamoActualizado={onReclamoActualizado}
+      />,
+    );
+
+    expect(await screen.findByText('Evaluar presupuestos')).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Presupuestos' }));
+    await user.click(await screen.findByText('Plomería Integral'));
+    await user.click(await screen.findByRole('button', { name: 'Decidir (simulado)' }));
+
+    expect(await screen.findByText('Iniciar coordinación')).toBeInTheDocument();
+    expect(obtenerReclamo).toHaveBeenCalledTimes(2);
+    expect(onReclamoActualizado).toHaveBeenCalledOnce();
   });
 });

@@ -797,53 +797,56 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
             </Tabs.List>
 
             {!contratista && (
-            <Tabs.Panel value="avance" pt="md">
-              {historial.length === 0 ? (
-                <Text c="dimmed" size="sm">
-                  Todavía no hay movimientos registrados.
-                </Text>
-              ) : (
-                <Timeline active={eventos.length} bulletSize={24} lineWidth={2}>
-                  {eventos.map((evento, i) => {
-                    const Icono = iconoPorEstado[evento.estado_nuevo] ?? IconClipboardList;
-                    return (
-                      <Timeline.Item
-                        key={evento.id}
-                        title={<TituloEvento evento={evento} />}
-                        bullet={<Icono size={14} />}
-                        color={colorPorEstado[evento.estado_nuevo]}
-                      >
-                        {evento.motivo && (
-                          <Text size="sm" c="dimmed">
-                            {evento.motivo}
+              <Tabs.Panel value="avance" pt="md">
+                {historial.length === 0 ? (
+                  <Text c="dimmed" size="sm">
+                    Todavía no hay movimientos registrados.
+                  </Text>
+                ) : (
+                  <Timeline active={eventos.length} bulletSize={24} lineWidth={2}>
+                    {eventos.map((evento, i) => {
+                      const Icono = iconoPorEstado[evento.estado_nuevo] ?? IconClipboardList;
+                      return (
+                        <Timeline.Item
+                          key={evento.id}
+                          title={<TituloEvento evento={evento} />}
+                          bullet={<Icono size={14} />}
+                          color={colorPorEstado[evento.estado_nuevo]}
+                        >
+                          {evento.motivo && (
+                            <Text size="sm" c="dimmed">
+                              {evento.motivo}
+                            </Text>
+                          )}
+                          <Text size="xs" c="dimmed" mt={4}>
+                            {new Date(evento.fecha).toLocaleString('es-AR')}
                           </Text>
-                        )}
-                        <Text size="xs" c="dimmed" mt={4}>
-                          {new Date(evento.fecha).toLocaleString('es-AR')}
-                        </Text>
-                        {movimientosPorEvento[i].length > 0 && (
-                          <Stack gap="xs" mt="sm">
-                            {movimientosPorEvento[i].map((movimiento) => (
-                              <MovimientoPresupuesto
-                                key={`${movimiento.presupuesto_id}-${movimiento.fecha}`}
-                                movimiento={movimiento}
-                              />
-                            ))}
-                          </Stack>
-                        )}
-                        {avancesPorEvento[i].length > 0 && (
-                          <Stack gap="xs" mt="sm">
-                            {avancesPorEvento[i].map((comentario) => (
-                              <ComentarioContratista key={comentario.id} comentario={comentario} />
-                            ))}
-                          </Stack>
-                        )}
-                      </Timeline.Item>
-                    );
-                  })}
-                </Timeline>
-              )}
-            </Tabs.Panel>
+                          {movimientosPorEvento[i].length > 0 && (
+                            <Stack gap="xs" mt="sm">
+                              {movimientosPorEvento[i].map((movimiento) => (
+                                <MovimientoPresupuesto
+                                  key={`${movimiento.presupuesto_id}-${movimiento.fecha}`}
+                                  movimiento={movimiento}
+                                />
+                              ))}
+                            </Stack>
+                          )}
+                          {avancesPorEvento[i].length > 0 && (
+                            <Stack gap="xs" mt="sm">
+                              {avancesPorEvento[i].map((comentario) => (
+                                <ComentarioContratista
+                                  key={comentario.id}
+                                  comentario={comentario}
+                                />
+                              ))}
+                            </Stack>
+                          )}
+                        </Timeline.Item>
+                      );
+                    })}
+                  </Timeline>
+                )}
+              </Tabs.Panel>
             )}
 
             <Tabs.Panel value="fotos" pt="md">
@@ -906,7 +909,15 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
 
             {mostrarSolicitudes && (
               <Tabs.Panel value="presupuestos" pt="md">
-                <BudgetRequestsList reclamoId={reclamo.id} />
+                <BudgetRequestsList
+                  reclamoId={reclamo.id}
+                  // Decidir un presupuesto mueve el reclamo (ej. a Aprobado): sin recargar,
+                  // el encabezado y el próximo paso quedan en el estado anterior.
+                  onDecidido={() => {
+                    setRecarga((n) => n + 1);
+                    onReclamoActualizado?.();
+                  }}
+                />
               </Tabs.Panel>
             )}
           </Tabs>
