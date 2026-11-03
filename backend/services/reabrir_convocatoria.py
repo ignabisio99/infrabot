@@ -31,6 +31,18 @@ MOTIVO_ASIGNAR = (
     "Se elige una oferta que ya había sido enviada."
 )
 
+MOTIVO_DESIERTO_PREVIO = (
+    "El reclamo quedó desierto porque el contratista dejó de responder. "
+    "Se cancela el presupuesto que seguía aprobado."
+)
+
+# Estados en que el reclamo ya no tiene contratista. Un aprobado que quede acá hace que la
+# oferta nueva intente llevar el reclamo a APROBADO (y falle) y que su contratista no se
+# pueda dar de baja.
+ESTADOS_SIN_ADJUDICAR = frozenset(
+    {EstadoReclamo.DESIERTO, EstadoReclamo.PENDIENTE_PRESUPUESTO, EstadoReclamo.EN_EVALUACION}
+)
+
 
 class ReaperturaInvalida(Exception):
     """No se puede reabrir la convocatoria ni reasignar en este reclamo."""
@@ -92,7 +104,7 @@ def reabrir_por_inaccion(
     texto = (motivo or MOTIVO_CONVOCAR).strip()
     aprobado = _exigir_aprobado(db, reclamo)
     contratista = aprobado.contratista
-    _rechazar_aprobado_y_limpiar(db, reclamo, aprobado, texto, usuario_id)
+    rechazar_aprobado_y_limpiar(db, reclamo, aprobado, texto, usuario_id)
     estados_reclamo.cambiar_estado(
         db,
         reclamo,
@@ -131,7 +143,7 @@ def asignar_oferta_existente(
         raise ReaperturaInvalida(f"{elegido.contratista.nombre_empresa} está dado de baja")
 
     anterior = aprobado.contratista
-    _rechazar_aprobado_y_limpiar(db, reclamo, aprobado, texto, usuario_id)
+    rechazar_aprobado_y_limpiar(db, reclamo, aprobado, texto, usuario_id)
     estados_presupuesto.cambiar_estado(
         db,
         elegido,
@@ -172,7 +184,7 @@ def _exigir_aprobado(db: Session, reclamo: Reclamo) -> Presupuesto:
     return aprobado
 
 
-def _rechazar_aprobado_y_limpiar(
+def rechazar_aprobado_y_limpiar(
     db: Session,
     reclamo: Reclamo,
     aprobado: Presupuesto,
@@ -192,6 +204,43 @@ def _rechazar_aprobado_y_limpiar(
     db.query(RecordatorioContratista).filter(
         RecordatorioContratista.reclamo_id == reclamo.id
     ).delete(synchronize_session=False)
+
+
+def liberar_aprobado(db: Session, reclamo: Reclamo, motivo: str) -> Presupuesto | None:
+    """El reclamo se quedó sin contratista: rechaza su presupuesto aprobado y da de baja
+    la visita y el seguimiento. No hace commit."""
+    aprobado = (
+        db.query(Presupuesto)
+        .filter(
+            Presupuesto.reclamo_id == reclamo.id,
+            Presupuesto.estado == EstadoPresupuesto.APROBADO,
+        )
+        .first()
+    )
+    if aprobado is not None:
+        rechazar_aprobado_y_limpiar(db, reclamo, aprobado, motivo, None)
+    return aprobado
+
+
+def liberar_aprobados_de_reclamos_sin_adjudicar(db: Session) -> int:
+    """Arregla los reclamos que pasaron a desierto antes de que eso liberara el aprobado."""
+    aprobados = (
+        db.query(Presupuesto)
+        .join(Presupuesto.reclamo)
+        .filter(
+            Presupuesto.estado == EstadoPresupuesto.APROBADO,
+            Reclamo.estado.in_(ESTADOS_SIN_ADJUDICAR),
+        )
+        .all()
+    )
+    for aprobado in aprobados:
+        rechazar_aprobado_y_limpiar(db, aprobado.reclamo, aprobado, MOTIVO_DESIERTO_PREVIO, None)
+    for reclamo in {aprobado.reclamo for aprobado in aprobados}:
+        estados_reclamo.sincronizar_por_presupuestos(db, reclamo)
+    if aprobados:
+        db.commit()
+        logger.warning("Se liberaron %s presupuestos aprobados de reclamos sin contratista", len(aprobados))
+    return len(aprobados)
 
 
 def _avisar_vuelta_a_presupuestos(reclamo: Reclamo, contratista: Contratista | None) -> None:

@@ -107,6 +107,15 @@ def _validar_contratista(contratista_id: int, db: Session) -> None:
         ) from error
 
 
+def _sincronizar_reclamo(db: Session, reclamo: Reclamo) -> None:
+    try:
+        estados_reclamo.sincronizar_por_presupuestos(db, reclamo)
+    except estados_reclamo.TransicionInvalida as error:
+        raise HTTPException(
+            status_code=409, detail=f"No se pudo actualizar el estado del reclamo: {error}"
+        ) from error
+
+
 @router.post("", response_model=PresupuestoOut, status_code=201)
 def crear_presupuesto(datos: PresupuestoCreate, db: Session = Depends(get_db), user: Usuario = Depends(get_current_contratista)):
     reclamo = _obtener_reclamo_cotizable(datos.reclamo_id, db)
@@ -135,7 +144,7 @@ def crear_presupuesto(datos: PresupuestoCreate, db: Session = Depends(get_db), u
     )
     db.add(nuevo_presupuesto)
     estados_presupuesto.registrar_estado_inicial(db, nuevo_presupuesto, usuario_id=user.id)
-    estados_reclamo.sincronizar_por_presupuestos(db, reclamo)
+    _sincronizar_reclamo(db, reclamo)
     db.commit()
     db.refresh(nuevo_presupuesto)
     post_presupuesto(db, nuevo_presupuesto)
@@ -234,7 +243,7 @@ def eliminar_presupuesto(presupuesto_id: int, db: Session = Depends(get_db), use
 
     reclamo = presupuesto.reclamo
     db.delete(presupuesto)
-    estados_reclamo.sincronizar_por_presupuestos(db, reclamo)
+    _sincronizar_reclamo(db, reclamo)
     db.commit()
 
 

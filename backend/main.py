@@ -88,6 +88,7 @@ async def lifespan(app: FastAPI):
 
     from services.coordinacion_visita import normalizar_fechas_visitas
     from services.instituciones import cargar_padron_si_vacio
+    from services.reabrir_convocatoria import liberar_aprobados_de_reclamos_sin_adjudicar
     from services.recordatorios import loop_recordatorios
 
     Base.metadata.create_all(bind=engine)
@@ -117,6 +118,7 @@ async def lifespan(app: FastAPI):
     try:
         cargar_padron_si_vacio(_db_init)
         normalizar_fechas_visitas(_db_init)
+        liberar_aprobados_de_reclamos_sin_adjudicar(_db_init)
     finally:
         _db_init.close()
     stop = asyncio.Event()

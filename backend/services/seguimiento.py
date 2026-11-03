@@ -363,6 +363,10 @@ def _escalar_desierto(db: Session, reclamo: Reclamo) -> bool:
         motivo=motivo,
         origen=OrigenCambioEstado.AUTOMATICO,
     )
+    # Import local: reabrir_convocatoria importa este módulo.
+    from services.reabrir_convocatoria import liberar_aprobado
+
+    liberar_aprobado(db, reclamo, motivo)
     db.add(
         ComentarioReclamo(
             reclamo_id=reclamo.id,
