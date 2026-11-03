@@ -18,6 +18,7 @@ from models.reclamo import EstadoReclamo, Reclamo
 from models.historial_estado_reclamo import OrigenCambioEstado
 from models.recordatorio_contratista import RecordatorioContratista
 from services import estados_reclamo
+from services.estados_presupuesto import contratista_adjudicado
 
 logger = logging.getLogger(__name__)
 
@@ -156,24 +157,18 @@ def _fecha_en_ejecucion(reclamo: Reclamo):
 
 
 def _enviar(db: Session, reclamo: Reclamo, ahora: datetime) -> bool:
-    presupuesto = (
-        db.query(Presupuesto)
-        .options(joinedload(Presupuesto.contratista))
-        .filter(Presupuesto.reclamo_id == reclamo.id)
-        .order_by(Presupuesto.fecha.desc())
-        .first()
-    )
-    if presupuesto is None or presupuesto.contratista is None:
+    contratista = contratista_adjudicado(db, reclamo.id)
+    if contratista is None:
         logger.info("Seguimiento reclamo %s: sin contratista", reclamo.id)
         return False
 
-    telefono = _normalizar_telefono(presupuesto.contratista.telefono)
+    telefono = _normalizar_telefono(contratista.telefono)
     if not telefono:
         logger.info("Seguimiento reclamo %s: teléfono inválido", reclamo.id)
         return False
 
     cuerpo = (
-        f"Hola {presupuesto.contratista.nombre_empresa}, "
+        f"Hola {contratista.nombre_empresa}, "
         f"el reclamo #{reclamo.id} ({reclamo.nombre_escuela}) está en ejecución.\n\n"
         "¿Terminaste el trabajo?"
     )

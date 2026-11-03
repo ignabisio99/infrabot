@@ -5,16 +5,16 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from core import reloj
 from models.comentario_reclamo import ComentarioReclamo
 from models.foto_reclamo import FotoReclamo, TipoMedia
-from models.presupuesto import Presupuesto
 from models.reclamo import EstadoReclamo, Reclamo
 from models.historial_estado_reclamo import OrigenCambioEstado
 from models.recordatorio_contratista import RecordatorioContratista
 from services import estados_reclamo
+from services.estados_presupuesto import contratista_adjudicado
 from services.seguimiento import quitar_lineas_marca_intervencion, tiene_marca_intervencion
 
 _ESTADOS_AVANCE = frozenset(
@@ -42,14 +42,7 @@ def reclamo_en_ejecucion_de(db: Session, telefono: str) -> tuple[Reclamo, object
         .all()
     )
     for reclamo in reclamos:
-        presupuesto = (
-            db.query(Presupuesto)
-            .options(joinedload(Presupuesto.contratista))
-            .filter(Presupuesto.reclamo_id == reclamo.id)
-            .order_by(Presupuesto.fecha.desc())
-            .first()
-        )
-        contratista = presupuesto.contratista if presupuesto else None
+        contratista = contratista_adjudicado(db, reclamo.id)
         if contratista and mismo_numero(contratista.telefono, telefono):
             return reclamo, contratista
     return None

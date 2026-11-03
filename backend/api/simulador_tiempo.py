@@ -13,14 +13,13 @@ from __future__ import annotations
 
 from datetime import timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from core import reloj
 from core.database import get_db
 from core.dependencies import get_current_admin
 from core.whatsapp_client import obtener_historial_salientes
 from models.contratista import Contratista
-from models.presupuesto import Presupuesto
 from models.reclamo import EstadoReclamo, Reclamo
 from models.recordatorio_contratista import RecordatorioContratista
 from models.usuario import Usuario
@@ -33,6 +32,7 @@ from schemas.simulador_tiempo import (
     VisitaSimuladaOut,
 )
 from services import recordatorios, seguimiento
+from services.estados_presupuesto import contratista_adjudicado
 
 router = APIRouter(prefix="/simulador-tiempo", tags=["simulador-tiempo"])
 
@@ -91,14 +91,7 @@ def _construir_estado(db: Session, acciones: list[str] | None = None) -> EstadoS
 
     lista_ejecucion: list[ReclamoEjecucionSimuladoOut] = []
     for r in reclamos_ejec:
-        presupuesto = (
-            db.query(Presupuesto)
-            .options(joinedload(Presupuesto.contratista))
-            .filter(Presupuesto.reclamo_id == r.id)
-            .order_by(Presupuesto.fecha.desc())
-            .first()
-        )
-        contratista = presupuesto.contratista if presupuesto else None
+        contratista = contratista_adjudicado(db, r.id)
         recordatorio = (
             db.query(RecordatorioContratista)
             .filter(RecordatorioContratista.reclamo_id == r.id)

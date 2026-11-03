@@ -621,11 +621,9 @@ def contratista_de_reclamo_coordinado(db: Session, telefono: str):
     """Reclamo en VISITA_COORDINADA cuyo contratista coincide con el teléfono.
 
     Devuelve (reclamo, contratista) o None. Identifica al contratista por el presupuesto
-    más reciente del reclamo, igual que avance_contratista.reclamo_en_ejecucion_de.
+    aprobado, igual que avance_contratista.reclamo_en_ejecucion_de.
     """
-    from sqlalchemy.orm import joinedload
-
-    from models.presupuesto import Presupuesto
+    from services.estados_presupuesto import contratista_adjudicado
 
     reclamos = (
         db.query(Reclamo)
@@ -634,14 +632,7 @@ def contratista_de_reclamo_coordinado(db: Session, telefono: str):
         .all()
     )
     for reclamo in reclamos:
-        presupuesto = (
-            db.query(Presupuesto)
-            .options(joinedload(Presupuesto.contratista))
-            .filter(Presupuesto.reclamo_id == reclamo.id)
-            .order_by(Presupuesto.fecha.desc())
-            .first()
-        )
-        contratista = presupuesto.contratista if presupuesto else None
+        contratista = contratista_adjudicado(db, reclamo.id)
         if contratista and _mismo_numero(contratista.telefono, telefono):
             return reclamo, contratista
     return None

@@ -13,14 +13,14 @@ from __future__ import annotations
 
 import re
 
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from models.comentario_reclamo import ComentarioReclamo
 from models.historial_estado_reclamo import OrigenCambioEstado
-from models.presupuesto import Presupuesto
 from models.reclamo import EstadoReclamo, Reclamo
 from models.recordatorio_contratista import RecordatorioContratista
 from services import estados_reclamo
+from services.estados_presupuesto import contratista_adjudicado
 
 
 def _digitos(valor: str) -> str:
@@ -163,14 +163,7 @@ def registrar_resolucion(db: Session, reclamo: Reclamo, *, avisar_escuela: bool 
         _enviar(reclamo.telefono_creador, mensaje_finalizado(reclamo))
 
     # Avisar al contratista que la escuela dio por resuelto el trabajo (best-effort).
-    presupuesto = (
-        db.query(Presupuesto)
-        .options(joinedload(Presupuesto.contratista))
-        .filter(Presupuesto.reclamo_id == reclamo.id)
-        .order_by(Presupuesto.fecha.desc())
-        .first()
-    )
-    contratista = presupuesto.contratista if presupuesto else None
+    contratista = contratista_adjudicado(db, reclamo.id)
     if contratista and contratista.telefono:
         _enviar(
             contratista.telefono,

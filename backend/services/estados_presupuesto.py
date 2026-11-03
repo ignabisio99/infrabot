@@ -19,8 +19,9 @@ algo, se piden ajustes, y cada corrección es una versión nueva del mismo presu
 
 from decimal import Decimal
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
+from models.contratista import Contratista
 from models.historial_estado_presupuesto import HistorialEstadoPresupuesto
 from models.historial_estado_reclamo import OrigenCambioEstado
 from models.presupuesto import (
@@ -128,6 +129,22 @@ def ofertas_del_contratista(reclamo: Reclamo, contratista_id: int) -> list[Presu
         (p for p in reclamo.presupuestos if p.contratista_id == contratista_id),
         key=lambda p: p.id,
     )
+
+
+def contratista_adjudicado(db: Session, reclamo_id: int) -> Contratista | None:
+    """El contratista del presupuesto aprobado, que es quien hace la obra. No sirve el
+    último presupuesto cargado: suele ser una oferta que perdió."""
+    aprobado = (
+        db.query(Presupuesto)
+        .options(joinedload(Presupuesto.contratista))
+        .filter(
+            Presupuesto.reclamo_id == reclamo_id,
+            Presupuesto.estado == EstadoPresupuesto.APROBADO,
+        )
+        .order_by(Presupuesto.id.desc())
+        .first()
+    )
+    return aprobado.contratista if aprobado else None
 
 
 def puede_ofertar(reclamo: Reclamo, contratista_id: int) -> bool:
