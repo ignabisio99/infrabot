@@ -28,3 +28,24 @@ def normalizar_telefono_ar(valor: str) -> str:
     if tiene_mas:
         return f"+{digitos}"
     return f"+54{digitos}"
+
+
+def clave_telefono(valor: str | None) -> str:
+    """Los últimos 10 dígitos, que en Argentina son el número nacional: así 5491122334455,
+    +54 9 11 2233-4455, 011 2233-4455 y sim5491122334455 son el mismo número."""
+    return re.sub(r"\D", "", valor or "")[-10:]
+
+
+def mismo_telefono(a: str | None, b: str | None) -> bool:
+    clave = clave_telefono(a)
+    return bool(clave) and clave == clave_telefono(b)
+
+
+def filtro_mismo_telefono(columna, valor: str | None):
+    """`mismo_telefono` como condición SQL sobre una columna de teléfono."""
+    from sqlalchemy import false, func
+
+    clave = clave_telefono(valor)
+    if not clave:
+        return false()
+    return func.right(func.regexp_replace(columna, "[^0-9]", "", "g"), 10) == clave

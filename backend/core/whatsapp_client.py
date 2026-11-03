@@ -72,7 +72,9 @@ def limpiar_historial_salientes() -> None:
 
 
 def _normalizar_numero_ar(phone_number: str) -> str:
-    """Convierte números argentinos de formato 549xxx a 54xxx (sin el 9)."""
+    """Convierte números argentinos de formato 549xxx (o +549xxx) a 54xxx (sin el 9)."""
+    if phone_number.startswith("+549"):
+        phone_number = phone_number[1:]
     if phone_number.startswith("549"):
         phone_number = "54" + phone_number[3:]
     return phone_number

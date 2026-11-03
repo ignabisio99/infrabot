@@ -14,7 +14,7 @@ from core.dependencies import (
     get_current_user,
 )
 from core.storage import TIPOS_MEDIA, TIPOS_VIDEO, ArchivoInvalido, storage
-from core.telefonos import normalizar_telefono_ar
+from core.telefonos import mismo_telefono, normalizar_telefono_ar
 from core.email import enviar_solicitud_presupuesto
 from core.whatsapp_client import enviar_mensaje
 from core.whatsapp_handler import iniciar_espera_info
@@ -155,7 +155,12 @@ def actualizar_reclamo(reclamo_id: int, datos: ReclamoCreate, db: Session = Depe
     # `estado` no está en ReclamoCreate a propósito: sólo se mueve por
     # POST /reclamos/{id}/estado, que valida la transición y deja historial.
     # Un PUT que no manda el teléfono (el formulario viejo) no tiene que borrarlo.
-    for campo, valor in datos.model_dump(exclude_unset=True).items():
+    cambios = datos.model_dump(exclude_unset=True)
+    # Si es el mismo número, queda como lo guardó el bot: normalizado a +54 se manda a
+    # WhatsApp con otro formato y desordena las búsquedas por teléfono.
+    if mismo_telefono(cambios.get("telefono_creador"), reclamo.telefono_creador):
+        del cambios["telefono_creador"]
+    for campo, valor in cambios.items():
         setattr(reclamo, campo, valor)
     db.commit()
     db.refresh(reclamo)

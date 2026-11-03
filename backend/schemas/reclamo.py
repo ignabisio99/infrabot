@@ -10,7 +10,7 @@ from core.telefonos import normalizar_telefono_ar
 from models.usuario import TipoUsuario
 
 
-class ReclamoCreate(BaseModel):
+class ReclamoBase(BaseModel):
     nombre_escuela: str
     ubicacion: str
     prioridad: PrioridadReclamo
@@ -21,6 +21,8 @@ class ReclamoCreate(BaseModel):
     # vacío, se usa el teléfono de quien carga el reclamo.
     telefono_creador: str | None = None
 
+
+class ReclamoCreate(ReclamoBase):
     @field_validator("nombre_escuela")
     @classmethod
     def validar_nombre_escuela(cls, v):
@@ -71,7 +73,10 @@ class FotoReclamoOut(BaseModel):
     autor_tipo: TipoUsuario | None = None
 
 
-class ReclamoOut(ReclamoCreate):
+# Sin los validadores de ReclamoCreate: lo guardado se devuelve tal cual. Con ellos, un
+# reclamo del bot con un nombre corto rompía el listado entero, y el teléfono salía
+# normalizado distinto de como lo tiene el bot.
+class ReclamoOut(ReclamoBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from core import reloj
 from core.ai import config as ai_config
+from core.telefonos import filtro_mismo_telefono, mismo_telefono
 from models.busqueda_reclamo import BusquedaReclamo
 from models.foto_reclamo import FotoReclamo, TipoMedia
 from models.reclamo import EstadoReclamo, PrioridadReclamo, Reclamo
@@ -586,7 +587,7 @@ def _buscar_por_id(db: Session, reclamo_id: int, usuario: str = "") -> str:
         .first()
     )
     # Sólo se muestra si el reclamo es de este número (no espiar reclamos ajenos).
-    if not reclamo or (usuario and reclamo.telefono_creador != usuario):
+    if not reclamo or (usuario and not mismo_telefono(reclamo.telefono_creador, usuario)):
         return f"❌ No encontré un reclamo tuyo con ID #{reclamo_id}."
     if usuario:
         _registrar_busqueda(db, usuario, reclamo.id)
@@ -611,7 +612,10 @@ def _mensaje_buscar_reclamo(db: Session, usuario: str) -> str:
     buscados = (
         db.query(Reclamo)
         .join(BusquedaReclamo, BusquedaReclamo.reclamo_id == Reclamo.id)
-        .filter(BusquedaReclamo.telefono == usuario, Reclamo.telefono_creador == usuario)
+        .filter(
+            BusquedaReclamo.telefono == usuario,
+            filtro_mismo_telefono(Reclamo.telefono_creador, usuario),
+        )
         .order_by(BusquedaReclamo.fecha.desc())
         .limit(MAX_BUSQUEDAS_RECIENTES)
         .all()
@@ -624,7 +628,7 @@ def _mensaje_buscar_reclamo(db: Session, usuario: str) -> str:
         titulo = "Todavía no consultaste reclamos. Estos son los últimos que cargaste:"
         reclamos = (
             db.query(Reclamo)
-            .filter(Reclamo.telefono_creador == usuario)
+            .filter(filtro_mismo_telefono(Reclamo.telefono_creador, usuario))
             .order_by(Reclamo.fecha_creacion.desc())
             .limit(MAX_BUSQUEDAS_RECIENTES)
             .all()
@@ -681,7 +685,7 @@ def _listar_recientes(db: Session, usuario: str = "") -> str:
     reclamos = (
         db.query(Reclamo)
         .options(joinedload(Reclamo.fotos))
-        .filter(Reclamo.telefono_creador == usuario)
+        .filter(filtro_mismo_telefono(Reclamo.telefono_creador, usuario))
         .order_by(Reclamo.fecha_creacion.desc())
         .limit(5)
         .all()
