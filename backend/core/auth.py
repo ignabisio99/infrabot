@@ -40,8 +40,15 @@ def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
+def verify_password(plain_password: str, hashed_password: str | None) -> bool:
+    # Una cuenta creada con Google no tiene contraseña (hash vacío), y bcrypt no devuelve
+    # False ante un hash que no es suyo: lanza ValueError.
+    if not hashed_password:
+        return False
+    try:
+        return bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
+    except ValueError:
+        return False
 
 
 def create_access_token(data: dict, expira_en: timedelta | None = None) -> str:
