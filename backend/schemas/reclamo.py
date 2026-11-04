@@ -84,6 +84,7 @@ class ReclamoOut(ReclamoBase):
     alta_whatsapp: bool = False
     requiere_revision: bool = False
     fecha_creacion: datetime
+    fecha_ultimo_movimiento: datetime
     fotos: list[FotoReclamoOut] = []
     # Qué transiciones habilitar en la UI para este reclamo, según su estado actual.
     estados_posibles: list[EstadoReclamo]
