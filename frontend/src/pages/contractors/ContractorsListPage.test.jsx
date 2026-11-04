@@ -98,6 +98,102 @@ describe('ContractorsListPage', () => {
     expect(screen.getByText('Techos Sur')).toBeInTheDocument();
   });
 
+  it('muestra la calificación con su nivel, la observación y el teléfono formateado', async () => {
+    listarContratistas.mockResolvedValue([
+      { ...TECHOS_SUR, telefono: 'sim5491147779012', observaciones_calificacion: 'Cumple plazos' },
+      {
+        ...TECHOS_SUR,
+        id: 3,
+        nombre_empresa: 'Nuevo SRL',
+        telefono: '+5493514779012',
+        calificacion: null,
+      },
+    ]);
+    await renderPagina();
+
+    expect(screen.getByText('4/5 · Buena')).toBeInTheDocument();
+    expect(screen.getByText('Sin calificar')).toBeInTheDocument();
+    expect(screen.getByText('Cumple plazos')).toBeInTheDocument();
+    expect(screen.getByText('+54 9 11 4777-9012')).toBeInTheDocument();
+    expect(screen.getAllByText('Simulado')).toHaveLength(1);
+  });
+
+  it('busca por nombre, especialidad o teléfono y ordena por calificación', async () => {
+    listarContratistas.mockResolvedValue([
+      {
+        ...TECHOS_SUR,
+        id: 1,
+        nombre_empresa: 'Alfa Techos',
+        calificacion: 3,
+        telefono: '+541100000001',
+      },
+      {
+        ...TECHOS_SUR,
+        id: 3,
+        nombre_empresa: 'Beta Plomería',
+        especialidad: 'Plomería',
+        calificacion: 5,
+        telefono: '+541100000003',
+      },
+      {
+        ...TECHOS_SUR,
+        id: 4,
+        nombre_empresa: 'Gama Techos',
+        calificacion: null,
+        telefono: '+541100000004',
+      },
+    ]);
+    const { user } = render(
+      <MemoryRouter>
+        <ContractorsListPage />
+      </MemoryRouter>,
+    );
+    await screen.findByText('Alfa Techos');
+    const nombres = () =>
+      screen
+        .getAllByRole('row')
+        .slice(1)
+        .map((fila) => within(fila).getAllByRole('cell')[0].textContent);
+
+    expect(nombres()).toEqual(['Alfa Techos', 'Beta Plomería', 'Gama Techos']);
+
+    await user.click(screen.getByRole('combobox', { name: 'Ordenar contratistas' }));
+    await user.click(screen.getByRole('option', { name: 'Mejor calificación' }));
+    expect(nombres()).toEqual(['Beta Plomería', 'Alfa Techos', 'Gama Techos']);
+
+    const buscador = screen.getByRole('textbox', { name: 'Buscar contratista' });
+    await user.type(buscador, 'plomeria');
+    expect(nombres()).toEqual(['Beta Plomería']);
+    expect(screen.getByText('1 de 3 contratistas')).toBeInTheDocument();
+
+    await user.clear(buscador);
+    await user.type(buscador, '0004');
+    expect(nombres()).toEqual(['Gama Techos']);
+
+    await user.clear(buscador);
+    await user.type(buscador, 'zzz');
+    expect(
+      screen.getByText('No hay contratistas que coincidan con la búsqueda.'),
+    ).toBeInTheDocument();
+  });
+
+  it('marca los activos que comparten teléfono, sin contar a los dados de baja', async () => {
+    listarContratistas.mockResolvedValue([
+      { ...TECHOS_SUR, telefono: 'sim5491147779012' },
+      { ...TECHOS_SUR, id: 3, nombre_empresa: 'Techos Sur Bis', telefono: '+54 9 11 4777-9012' },
+      RETIRADO,
+    ]);
+    await renderPagina();
+
+    expect(screen.getAllByText('Teléfono repetido')).toHaveLength(2);
+    expect(screen.getByText(/2 con teléfono repetido/)).toBeInTheDocument();
+  });
+
+  it('no marca como repetido a quien comparte teléfono con un dado de baja', async () => {
+    await renderPagina();
+    expect(screen.queryByText('Teléfono repetido')).not.toBeInTheDocument();
+  });
+
   it('reactiva a un dado de baja', async () => {
     reactivarContratista.mockResolvedValue({ ...RETIRADO, fecha_baja: null });
     const { user } = await renderPagina();

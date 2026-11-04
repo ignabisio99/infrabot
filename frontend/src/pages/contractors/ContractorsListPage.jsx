@@ -1,22 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
-  ActionIcon,
   Alert,
+  Badge,
   Button,
   Container,
+  Flex,
   Group,
   Loader,
   Menu,
   Modal,
-  Popover,
+  Select,
   Stack,
   Switch,
   Table,
   Text,
+  TextInput,
   Title,
+  Tooltip,
 } from '@mantine/core';
-import { IconNote, IconUserCheck } from '@tabler/icons-react';
+import { IconAlertTriangle, IconSearch, IconUserCheck } from '@tabler/icons-react';
 
 import { RowActionsMenu } from '../../components/RowActionsMenu';
 import { TarjetaMovil } from '../../components/TarjetaMovil';
@@ -26,8 +29,132 @@ import {
   listarContratistas,
   reactivarContratista,
 } from '../../api/contratistas';
+import { porCalificacion, porNombre } from '../../utils/contratistas';
+import { normalizarTexto } from '../../utils/filtros';
 import { notifyError, notifySuccess } from '../../utils/notifications';
+import { claveTelefono, esTelefonoSimulado, formatearTelefono } from '../../utils/telefonos';
+import { CalificacionContratista } from './CalificacionContratista';
 import { DadoDeBajaBadge } from './DadoDeBajaBadge';
+
+const ORDENES = [
+  { value: 'nombre', label: 'Nombre (A-Z)' },
+  { value: 'calificacion', label: 'Mejor calificación' },
+  { value: 'especialidad', label: 'Especialidad' },
+];
+
+const porEspecialidad = (a, b) => a.especialidad.localeCompare(b.especialidad, 'es');
+
+const COMPARADORES = {
+  nombre: porNombre,
+  calificacion: (a, b) => porCalificacion(a, b) || porNombre(a, b),
+  especialidad: (a, b) => porEspecialidad(a, b) || porCalificacion(a, b) || porNombre(a, b),
+};
+
+const cantidadContratistas = (n) => (n === 1 ? '1 contratista' : `${n} contratistas`);
+
+function coincideBusqueda(contratista, busqueda) {
+  const termino = normalizarTexto(busqueda);
+  if (!termino) return true;
+  const textos = [contratista.nombre_empresa, contratista.especialidad, contratista.direccion];
+  if (textos.some((texto) => normalizarTexto(texto).includes(termino))) return true;
+  const digitos = busqueda.replace(/\D/g, '');
+  return digitos.length >= 3 && contratista.telefono.replace(/\D/g, '').includes(digitos);
+}
+
+// El bot reconoce al contratista por el número, así que dos fichas activas con el mismo
+// teléfono se pueden confundir. Los dados de baja no cuentan: ya no se los convoca.
+function repetidosPorTelefono(contratistas) {
+  const porClave = new Map();
+  for (const c of contratistas) {
+    const clave = claveTelefono(c.telefono);
+    if (c.fecha_baja || !clave) continue;
+    porClave.set(clave, [...(porClave.get(clave) ?? []), c]);
+  }
+  const repetidos = new Map();
+  for (const grupo of porClave.values()) {
+    if (grupo.length < 2) continue;
+    for (const c of grupo)
+      repetidos.set(
+        c.id,
+        grupo.filter((otro) => otro.id !== c.id),
+      );
+  }
+  return repetidos;
+}
+
+function EspecialidadBadge({ especialidad }) {
+  return (
+    <Badge size="sm" variant="light" color="gray" tt="none">
+      {especialidad}
+    </Badge>
+  );
+}
+
+function Empresa({ contratista }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <Group gap="xs" wrap="nowrap">
+        <Text fw={600} size="sm">
+          {contratista.nombre_empresa}
+        </Text>
+        {contratista.fecha_baja && <DadoDeBajaBadge />}
+      </Group>
+      {contratista.observaciones_calificacion && (
+        <Text
+          size="xs"
+          c="dimmed"
+          mt={2}
+          maw={360}
+          lineClamp={2}
+          title={contratista.observaciones_calificacion}
+        >
+          {contratista.observaciones_calificacion}
+        </Text>
+      )}
+    </div>
+  );
+}
+
+function Telefono({ contratista, repetidoCon }) {
+  const simulado = esTelefonoSimulado(contratista.telefono);
+  return (
+    <Stack gap={4} align="flex-start">
+      <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
+        {formatearTelefono(contratista.telefono)}
+      </Text>
+      {(simulado || repetidoCon) && (
+        <Group gap={4}>
+          {simulado && (
+            <Badge size="xs" variant="outline" color="gray" tt="none">
+              Simulado
+            </Badge>
+          )}
+          {repetidoCon && (
+            <Tooltip
+              multiline
+              w={280}
+              withArrow
+              events={{ hover: true, focus: true, touch: true }}
+              label={`Mismo teléfono que ${repetidoCon
+                .map((otro) => `${otro.nombre_empresa} (${otro.direccion})`)
+                .join(', ')}. El bot reconoce al contratista por el número y los puede confundir.`}
+            >
+              <Badge
+                size="xs"
+                variant="light"
+                color="orange"
+                tt="none"
+                leftSection={<IconAlertTriangle size={10} />}
+              >
+                Teléfono repetido
+              </Badge>
+            </Tooltip>
+          )}
+        </Group>
+      )}
+    </Stack>
+  );
+}
 
 export function ContractorsListPage() {
   const navigate = useNavigate();
@@ -35,6 +162,8 @@ export function ContractorsListPage() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [verDadosDeBaja, setVerDadosDeBaja] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+  const [orden, setOrden] = useState('nombre');
   const [aDarDeBaja, setADarDeBaja] = useState(null);
   const [errorBaja, setErrorBaja] = useState(null);
   const [procesandoId, setProcesandoId] = useState(null);
@@ -47,7 +176,17 @@ export function ContractorsListPage() {
   }, []);
 
   const cantidadDadosDeBaja = contratistas.filter((c) => c.fecha_baja).length;
-  const visibles = verDadosDeBaja ? contratistas : contratistas.filter((c) => !c.fecha_baja);
+  const alcance = verDadosDeBaja ? contratistas : contratistas.filter((c) => !c.fecha_baja);
+
+  const visibles = useMemo(
+    () =>
+      contratistas
+        .filter((c) => (verDadosDeBaja || !c.fecha_baja) && coincideBusqueda(c, busqueda))
+        .sort(COMPARADORES[orden]),
+    [contratistas, verDadosDeBaja, busqueda, orden],
+  );
+
+  const repetidos = useMemo(() => repetidosPorTelefono(contratistas), [contratistas]);
 
   const reemplazar = (actualizado) =>
     setContratistas((actuales) => actuales.map((c) => (c.id === actualizado.id ? actualizado : c)));
@@ -87,36 +226,6 @@ export function ContractorsListPage() {
 
   const esMobile = useEsMobile();
 
-  const calificacion = (contratista) => (
-    <Group gap={6} wrap="nowrap">
-      <Text size="sm">
-        {contratista.calificacion != null ? `${contratista.calificacion} / 5` : 'N/A'}
-      </Text>
-      {contratista.observaciones_calificacion && (
-        <Popover width={280} position="top" withArrow shadow="md">
-          <Popover.Target>
-            <ActionIcon
-              variant="subtle"
-              color="gray"
-              size="sm"
-              aria-label="Ver observación de la calificación"
-            >
-              <IconNote size={16} />
-            </ActionIcon>
-          </Popover.Target>
-          <Popover.Dropdown>
-            <Text size="xs" fw={600} c="dimmed" mb={4}>
-              Observación
-            </Text>
-            <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
-              {contratista.observaciones_calificacion}
-            </Text>
-          </Popover.Dropdown>
-        </Popover>
-      )}
-    </Group>
-  );
-
   const acciones = (contratista) =>
     contratista.fecha_baja ? (
       <RowActionsMenu
@@ -141,20 +250,17 @@ export function ContractorsListPage() {
       />
     );
 
+  const cantidadRepetidos = alcance.filter((c) => repetidos.has(c.id)).length;
+
+  let mensajeVacio = 'No hay contratistas que coincidan con la búsqueda.';
+  if (contratistas.length === 0) mensajeVacio = 'Todavía no hay contratistas registrados.';
+  else if (alcance.length === 0) mensajeVacio = 'No hay contratistas activos.';
+
   return (
     <Container fluid px={0}>
       <Group justify="space-between" mb="md" wrap="wrap">
         <Title order={2}>Contratistas</Title>
-        <Group gap="md" wrap="wrap">
-          {cantidadDadosDeBaja > 0 && (
-            <Switch
-              label={`Mostrar dados de baja (${cantidadDadosDeBaja})`}
-              checked={verDadosDeBaja}
-              onChange={(event) => setVerDadosDeBaja(event.currentTarget.checked)}
-            />
-          )}
-          <Button onClick={() => navigate('/contratistas/nuevo')}>+ Nuevo Contratista</Button>
-        </Group>
+        <Button onClick={() => navigate('/contratistas/nuevo')}>+ Nuevo Contratista</Button>
       </Group>
 
       {cargando && <Loader />}
@@ -165,13 +271,53 @@ export function ContractorsListPage() {
         </Alert>
       )}
 
-      {!cargando && visibles.length === 0 && (
-        <Text c="dimmed">
-          {contratistas.length === 0
-            ? 'Todavía no hay contratistas registrados.'
-            : 'No hay contratistas activos.'}
-        </Text>
+      {!cargando && contratistas.length > 0 && (
+        <Stack gap="xs" mb="sm">
+          <Flex
+            gap="sm"
+            direction={{ base: 'column', sm: 'row' }}
+            align={{ base: 'stretch', sm: 'center' }}
+          >
+            <TextInput
+              placeholder="Buscar por nombre, especialidad, teléfono o dirección"
+              aria-label="Buscar contratista"
+              leftSection={<IconSearch size={16} />}
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.currentTarget.value)}
+              style={{ flex: 1 }}
+            />
+            <Select
+              aria-label="Ordenar contratistas"
+              data={ORDENES}
+              value={orden}
+              onChange={(v) => setOrden(v || 'nombre')}
+              allowDeselect={false}
+              w={{ base: '100%', sm: 200 }}
+            />
+            {cantidadDadosDeBaja > 0 && (
+              <Switch
+                label={`Mostrar dados de baja (${cantidadDadosDeBaja})`}
+                checked={verDadosDeBaja}
+                onChange={(event) => setVerDadosDeBaja(event.currentTarget.checked)}
+              />
+            )}
+          </Flex>
+          {alcance.length > 0 && (
+            <Text size="sm" c="dimmed">
+              {visibles.length === alcance.length
+                ? cantidadContratistas(alcance.length)
+                : `${visibles.length} de ${cantidadContratistas(alcance.length)}`}
+              {cantidadRepetidos > 0 && (
+                <Text span size="sm" c="orange.7">
+                  {` · ${cantidadRepetidos} con teléfono repetido`}
+                </Text>
+              )}
+            </Text>
+          )}
+        </Stack>
       )}
+
+      {!cargando && visibles.length === 0 && <Text c="dimmed">{mensajeVacio}</Text>}
 
       {!cargando && visibles.length > 0 && esMobile && (
         <Stack gap="sm">
@@ -180,12 +326,33 @@ export function ContractorsListPage() {
               key={contratista.id}
               titulo={contratista.nombre_empresa}
               acciones={acciones(contratista)}
-              badges={contratista.fecha_baja && <DadoDeBajaBadge />}
+              badges={
+                <>
+                  <EspecialidadBadge especialidad={contratista.especialidad} />
+                  {contratista.fecha_baja && <DadoDeBajaBadge />}
+                </>
+              }
               campos={[
-                { etiqueta: 'Teléfono', valor: contratista.telefono },
+                {
+                  etiqueta: 'Calificación',
+                  valor: (
+                    <CalificacionContratista
+                      calificacion={contratista.calificacion}
+                      align="flex-start"
+                    />
+                  ),
+                },
+                { etiqueta: 'Observación', valor: contratista.observaciones_calificacion },
+                {
+                  etiqueta: 'Teléfono',
+                  valor: (
+                    <Telefono
+                      contratista={contratista}
+                      repetidoCon={repetidos.get(contratista.id)}
+                    />
+                  ),
+                },
                 { etiqueta: 'Dirección', valor: contratista.direccion },
-                { etiqueta: 'Especialidad', valor: contratista.especialidad },
-                { etiqueta: 'Calificación', valor: calificacion(contratista) },
               ]}
             />
           ))}
@@ -193,15 +360,15 @@ export function ContractorsListPage() {
       )}
 
       {!cargando && visibles.length > 0 && !esMobile && (
-        <Table.ScrollContainer minWidth={700}>
-          <Table striped highlightOnHover>
+        <Table.ScrollContainer minWidth={800}>
+          <Table striped highlightOnHover verticalSpacing="sm">
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Empresa</Table.Th>
-                <Table.Th>Teléfono</Table.Th>
-                <Table.Th>Dirección</Table.Th>
                 <Table.Th>Especialidad</Table.Th>
                 <Table.Th>Calificación</Table.Th>
+                <Table.Th>Teléfono</Table.Th>
+                <Table.Th>Dirección</Table.Th>
                 <Table.Th />
               </Table.Tr>
             </Table.Thead>
@@ -209,15 +376,24 @@ export function ContractorsListPage() {
               {visibles.map((contratista) => (
                 <Table.Tr key={contratista.id}>
                   <Table.Td>
-                    <Group gap="xs" wrap="nowrap">
-                      {contratista.nombre_empresa}
-                      {contratista.fecha_baja && <DadoDeBajaBadge />}
-                    </Group>
+                    <Empresa contratista={contratista} />
                   </Table.Td>
-                  <Table.Td>{contratista.telefono}</Table.Td>
+                  <Table.Td>
+                    <EspecialidadBadge especialidad={contratista.especialidad} />
+                  </Table.Td>
+                  <Table.Td>
+                    <CalificacionContratista
+                      calificacion={contratista.calificacion}
+                      align="flex-start"
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <Telefono
+                      contratista={contratista}
+                      repetidoCon={repetidos.get(contratista.id)}
+                    />
+                  </Table.Td>
                   <Table.Td>{contratista.direccion}</Table.Td>
-                  <Table.Td>{contratista.especialidad}</Table.Td>
-                  <Table.Td>{calificacion(contratista)}</Table.Td>
                   <Table.Td>{acciones(contratista)}</Table.Td>
                 </Table.Tr>
               ))}
