@@ -16,6 +16,7 @@ import {
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { IconDownload, IconFileTypePdf } from '@tabler/icons-react';
+import dayjs from 'dayjs';
 
 import { descargarReporteCsv, descargarReportePdf, obtenerReporte } from '../../api/reportes';
 import { notifyError } from '../../utils/notifications';
@@ -27,6 +28,22 @@ const TIPOS = [
   { label: 'Reclamos', value: 'reclamos' },
   { label: 'Presupuestos', value: 'presupuestos' },
 ];
+
+const dia = (fecha) => fecha.format('YYYY-MM-DD');
+
+// Se calculan al montar: una pestaña abierta de un día para otro igual arranca bien.
+function atajosDeRango(hoy = dayjs()) {
+  const mesAnterior = hoy.subtract(1, 'month');
+  return [
+    { label: 'Últimos 7 días', value: [dia(hoy.subtract(6, 'day')), dia(hoy)] },
+    { label: 'Últimos 30 días', value: [dia(hoy.subtract(29, 'day')), dia(hoy)] },
+    { label: 'Este mes', value: [dia(hoy.startOf('month')), dia(hoy)] },
+    {
+      label: 'Mes anterior',
+      value: [dia(mesAnterior.startOf('month')), dia(mesAnterior.endOf('month'))],
+    },
+  ];
+}
 
 const formatoMonto = new Intl.NumberFormat('es-AR', {
   style: 'currency',
@@ -100,8 +117,9 @@ export function ReportsPage() {
   const esMobile = useEsMobile();
   const [tipo, setTipo] = useState('reclamos');
   // Mismo selector de rango que el listado de reclamos. Mantine devuelve 'YYYY-MM-DD',
-  // que es lo que espera la API.
-  const [rangoFechas, setRangoFechas] = useState([null, null]);
+  // que es lo que espera la API. Arranca con los últimos 30 días, como el dashboard.
+  const [atajos] = useState(() => atajosDeRango());
+  const [rangoFechas, setRangoFechas] = useState(() => atajos[1].value);
   const desde = rangoFechas[0] ?? '';
   const hasta = rangoFechas[1] ?? '';
   const [reporteGenerado, setReporte] = useState(null);
@@ -125,9 +143,10 @@ export function ReportsPage() {
     }
   }, [tipo, desde, hasta]);
 
-  // Solo genera cuando AMBAS fechas están cargadas. Así al entrar no muestra nada y,
-  // una vez elegido el rango, cambiar de tipo (métricas/reclamos/presupuestos) o de
-  // fechas regenera solo, sin apretar un botón. Debounce para no disparar al tipear.
+  // Solo genera cuando AMBAS fechas están cargadas: mientras se elige el rango en el
+  // calendario hay un momento con una sola. Cambiar de tipo (métricas/reclamos/
+  // presupuestos) o de fechas regenera solo, sin apretar un botón. Debounce para no
+  // disparar al tipear.
   useEffect(() => {
     if (!desde || !hasta) return;
     const timer = setTimeout(generar, 300);
@@ -168,6 +187,7 @@ export function ReportsPage() {
               value={rangoFechas}
               onChange={setRangoFechas}
               valueFormat="DD/MM/YYYY"
+              presets={atajos}
               clearable
               w={{ base: '100%', sm: 260 }}
             />
@@ -194,8 +214,8 @@ export function ReportsPage() {
             </Button>
           </Group>
           <Text size="xs" c="dimmed">
-            Elegí un rango de fechas (desde y hasta) para generar el reporte. Para un solo día, tocá
-            la misma fecha dos veces.
+            Muestra los últimos 30 días; cambiá el rango o usá los atajos del calendario. Para un
+            solo día, tocá la misma fecha dos veces.
           </Text>
         </Stack>
       </Paper>
