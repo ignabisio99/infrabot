@@ -620,6 +620,22 @@ def test_sin_seleccionar_puede_volver_a_ofertar_si_se_reabre_la_convocatoria(
     assert solicitud["puede_ofertar"] is True
 
 
+def test_el_conteo_dice_cuantos_reclamos_tienen_ofertas_para_comparar(
+    client, loguear_contratista, crear_reclamo
+):
+    reclamo = crear_reclamo(estado=EstadoReclamo.PENDIENTE_PRESUPUESTO)
+    ficha = loguear_contratista()
+    presupuesto = _cargar(client, reclamo, ficha).json()
+
+    conteo = client.get("/notificaciones/conteo").json()
+    assert conteo["reclamos_en_evaluacion"] == 1
+    assert conteo["no_leidas"] == 0
+
+    _rechazar(client, presupuesto["id"])
+
+    assert client.get("/notificaciones/conteo").json()["reclamos_en_evaluacion"] == 0
+
+
 def test_la_campanita_cuenta_las_versiones_corregidas_hasta_que_se_decide(
     client, loguear_contratista, crear_reclamo
 ):

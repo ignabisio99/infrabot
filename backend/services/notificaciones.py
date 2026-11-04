@@ -16,6 +16,12 @@ def contar_pendiente_intervencion(db: Session) -> int:
     )
 
 
+def contar_en_evaluacion(db: Session) -> int:
+    """Reclamos con ofertas para comparar: el mismo número que "Presupuestos a evaluar" del
+    dashboard."""
+    return db.query(Reclamo).filter(Reclamo.estado == EstadoReclamo.EN_EVALUACION).count()
+
+
 def contar_versiones_por_decidir(db: Session) -> int:
     """Presupuestos que volvieron corregidos tras un pedido de ajustes y esperan decisión.
 

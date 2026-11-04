@@ -14,6 +14,8 @@ class ConteoOut(BaseModel):
     no_leidas: int
     mensaje: str
     versiones_por_decidir: int
+    # No suma a `no_leidas`: es trabajo de rutina, no un aviso. Lo muestra el menú lateral.
+    reclamos_en_evaluacion: int
 
 
 def _mensaje(n: int) -> str:
@@ -31,4 +33,9 @@ def conteo(
 ):
     n = svc.contar_pendiente_intervencion(db)
     versiones = svc.contar_versiones_por_decidir(db)
-    return ConteoOut(no_leidas=n + versiones, mensaje=_mensaje(n), versiones_por_decidir=versiones)
+    return ConteoOut(
+        no_leidas=n + versiones,
+        mensaje=_mensaje(n),
+        versiones_por_decidir=versiones,
+        reclamos_en_evaluacion=svc.contar_en_evaluacion(db),
+    )

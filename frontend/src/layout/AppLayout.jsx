@@ -1,9 +1,10 @@
-import { useEffect, useReducer, useState } from 'react';
+import { useCallback, useEffect, useReducer, useState } from 'react';
 import {
   AppShell,
   Avatar,
   Badge,
   Burger,
+  Divider,
   Group,
   Menu,
   NavLink,
@@ -47,29 +48,59 @@ import {
 import { esAdministrador } from '../utils/auth';
 import classes from './AppLayout.module.css';
 
-const links = [
-  { label: 'Dashboard', path: '/dashboard', icon: IconHome },
-  { label: 'Reclamos', path: '/reclamos', icon: IconClipboardList },
-  { label: 'Contratistas', path: '/contratistas', icon: IconTruck, exact: true },
+// `contador` dice qué número de pendientes mostrar al lado (ver `contadores` abajo).
+const secciones = [
+  { titulo: null, links: [{ label: 'Dashboard', path: '/dashboard', icon: IconHome }] },
   {
-    label: 'Listas de contratistas',
-    path: '/contratistas/listas',
-    icon: IconUsersGroup,
-    soloAdmin: true,
+    titulo: 'Operación',
+    links: [
+      { label: 'Reclamos', path: '/reclamos', icon: IconClipboardList },
+      {
+        label: 'Presupuestos',
+        path: '/presupuestos',
+        icon: IconReceipt2,
+        contador: 'evaluacion',
+        ayudaContador: 'reclamos con ofertas para comparar',
+      },
+      { label: 'Calendario', path: '/calendario', icon: IconCalendar },
+      {
+        label: 'Conversaciones',
+        path: '/conversaciones',
+        icon: IconMessageChatbot,
+        contador: 'chats',
+      },
+    ],
   },
-  { label: 'Administradores', path: '/administradores', icon: IconUserShield, soloAdmin: true },
-  { label: 'Presupuestos', path: '/presupuestos', icon: IconReceipt2 },
-  { label: 'Calendario', path: '/calendario', icon: IconCalendar },
   {
-    label: 'Conversaciones',
-    path: '/conversaciones',
-    icon: IconMessageChatbot,
-    mostrarChats: true,
+    titulo: 'Contratistas',
+    links: [
+      { label: 'Contratistas', path: '/contratistas', icon: IconTruck, exact: true },
+      {
+        label: 'Listas de contratistas',
+        path: '/contratistas/listas',
+        icon: IconUsersGroup,
+        soloAdmin: true,
+      },
+    ],
   },
-  { label: 'Reportes', path: '/reportes', icon: IconChartBar },
-  { label: 'Solicitudes', path: '/solicitudes', icon: IconUserCheck, mostrarPendientes: true },
-  { label: 'Configuración', path: '/configuracion', icon: IconSettings },
-  { label: 'WhatsApp (sim)', path: '/whatsapp', icon: IconBrandWhatsapp },
+  {
+    titulo: 'Administración',
+    links: [
+      { label: 'Reportes', path: '/reportes', icon: IconChartBar },
+      { label: 'Solicitudes', path: '/solicitudes', icon: IconUserCheck, contador: 'pendientes' },
+      {
+        label: 'Administradores',
+        path: '/administradores',
+        icon: IconUserShield,
+        soloAdmin: true,
+      },
+      { label: 'Configuración', path: '/configuracion', icon: IconSettings },
+    ],
+  },
+  {
+    titulo: 'Demo',
+    links: [{ label: 'WhatsApp (sim)', path: '/whatsapp', icon: IconBrandWhatsapp }],
+  },
 ];
 
 // Obtiene datos del usuario logueado desde localStorage
@@ -120,6 +151,16 @@ function AppLayoutInner() {
   const usuario = getUsuario();
   const [pendientesCount, setPendientesCount] = useState(0);
   const { esperaCount, miasNuevosCount } = useConversaciones();
+  const [enEvaluacion, setEnEvaluacion] = useState(0);
+  const alRecibirConteo = useCallback(
+    (conteo) => setEnEvaluacion(conteo.reclamos_en_evaluacion ?? 0),
+    [],
+  );
+  const contadores = {
+    pendientes: pendientesCount,
+    chats: esperaCount + miasNuevosCount,
+    evaluacion: enEvaluacion,
+  };
 
   // Conteo de solicitudes pendientes (solo admins). Se refresca al navegar para que
   // el badge se actualice después de aprobar/rechazar en la página de solicitudes.
@@ -137,6 +178,85 @@ function AppLayoutInner() {
     window.addEventListener('pageshow', handlePageShow);
     return () => window.removeEventListener('pageshow', handlePageShow);
   }, []);
+
+  const renderLink = (link) => {
+    const Icon = link.icon;
+    const activo = link.exact
+      ? location.pathname === link.path
+      : location.pathname.startsWith(link.path);
+    const badgeCount = link.contador ? contadores[link.contador] : 0;
+    const tienePendientes = badgeCount > 0;
+    const item = (
+      <NavLink
+        className={classes.navLink}
+        label={colapsado ? undefined : link.label}
+        leftSection={<Icon size={18} stroke={1.5} />}
+        rightSection={
+          tienePendientes && !colapsado ? (
+            <Tooltip
+              label={link.ayudaContador ? `${badgeCount} ${link.ayudaContador}` : badgeCount}
+              disabled={!link.ayudaContador}
+              withArrow
+            >
+              <Badge
+                size="sm"
+                circle
+                color="red"
+                variant="filled"
+                style={{ boxShadow: '0 0 0 3px rgba(255,255,255,0.15)' }}
+              >
+                {badgeCount}
+              </Badge>
+            </Tooltip>
+          ) : undefined
+        }
+        active={activo}
+        onClick={() => irA(link.path)}
+        variant="filled"
+        color="#1fa7b3"
+        styles={{
+          root: { color: '#c7cee0' },
+          label: { color: 'inherit' },
+        }}
+      />
+    );
+
+    // Cuando el nav está colapsado, el badge numérico no entra: mostramos un
+    // punto rojo sobre el ícono y el conteo en el tooltip.
+    const itemConIndicador =
+      tienePendientes && colapsado ? (
+        <div style={{ position: 'relative' }}>
+          {item}
+          <div
+            style={{
+              position: 'absolute',
+              top: 6,
+              right: 10,
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              backgroundColor: 'var(--mantine-color-red-6)',
+              border: '2px solid #132a4d',
+            }}
+          />
+        </div>
+      ) : (
+        item
+      );
+
+    return colapsado ? (
+      <Tooltip
+        key={link.path}
+        label={tienePendientes ? `${link.label} (${badgeCount})` : link.label}
+        position="right"
+        withArrow
+      >
+        {itemConIndicador}
+      </Tooltip>
+    ) : (
+      <div key={link.path}>{itemConIndicador}</div>
+    );
+  };
 
   const handleLogout = async () => {
     try {
@@ -172,7 +292,7 @@ function AppLayoutInner() {
 
           <Group gap="sm">
             {esAdministrador() && <SimuladorTiempoControl />}
-            {esAdministrador() && <NotificationBell />}
+            {esAdministrador() && <NotificationBell onConteo={alRecibirConteo} />}
             <Menu shadow="md" width={200}>
               <Menu.Target>
                 <UnstyledButton>
@@ -206,85 +326,36 @@ function AppLayoutInner() {
         </Group>
       </AppShell.Header>
 
-      <AppShell.Navbar p="md" style={{ backgroundColor: '#132a4d', border: 'none' }}>
-        {links
-          .filter((link) => !link.soloAdmin || esAdministrador())
-          .map((link) => {
-            const Icon = link.icon;
-            const activo = link.exact
-              ? location.pathname === link.path
-              : location.pathname.startsWith(link.path);
-            const badgeCount = link.mostrarPendientes
-              ? pendientesCount
-              : link.mostrarChats
-                ? esperaCount + miasNuevosCount
-                : 0;
-            const tienePendientes = badgeCount > 0;
-            const item = (
-              <NavLink
-                className={classes.navLink}
-                label={colapsado ? undefined : link.label}
-                leftSection={<Icon size={18} stroke={1.5} />}
-                rightSection={
-                  tienePendientes && !colapsado ? (
-                    <Badge
-                      size="sm"
-                      circle
-                      color="red"
-                      variant="filled"
-                      style={{ boxShadow: '0 0 0 3px rgba(255,255,255,0.15)' }}
-                    >
-                      {badgeCount}
-                    </Badge>
-                  ) : undefined
-                }
-                active={activo}
-                onClick={() => irA(link.path)}
-                variant="filled"
-                color="#1fa7b3"
-                styles={{
-                  root: { color: '#c7cee0' },
-                  label: { color: 'inherit' },
-                }}
-              />
-            );
-
-            // Cuando el nav está colapsado, el badge numérico no entra: mostramos un
-            // punto rojo sobre el ícono y el conteo en el tooltip.
-            const itemConIndicador =
-              tienePendientes && colapsado ? (
-                <div style={{ position: 'relative' }}>
-                  {item}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: 6,
-                      right: 10,
-                      width: 10,
-                      height: 10,
-                      borderRadius: '50%',
-                      backgroundColor: 'var(--mantine-color-red-6)',
-                      border: '2px solid #132a4d',
-                    }}
-                  />
-                </div>
-              ) : (
-                item
-              );
-
-            return colapsado ? (
-              <Tooltip
-                key={link.path}
-                label={tienePendientes ? `${link.label} (${badgeCount})` : link.label}
-                position="right"
-                withArrow
-              >
-                {itemConIndicador}
-              </Tooltip>
-            ) : (
-              <div key={link.path}>{itemConIndicador}</div>
-            );
-          })}
+      <AppShell.Navbar
+        p="md"
+        style={{ backgroundColor: '#132a4d', border: 'none', overflowY: 'auto' }}
+      >
+        {secciones.map((seccion) => {
+          const visibles = seccion.links.filter((link) => !link.soloAdmin || esAdministrador());
+          if (visibles.length === 0) return null;
+          return (
+            <div key={seccion.titulo ?? 'inicio'}>
+              {seccion.titulo &&
+                (colapsado ? (
+                  <Divider my="xs" color="rgba(255, 255, 255, 0.12)" />
+                ) : (
+                  <Text
+                    size="xs"
+                    fw={700}
+                    tt="uppercase"
+                    c="rgba(199, 206, 224, 0.55)"
+                    px="sm"
+                    mt="md"
+                    mb={4}
+                    style={{ letterSpacing: 0.6 }}
+                  >
+                    {seccion.titulo}
+                  </Text>
+                ))}
+              {visibles.map((link) => renderLink(link))}
+            </div>
+          );
+        })}
       </AppShell.Navbar>
 
       <AppShell.Main>
