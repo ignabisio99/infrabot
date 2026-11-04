@@ -925,6 +925,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
           {esAdmin && (
             <NotifyContractorsModal
               reclamoId={reclamo.id}
+              categoria={reclamo.categoria}
               opened={notificarAbierto}
               onClose={() => setNotificarAbierto(false)}
             />
