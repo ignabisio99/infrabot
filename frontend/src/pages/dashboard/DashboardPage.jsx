@@ -252,6 +252,13 @@ export function DashboardPage() {
             />
           </SimpleGrid>
 
+          {/* Antes que los gráficos: es lo único de la pantalla que pide una acción. */}
+          <StalledClaimsCard
+            reclamos={resumen.estancados}
+            total={resumen.estancados_total}
+            umbral={resumen.dias_sin_movimiento_umbral}
+          />
+
           <Grid>
             <Grid.Col span={{ base: 12, lg: 5 }}>
               <ClaimsByStateChart datos={resumen.por_estado} linkReclamos={linkReclamos} />
@@ -265,12 +272,6 @@ export function DashboardPage() {
             datos={resumen.tiempo_por_etapa}
             etiquetaPeriodo={etiquetaPeriodo}
             linkReclamos={linkReclamos}
-          />
-
-          <StalledClaimsCard
-            reclamos={resumen.estancados}
-            total={resumen.estancados_total}
-            umbral={resumen.dias_sin_movimiento_umbral}
           />
         </Stack>
       )}

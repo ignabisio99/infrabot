@@ -37,6 +37,7 @@ import { MisPedidosInspeccion } from './PedidosInspeccion';
 import { PriorityBadge } from './PriorityBadge';
 import { StatusBadge } from './StatusBadge';
 import { StatusFilterPopover } from './StatusFilterPopover';
+import { DIAS_ESTANCADO, colorAntiguedad } from './antiguedad';
 import { ESTADOS, estadosFinales } from './estados';
 
 const opcionesPrioridad = [
@@ -71,8 +72,6 @@ function busquedaDeParams(searchParams) {
   return searchParams.get('busqueda') ?? '';
 }
 
-// Mismo umbral que DIAS_SIN_MOVIMIENTO del dashboard (backend/api/dashboard.py).
-const DIAS_ESTANCADO = 7;
 const DIA_MS = 24 * 60 * 60 * 1000;
 
 function diasEstancado(reclamo, ahora) {
@@ -121,7 +120,7 @@ function SenalesReclamo({ reclamo, ahora }) {
         </Badge>
       )}
       {dias && (
-        <Badge size="xs" variant="light" color="orange" tt="none">
+        <Badge size="xs" variant="light" color={colorAntiguedad(dias)} tt="none">
           {dias} días sin movimiento
         </Badge>
       )}
