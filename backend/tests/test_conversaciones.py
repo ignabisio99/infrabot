@@ -41,12 +41,12 @@ def _admin_persistido(db, nombre="Admin Chats", email="admin-chats@test.local"):
     return admin
 
 
-def test_menu_incluye_boton_hablar_con_humano(db):
+def test_menu_incluye_boton_hablar_con_operador(db):
     respuesta = procesar_mensaje(db, "ayuda", usuario=ORIGEN)
     assert isinstance(respuesta, dict)
     ids = [b["id"] for b in respuesta.get("botones") or []]
     assert "operador" in ids
-    assert any("humano" in (b.get("title") or "").lower() for b in respuesta["botones"])
+    assert any("operador" in (b.get("title") or "").lower() for b in respuesta["botones"])
 
     pedido = procesar_mensaje(db, "operador", usuario=ORIGEN)
     assert "operador" in str(pedido).lower()

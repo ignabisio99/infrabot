@@ -15,14 +15,14 @@ def _buscar(db, texto, usuario=TELEFONO):
         return procesar_mensaje(db, texto, usuario=usuario)
 
 
-def test_el_menu_es_siempre_nuevo_buscar_y_humano():
+def test_el_menu_es_siempre_nuevo_buscar_y_operador():
     for ia in (True, False):
         with patch("core.whatsapp_handler.ai_config.ai_whatsapp_enabled", return_value=ia):
             botones = _mostrar_ayuda()["botones"]
         assert [b["title"] for b in botones] == [
             "📝 Nuevo reclamo",
             "🔍 Buscar reclamo",
-            "🙋 Hablar con humano",
+            "Hablar con operador",
         ]
         assert botones[0]["id"] == "nuevo"
 

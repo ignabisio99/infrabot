@@ -725,18 +725,18 @@ def _mostrar_ayuda(variante: str = "menu"):
     elif variante == "no_entendi":
         body = (
             "🤖 No entendí tu mensaje. Estas son las opciones disponibles.\n\n"
-            "También podés tocar *Hablar con humano* o escribir *operador*."
+            "También podés tocar *Hablar con operador* o escribir *operador*."
         )
     else:
         body = "🤖 *InfraBot*\n\n¿Qué querés hacer?"
 
-    # WhatsApp admite 3 botones: cargar, buscar y pasar a un humano. El resto sigue por
+    # WhatsApp admite 3 botones: cargar, buscar y pasar a un operador. El resto sigue por
     # texto (*recientes*, *ver #<id>*). "Nuevo reclamo" es el alta paso a paso; el modo
     # asistido se pide escribiendo *libre*.
     botones = [
         {"id": "nuevo", "title": "📝 Nuevo reclamo"},
         {"id": "buscar_reclamo", "title": "🔍 Buscar reclamo"},
-        {"id": "operador", "title": "🙋 Hablar con humano"},
+        {"id": "operador", "title": "Hablar con operador"},
     ]
 
     return {
