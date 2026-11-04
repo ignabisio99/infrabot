@@ -8,7 +8,8 @@ export const claveTelefono = (telefono) => (telefono || '').replace(/\D/g, '').s
 
 function agruparArgentino(nacional) {
   const movil = nacional.length === 11 && nacional.startsWith('9');
-  const numero = movil ? nacional.slice(1) : nacional;
+  // El 0 de larga distancia (011-4555-1234) no forma parte del número.
+  const numero = movil ? nacional.slice(1) : nacional.replace(/^0/, '');
   if (numero.length !== 10) return null;
   // Sólo la característica del 11 se puede asumir; el resto se agrupa como 3 + 7, que es
   // lo más común aunque haya características de 4 dígitos.

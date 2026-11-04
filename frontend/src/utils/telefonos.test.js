@@ -14,6 +14,7 @@ describe('formatearTelefono', () => {
   it('agrupa como 3 + 7 fuera del 11 y respeta los fijos', () => {
     expect(formatearTelefono('+5493514779012')).toBe('+54 9 351 477-9012');
     expect(formatearTelefono('+541147779012')).toBe('+54 11 4777-9012');
+    expect(formatearTelefono('011-4555-1234')).toBe('+54 11 4555-1234');
   });
 
   it('no inventa agrupación para otros países ni largos raros', () => {
