@@ -1,18 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Badge,
   Button,
+  Checkbox,
+  Flex,
   Group,
   List,
   Loader,
   Modal,
-  MultiSelect,
+  Paper,
+  Rating,
+  ScrollArea,
   SegmentedControl,
   Select,
   Stack,
   Text,
+  TextInput,
 } from '@mantine/core';
-import { IconAlertTriangle, IconBrandWhatsapp } from '@tabler/icons-react';
+import { IconAlertTriangle, IconBrandWhatsapp, IconSearch, IconStarFilled } from '@tabler/icons-react';
 
 import { listarContratistas } from '../../api/contratistas';
 import {
@@ -20,6 +26,7 @@ import {
   listarListas,
   notificarContratistas,
 } from '../../api/listasContratistas';
+import { useEsMobile } from '../../hooks/useEsMobile';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 
 function cuandoSeNotifico(fecha) {
@@ -37,7 +44,82 @@ function cuandoSeNotifico(fecha) {
   return `el ${dia}`;
 }
 
-export function NotifyContractorsModal({ reclamoId, opened, onClose }) {
+// Qué tan confiable es el contratista según su calificación (1 a 5, o sin calificar).
+function nivelCalificacion(calificacion) {
+  if (calificacion == null) return { etiqueta: 'Sin calificar', color: 'gray' };
+  if (calificacion >= 5) return { etiqueta: 'Excelente', color: 'teal' };
+  if (calificacion >= 4) return { etiqueta: 'Buena', color: 'teal' };
+  if (calificacion >= 3) return { etiqueta: 'Regular', color: 'yellow' };
+  if (calificacion >= 2) return { etiqueta: 'Mala', color: 'red' };
+  return { etiqueta: 'Muy mala', color: 'red' };
+}
+
+const normalizar = (texto) =>
+  (texto || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+// La especialidad "coincide" con la categoría del reclamo si una contiene a la otra
+// (sin acentos ni mayúsculas), o si el contratista hace de todo.
+function coincideEspecialidad(especialidad, categoria) {
+  const e = normalizar(especialidad);
+  const c = normalizar(categoria);
+  if (!e || !c) return false;
+  if (['todo', 'general', 'todos'].includes(e)) return true;
+  return e.includes(c) || c.includes(e);
+}
+
+const ORDENES = [
+  { value: 'recomendados', label: 'Recomendados' },
+  { value: 'calificacion', label: 'Mejor calificación' },
+  { value: 'nombre', label: 'Nombre (A-Z)' },
+];
+
+const porCalificacion = (a, b) => (b.calificacion ?? -1) - (a.calificacion ?? -1);
+const porNombre = (a, b) => a.nombre_empresa.localeCompare(b.nombre_empresa, 'es');
+
+function CalificacionContratista({ calificacion }) {
+  const nivel = nivelCalificacion(calificacion);
+  return (
+    <Stack gap={2} align="flex-end" style={{ flex: 'none' }}>
+      <Rating value={calificacion ?? 0} readOnly size="sm" color="yellow" />
+      <Badge size="xs" variant="light" color={nivel.color} tt="none">
+        {calificacion != null ? `${calificacion}/5 · ${nivel.etiqueta}` : nivel.etiqueta}
+      </Badge>
+    </Stack>
+  );
+}
+
+function DatosContratista({ contratista, categoria }) {
+  const coincide = coincideEspecialidad(contratista.especialidad, categoria);
+  return (
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <Text fw={600} size="sm" truncate>
+        {contratista.nombre_empresa}
+      </Text>
+      <Group gap={6} mt={2}>
+        <Badge size="xs" variant="light" color="gray" tt="none">
+          {contratista.especialidad}
+        </Badge>
+        {coincide && (
+          <Badge size="xs" variant="light" color="teal" tt="none" leftSection={<IconStarFilled size={9} />}>
+            Coincide con el reclamo
+          </Badge>
+        )}
+      </Group>
+      {contratista.observaciones_calificacion && (
+        <Text size="xs" c="dimmed" mt={4} lineClamp={2}>
+          {contratista.observaciones_calificacion}
+        </Text>
+      )}
+    </div>
+  );
+}
+
+export function NotifyContractorsModal({ reclamoId, categoria, opened, onClose }) {
+  const esMobile = useEsMobile();
   const [modo, setModo] = useState('seleccion'); // 'seleccion' | 'lista'
   const [contratistas, setContratistas] = useState([]);
   const [listas, setListas] = useState([]);
@@ -46,6 +128,8 @@ export function NotifyContractorsModal({ reclamoId, opened, onClose }) {
 
   const [seleccionados, setSeleccionados] = useState([]);
   const [listaElegida, setListaElegida] = useState('');
+  const [busqueda, setBusqueda] = useState('');
+  const [orden, setOrden] = useState(categoria ? 'recomendados' : 'calificacion');
   // Con qué opción se está enviando ('preguntar' | 'reenviar' | 'omitir'), o null.
   const [enviando, setEnviando] = useState(null);
   // Los que el backend avisó que ya estaban notificados: mientras no sea null se pide
@@ -72,10 +156,32 @@ export function NotifyContractorsModal({ reclamoId, opened, onClose }) {
     };
   }, [opened]);
 
-  const opcionesContratistas = contratistas.map((c) => ({
-    value: String(c.id),
-    label: `${c.nombre_empresa} (${c.especialidad})`,
-  }));
+  // Los dados de baja no se notifican (el backend los omite), así que no se ofrecen.
+  const activos = useMemo(() => contratistas.filter((c) => !c.fecha_baja), [contratistas]);
+
+  const visibles = useMemo(() => {
+    const termino = normalizar(busqueda);
+    const filtrados = activos.filter(
+      (c) =>
+        !termino ||
+        normalizar(c.nombre_empresa).includes(termino) ||
+        normalizar(c.especialidad).includes(termino),
+    );
+    const copia = [...filtrados];
+    if (orden === 'nombre') return copia.sort(porNombre);
+    if (orden === 'calificacion') return copia.sort((a, b) => porCalificacion(a, b) || porNombre(a, b));
+    // Recomendados: primero los de la especialidad del reclamo, después por calificación.
+    return copia.sort((a, b) => {
+      const ca = coincideEspecialidad(a.especialidad, categoria) ? 1 : 0;
+      const cb = coincideEspecialidad(b.especialidad, categoria) ? 1 : 0;
+      return cb - ca || porCalificacion(a, b) || porNombre(a, b);
+    });
+  }, [activos, busqueda, orden, categoria]);
+
+  const alternar = (id) =>
+    setSeleccionados((actual) =>
+      actual.includes(id) ? actual.filter((x) => x !== id) : [...actual, id],
+    );
 
   // Los dados de baja siguen en la lista, pero el backend no los notifica.
   const activosDe = (lista) => lista.contratistas.filter((c) => !c.fecha_baja);
@@ -85,17 +191,20 @@ export function NotifyContractorsModal({ reclamoId, opened, onClose }) {
     label: `${l.nombre} (${activosDe(l).length} contratistas)`,
   }));
 
+  const listaSeleccionada = listas.find((l) => String(l.id) === listaElegida);
+
   const puedeEnviar = modo === 'seleccion' ? seleccionados.length > 0 : listaElegida !== '';
 
   const cantidadDestinatarios =
     modo === 'seleccion'
       ? seleccionados.length
-      : activosDe(listas.find((l) => String(l.id) === listaElegida) ?? { contratistas: [] }).length;
+      : activosDe(listaSeleccionada ?? { contratistas: [] }).length;
   const cantidadNuevos = cantidadDestinatarios - (yaNotificados?.length ?? 0);
 
   const cerrar = () => {
     setSeleccionados([]);
     setListaElegida('');
+    setBusqueda('');
     setYaNotificados(null);
     setErrorCarga(null);
     onClose();
@@ -148,8 +257,13 @@ export function NotifyContractorsModal({ reclamoId, opened, onClose }) {
     <Modal
       opened={opened}
       onClose={cerrar}
-      title="Notificar contratistas para presupuestar"
+      title={
+        <Text fw={700} size="lg">
+          Solicitar presupuesto
+        </Text>
+      }
       size="lg"
+      fullScreen={esMobile}
       centered
     >
       {cargando && <Loader />}
@@ -221,8 +335,8 @@ export function NotifyContractorsModal({ reclamoId, opened, onClose }) {
       {!cargando && !errorCarga && !yaNotificados && (
         <Stack>
           <Text size="sm" c="dimmed">
-            Se enviará un mensaje de WhatsApp a los contratistas seleccionados invitándolos a cargar
-            su presupuesto para este reclamo.
+            Los contratistas elegidos reciben un WhatsApp y un mail para cargar su presupuesto.
+            Revisá la calificación de cada uno antes de elegir.
           </Text>
 
           <SegmentedControl
@@ -236,25 +350,105 @@ export function NotifyContractorsModal({ reclamoId, opened, onClose }) {
           />
 
           {modo === 'seleccion' ? (
-            <MultiSelect
-              label="Contratistas"
-              placeholder="Elegí uno o varios"
-              data={opcionesContratistas}
-              value={seleccionados}
-              onChange={setSeleccionados}
-              searchable
-              nothingFoundMessage="No hay contratistas"
-            />
+            <Stack gap="xs">
+              <Flex gap="sm" direction={{ base: 'column', xs: 'row' }}>
+                <TextInput
+                  placeholder="Buscar por nombre o especialidad"
+                  aria-label="Buscar contratista"
+                  leftSection={<IconSearch size={16} />}
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.currentTarget.value)}
+                  style={{ flex: 1 }}
+                />
+                <Select
+                  aria-label="Ordenar contratistas"
+                  data={categoria ? ORDENES : ORDENES.filter((o) => o.value !== 'recomendados')}
+                  value={orden}
+                  onChange={(v) => setOrden(v || 'calificacion')}
+                  allowDeselect={false}
+                  w={{ base: '100%', xs: 190 }}
+                />
+              </Flex>
+
+              <Flex justify="space-between" align="center">
+                <Text size="sm" c="dimmed">
+                  {seleccionados.length === 0
+                    ? `${visibles.length} contratista(s) disponibles`
+                    : `${seleccionados.length} seleccionado(s)`}
+                </Text>
+                {seleccionados.length > 0 && (
+                  <Button variant="subtle" size="compact-xs" onClick={() => setSeleccionados([])}>
+                    Quitar selección
+                  </Button>
+                )}
+              </Flex>
+
+              <ScrollArea.Autosize mah={esMobile ? undefined : 380} offsetScrollbars type="auto">
+                <Stack gap="xs">
+                  {visibles.length === 0 && (
+                    <Text size="sm" c="dimmed" ta="center" py="md">
+                      No hay contratistas que coincidan con la búsqueda.
+                    </Text>
+                  )}
+                  {visibles.map((c) => {
+                    const elegido = seleccionados.includes(String(c.id));
+                    return (
+                      <Checkbox.Card
+                        key={c.id}
+                        checked={elegido}
+                        onClick={() => alternar(String(c.id))}
+                        radius="md"
+                        p="sm"
+                        style={{
+                          borderColor: elegido ? 'var(--mantine-color-teal-6)' : undefined,
+                          backgroundColor: elegido ? 'var(--mantine-color-teal-0)' : undefined,
+                        }}
+                      >
+                        <Flex gap="sm" align="flex-start" wrap="nowrap">
+                          <Checkbox.Indicator color="teal" mt={2} />
+                          <DatosContratista contratista={c} categoria={categoria} />
+                          <CalificacionContratista calificacion={c.calificacion} />
+                        </Flex>
+                      </Checkbox.Card>
+                    );
+                  })}
+                </Stack>
+              </ScrollArea.Autosize>
+            </Stack>
           ) : (
-            <Select
-              label="Lista predefinida"
-              placeholder="Elegí una lista"
-              data={opcionesListas}
-              value={listaElegida}
-              onChange={(v) => setListaElegida(v || '')}
-              searchable
-              nothingFoundMessage="No hay listas creadas"
-            />
+            <Stack gap="xs">
+              <Select
+                label="Lista predefinida"
+                placeholder="Elegí una lista"
+                data={opcionesListas}
+                value={listaElegida}
+                onChange={(v) => setListaElegida(v || '')}
+                searchable
+                nothingFoundMessage="No hay listas creadas"
+              />
+              {listaSeleccionada && (
+                <>
+                  <Text size="sm" c="dimmed">
+                    Se va a notificar a:
+                  </Text>
+                  <ScrollArea.Autosize mah={esMobile ? undefined : 320} offsetScrollbars type="auto">
+                    <Stack gap="xs">
+                      {activosDe(listaSeleccionada)
+                        .slice()
+                        .sort((a, b) => porCalificacion(a, b) || porNombre(a, b))
+                        .map((c) => (
+                          <Paper key={c.id} withBorder radius="md" p="sm">
+                            <Flex gap="sm" align="flex-start" wrap="nowrap">
+                              <DatosContratista contratista={c} categoria={categoria} />
+                              <CalificacionContratista calificacion={c.calificacion} />
+                            </Flex>
+                          </Paper>
+                        ))}
+                    </Stack>
+                  </ScrollArea.Autosize>
+                </>
+              )}
+            </Stack>
           )}
 
           <Group justify="flex-end" mt="md">

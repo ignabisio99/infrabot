@@ -45,8 +45,7 @@ async function renderModal() {
 
 async function notificarA(user, ...contratistas) {
   for (const c of contratistas) {
-    await user.click(screen.getByRole('combobox', { name: 'Contratistas' }));
-    await user.click(screen.getByRole('option', { name: new RegExp(c.nombre_empresa) }));
+    await user.click(screen.getByRole('checkbox', { name: new RegExp(c.nombre_empresa) }));
   }
   await user.click(screen.getByRole('button', { name: 'Enviar notificación' }));
 }
@@ -145,6 +144,52 @@ describe('NotifyContractorsModal', () => {
 
     expect(await screen.findByRole('button', { name: 'Reenviar' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Solo a los nuevos/ })).not.toBeInTheDocument();
+  });
+
+  it('muestra la calificación de cada contratista antes de elegirlo', async () => {
+    listarContratistas.mockResolvedValue([
+      { ...TECHOS_SUR, calificacion: 5 },
+      { ...PLOMERIA, calificacion: 2 },
+      { id: 3, nombre_empresa: 'Nuevo SRL', especialidad: 'Gas', calificacion: null },
+    ]);
+    await renderModal();
+
+    expect(screen.getByText('5/5 · Excelente')).toBeInTheDocument();
+    expect(screen.getByText('2/5 · Mala')).toBeInTheDocument();
+    expect(screen.getByText('Sin calificar')).toBeInTheDocument();
+  });
+
+  it('no ofrece a los contratistas dados de baja', async () => {
+    listarContratistas.mockResolvedValue([
+      TECHOS_SUR,
+      { ...PLOMERIA, fecha_baja: '2026-10-01T12:00:00Z' },
+    ]);
+    await renderModal();
+
+    expect(screen.getByRole('checkbox', { name: /Techos Sur/ })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /Plomería/ })).not.toBeInTheDocument();
+  });
+
+  it('filtra por nombre o especialidad', async () => {
+    const { user } = await renderModal();
+
+    await user.type(screen.getByRole('textbox', { name: 'Buscar contratista' }), 'sanit');
+
+    expect(screen.getByRole('checkbox', { name: /Plomería/ })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /Techos Sur/ })).not.toBeInTheDocument();
+  });
+
+  it('recomienda primero a los de la especialidad del reclamo', async () => {
+    listarContratistas.mockResolvedValue([
+      { ...PLOMERIA, calificacion: 5 },
+      { ...TECHOS_SUR, calificacion: 3 },
+    ]);
+    render(<NotifyContractorsModal reclamoId={5} categoria="Techos" opened onClose={vi.fn()} />);
+    await screen.findByText('Seleccionar contratistas');
+
+    const tarjetas = screen.getAllByRole('checkbox');
+    expect(tarjetas[0]).toHaveAccessibleName(/Techos Sur/);
+    expect(screen.getByText('Coincide con el reclamo')).toBeInTheDocument();
   });
 
   it('en las listas sólo cuenta a los que se van a notificar', async () => {
