@@ -464,6 +464,8 @@ def test_solicitudes_del_reclamo_muestran_tambien_las_ofertas_rechazadas(
         (primera["id"], "RECHAZADO"),
     ]
     assert all(f["presupuesto_fecha"] for f in de_ficha)
+    # ITEMS: 2 x 1000
+    assert [float(f["monto"]) for f in de_ficha] == [2000, 2000]
     [sin_oferta] = [f for f in filas if f["contratista_id"] == pendiente.id]
     assert sin_oferta["presupuesto_cargado"] is False
 

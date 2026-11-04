@@ -9,6 +9,7 @@ import {
   Modal,
   Paper,
   Radio,
+  SimpleGrid,
   Stack,
   Tabs,
   Text,
@@ -27,8 +28,10 @@ import {
   IconInfoCircle,
   IconMapPin,
   IconEyeCheck,
+  IconPhone,
   IconPhoto,
   IconReceipt2,
+  IconRobot,
   IconSparkles,
   IconTruck,
   IconArrowsExchange,
@@ -49,11 +52,13 @@ import {
   reabrirConvocatoria,
 } from '../../api/reclamos';
 import { historialPorTelefono } from '../../api/conversaciones';
+import { listarSolicitudesPresupuesto } from '../../api/listasContratistas';
 import { formatoMoneda } from '../../utils/formatters';
 import { avisarNotificacionesCambiaron } from '../../layout/NotificationBell';
 import { formatearIdReclamo } from '../../utils/ids';
 import { esAdministrador, esContratista, esInspector, getUsuarioActual } from '../../utils/auth';
 import { notifyError, notifySuccess } from '../../utils/notifications';
+import { esTelefonoSimulado, formatearTelefono } from '../../utils/telefonos';
 import { HiloChat } from '../conversaciones/HiloChat';
 import { BudgetRequestsList } from './BudgetRequestsList';
 import { ChangeStatusModal } from './ChangeStatusModal';
@@ -370,6 +375,68 @@ function ComentarioContratista({ comentario }) {
   );
 }
 
+// La IA deja en observaciones una línea con esta marca cuando el bot no pudo resolver el
+// reclamo solo (ver services/ai/automatico.py).
+const MARCA_DERIVACION = '[DERIVADO A OPERADOR]';
+
+function separarDerivacion(observaciones) {
+  const lineas = (observaciones || '').split('\n');
+  const esDerivacion = (linea) => linea.includes(MARCA_DERIVACION);
+  return {
+    motivosDerivacion: lineas
+      .filter(esDerivacion)
+      .map((linea) => linea.replace(MARCA_DERIVACION, '').trim())
+      .filter(Boolean)
+      .map((motivo) => motivo.charAt(0).toUpperCase() + motivo.slice(1)),
+    resto: lineas
+      .filter((linea) => !esDerivacion(linea))
+      .join('\n')
+      .trim(),
+  };
+}
+
+// Estados en los que el próximo paso se resuelve cambiando el estado a mano; en el resto
+// cambiarlo es una corrección y el botón queda como secundario.
+const ESTADOS_CAMBIO_MANUAL = ['PENDIENTE_REVISION', 'EN_EJECUCION', 'DESIERTO'];
+
+function PresupuestoAprobado({ solicitud }) {
+  return (
+    <Paper
+      withBorder
+      radius="md"
+      p="sm"
+      mb="md"
+      style={{ borderLeft: '4px solid var(--mantine-color-green-6)' }}
+    >
+      <Group justify="space-between" wrap="nowrap" align="flex-start">
+        <div style={{ minWidth: 0 }}>
+          <Group gap={6} mb={2} wrap="nowrap">
+            <IconChecks size={14} color="var(--mantine-color-green-7)" />
+            <Text size="xs" fw={700} c="green.8">
+              Presupuesto aprobado
+            </Text>
+          </Group>
+          <Text fw={600} size="sm" truncate>
+            {solicitud.nombre_empresa}
+          </Text>
+          <Group gap={4} c="dimmed" wrap="nowrap">
+            <IconPhone size={13} />
+            <Text size="xs">
+              {formatearTelefono(solicitud.telefono)}
+              {solicitud.version > 1 && ` · Versión ${solicitud.version}`}
+            </Text>
+          </Group>
+        </div>
+        {solicitud.monto != null && (
+          <Text fw={700} size="lg" style={{ whiteSpace: 'nowrap' }}>
+            {formatoMoneda.format(solicitud.monto)}
+          </Text>
+        )}
+      </Group>
+    </Paper>
+  );
+}
+
 const SIN_CARGAR = {
   id: null,
   reclamo: null,
@@ -378,6 +445,7 @@ const SIN_CARGAR = {
   comentarios: [],
   movimientos: [],
   pedidosInspeccion: [],
+  solicitudes: [],
 };
 
 export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclamoActualizado }) {
@@ -407,20 +475,33 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
       // Los presupuestos solo los ve el admin (igual que la pestaña Presupuestos).
       esAdministrador() ? obtenerMovimientosPresupuestos(reclamoId) : [],
       esAdministrador() || esInspector() ? listarSolicitudesInspeccion(reclamoId) : [],
+      // Si fallan, el resto del reclamo se muestra igual; la pestaña avisa del error.
+      esAdministrador() ? listarSolicitudesPresupuesto(reclamoId).catch(() => null) : [],
     ])
-      .then(([reclamo, historial, visita, comentarios, movimientos, pedidosInspeccion]) => {
-        if (vigente) {
-          setUltimoCargado({
-            id: reclamoId,
-            reclamo,
-            historial,
-            visita,
-            comentarios,
-            movimientos,
-            pedidosInspeccion,
-          });
-        }
-      })
+      .then(
+        ([
+          reclamo,
+          historial,
+          visita,
+          comentarios,
+          movimientos,
+          pedidosInspeccion,
+          solicitudes,
+        ]) => {
+          if (vigente) {
+            setUltimoCargado({
+              id: reclamoId,
+              reclamo,
+              historial,
+              visita,
+              comentarios,
+              movimientos,
+              pedidosInspeccion,
+              solicitudes,
+            });
+          }
+        },
+      )
       .catch((err) => {
         if (vigente) notifyError(err.message);
       });
@@ -447,6 +528,9 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
   const todosComentarios = cargadoCoincide ? ultimoCargado.comentarios : [];
   const comentarios = todosComentarios.filter((c) => !esComentarioContratista(c));
   const pedidosInspeccion = cargadoCoincide ? ultimoCargado.pedidosInspeccion : [];
+  const solicitudes = cargadoCoincide ? ultimoCargado.solicitudes : [];
+  const aprobada = solicitudes?.find((s) => s.presupuesto_estado === 'APROBADO');
+  const { motivosDerivacion, resto: observaciones } = separarDerivacion(reclamo?.observaciones);
   const eventos = eventosVisibles(historial);
   const avancesPorEvento = agruparPorEvento(
     eventos,
@@ -540,6 +624,33 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
   // Una vez solicitado el presupuesto, el reclamo deja PENDIENTE_REVISION. A partir
   // de ahí tiene sentido ver a quién se le pidió y quién ya respondió.
   const mostrarSolicitudes = esAdmin && reclamo && reclamo.estado !== 'PENDIENTE_REVISION';
+  const acciones = [
+    puedeCambiarEstado && {
+      clave: 'estado',
+      etiqueta: 'Cambiar estado del reclamo',
+      Icono: IconArrowsExchange,
+      onClick: () => setCambiarEstadoAbierto(true),
+    },
+    puedeNotificar && {
+      clave: 'notificar',
+      etiqueta: 'Notificar contratistas para presupuestar',
+      Icono: IconBrandWhatsapp,
+      onClick: () => setNotificarAbierto(true),
+    },
+    esAdmin &&
+      reclamoAbierto && {
+        clave: 'inspectores',
+        etiqueta: 'Pedir información a inspectores',
+        Icono: IconEyeCheck,
+        onClick: () => setPedirInspeccionAbierto(true),
+      },
+  ].filter(Boolean);
+  const clavePrincipal = puedeNotificar
+    ? 'notificar'
+    : ESTADOS_CAMBIO_MANUAL.includes(reclamo?.estado) && 'estado';
+  const accionPrincipal = acciones.find((a) => a.clave === clavePrincipal);
+  const accionesSecundarias = acciones.filter((a) => a !== accionPrincipal);
+
   const visitaYaCoordinada =
     visita?.estado === 'CONFIRMADA' ||
     ['VISITA_COORDINADA', 'EN_EJECUCION', 'PENDIENTE_INTERVENCION', 'FINALIZADO'].includes(
@@ -599,9 +710,14 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
                     ? 'Creado desde WhatsApp por '
                     : 'Creado desde la plataforma para '}
                   <Text span fw={600} c="dark">
-                    {reclamo.telefono_creador}
+                    {formatearTelefono(reclamo.telefono_creador)}
                   </Text>
                 </Text>
+                {esTelefonoSimulado(reclamo.telefono_creador) && (
+                  <Badge size="xs" variant="outline" color="gray" tt="none">
+                    Simulado
+                  </Badge>
+                )}
               </Group>
               {esAdmin && <ChatDelReclamo telefono={reclamo.telefono_creador} />}
             </Stack>
@@ -665,6 +781,8 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
             </Paper>
           )}
 
+          {esAdmin && aprobada && <PresupuestoAprobado solicitud={aprobada} />}
+
           {visita && visita.estado === 'CONFIRMADA' && visita.horario_confirmado && (
             <Paper
               radius="md"
@@ -701,41 +819,47 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
             </Text>
           )}
 
-          {puedeCambiarEstado && (
+          {accionPrincipal && (
             <Button
               fullWidth
-              mb="md"
-              variant="light"
-              color="#1fa7b3"
-              leftSection={<IconArrowsExchange size={18} />}
-              onClick={() => setCambiarEstadoAbierto(true)}
-            >
-              Cambiar estado del reclamo
-            </Button>
-          )}
-
-          {puedeNotificar && (
-            <Button
-              fullWidth
-              mb="md"
+              mb="sm"
               color="teal"
-              leftSection={<IconBrandWhatsapp size={18} />}
-              onClick={() => setNotificarAbierto(true)}
+              leftSection={<accionPrincipal.Icono size={18} />}
+              onClick={accionPrincipal.onClick}
             >
-              Notificar contratistas para presupuestar
+              {accionPrincipal.etiqueta}
             </Button>
           )}
 
-          {esAdmin && reclamoAbierto && (
-            <Button
-              fullWidth
-              mb="md"
+          {accionesSecundarias.length > 0 && (
+            <SimpleGrid cols={{ base: 1, xs: accionesSecundarias.length }} spacing="sm" mb="md">
+              {accionesSecundarias.map(({ clave, etiqueta, Icono, onClick }) => (
+                <Button
+                  key={clave}
+                  variant="default"
+                  leftSection={<Icono size={18} />}
+                  onClick={onClick}
+                >
+                  {etiqueta}
+                </Button>
+              ))}
+            </SimpleGrid>
+          )}
+
+          {esAdmin && motivosDerivacion.length > 0 && (
+            <Alert
+              color="yellow"
               variant="light"
-              leftSection={<IconEyeCheck size={18} />}
-              onClick={() => setPedirInspeccionAbierto(true)}
+              icon={<IconRobot size={18} />}
+              title="El bot lo derivó a un operador"
+              mb="md"
             >
-              Pedir información a inspectores
-            </Button>
+              {motivosDerivacion.map((motivo) => (
+                <Text key={motivo} size="sm">
+                  {motivo}
+                </Text>
+              ))}
+            </Alert>
           )}
 
           {inspector && <PedidosDelReclamo pedidos={pedidosInspeccion} esAdmin={false} />}
@@ -751,13 +875,13 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
               {reclamo.descripcion}
             </Text>
 
-            {reclamo.observaciones && (
+            {observaciones && (
               <>
                 <Text fw={600} size="sm" mt="md" mb={4}>
                   Información adicional
                 </Text>
                 <Text size="sm" c="dimmed" style={{ whiteSpace: 'pre-wrap' }}>
-                  {reclamo.observaciones}
+                  {observaciones}
                 </Text>
               </>
             )}
@@ -910,7 +1034,7 @@ export function ClaimDetailDrawer({ reclamoId, onClose, onAbrirReclamo, onReclam
             {mostrarSolicitudes && (
               <Tabs.Panel value="presupuestos" pt="md">
                 <BudgetRequestsList
-                  reclamoId={reclamo.id}
+                  solicitudes={solicitudes}
                   // Decidir un presupuesto mueve el reclamo (ej. a Aprobado): sin recargar,
                   // el encabezado y el próximo paso quedan en el estado anterior.
                   onDecidido={() => {
