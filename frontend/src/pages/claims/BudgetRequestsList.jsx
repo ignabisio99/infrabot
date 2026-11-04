@@ -7,37 +7,15 @@ import { formatoMoneda } from '../../utils/formatters';
 import { notifyError } from '../../utils/notifications';
 import { BudgetItemsModal } from '../budgets/BudgetItemsModal';
 import { BudgetStatusBadge } from '../budgets/BudgetStatusBadge';
+import { masBarata, ordenarOfertas, porcentajeSobre } from '../budgets/comparacion';
 import { estaVigente } from '../budgets/estados';
 import { DadoDeBajaBadge } from '../contractors/DadoDeBajaBadge';
 
 const fecha = (valor) => new Date(valor).toLocaleDateString('es-AR');
 
-const vigente = (s) => s.presupuesto_cargado && estaVigente({ estado: s.presupuesto_estado });
-const cerrada = (s) => ['RECHAZADO', 'NO_SELECCIONADO'].includes(s.presupuesto_estado);
-
-// Primero la aprobada, después las que siguen en carrera de la más barata a la más cara,
-// las que todavía no llegaron y al final las descartadas.
-function orden(s) {
-  if (s.presupuesto_estado === 'APROBADO') return 0;
-  if (vigente(s)) return 1;
-  if (!s.presupuesto_cargado) return 2;
-  return 3;
-}
-
-function ordenar(solicitudes) {
-  return [...solicitudes].sort(
-    (a, b) => orden(a) - orden(b) || (vigente(a) ? Number(a.monto) - Number(b.monto) : 0),
-  );
-}
-
-// Sólo tiene sentido comparar mientras se está eligiendo: con dos o más en carrera y
-// ninguna aprobada.
-function masBarata(solicitudes) {
-  if (solicitudes.some((s) => s.presupuesto_estado === 'APROBADO')) return null;
-  const enCarrera = solicitudes.filter((s) => vigente(s) && s.monto != null);
-  if (enCarrera.length < 2) return null;
-  return enCarrera.reduce((min, s) => (Number(s.monto) < Number(min.monto) ? s : min));
-}
+const estadoDe = (s) => s.presupuesto_estado;
+const vigente = (s) => estaVigente({ estado: estadoDe(s) });
+const cerrada = (s) => ['RECHAZADO', 'NO_SELECCIONADO'].includes(estadoDe(s));
 
 function estiloTarjeta(s) {
   if (s.presupuesto_estado === 'APROBADO') {
@@ -54,9 +32,7 @@ function TarjetaSolicitud({ solicitud: s, masBarata }) {
   const cargado = s.presupuesto_cargado;
   const esLaMasBarata = masBarata && s.presupuesto_id === masBarata.presupuesto_id;
   const diferencia =
-    masBarata && vigente(s) && !esLaMasBarata
-      ? Math.round((Number(s.monto) / Number(masBarata.monto) - 1) * 100)
-      : null;
+    masBarata && vigente(s) && !esLaMasBarata ? porcentajeSobre(s, masBarata) : null;
 
   return (
     <Card withBorder radius="md" padding="sm" style={estiloTarjeta(s)}>
@@ -144,12 +120,12 @@ export function BudgetRequestsList({ solicitudes, onDecidido }) {
     );
   }
 
-  const laMasBarata = masBarata(solicitudes);
+  const laMasBarata = masBarata(solicitudes, estadoDe);
 
   return (
     <>
       <Stack gap="xs">
-        {ordenar(solicitudes).map((s) =>
+        {ordenarOfertas(solicitudes, estadoDe).map((s) =>
           s.presupuesto_cargado ? (
             <UnstyledButton
               key={s.presupuesto_id}
