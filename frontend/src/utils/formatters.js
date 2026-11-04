@@ -20,6 +20,7 @@ const formatoFechaHora = new Intl.DateTimeFormat('es-AR', {
   year: 'numeric',
   hour: '2-digit',
   minute: '2-digit',
+  hour12: false,
 });
 
 export const formatoFechaHoraCorta = (fecha) => formatoFechaHora.format(new Date(fecha));
