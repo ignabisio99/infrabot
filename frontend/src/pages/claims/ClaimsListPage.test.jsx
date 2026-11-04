@@ -25,7 +25,6 @@ function reclamo(datos) {
     alta_whatsapp: false,
     requiere_revision: false,
     fecha_creacion: haceDias(20),
-    fecha_ultimo_movimiento: haceDias(1),
     ...datos,
   };
 }
@@ -44,24 +43,6 @@ const fila = (id) => screen.getByText(id).closest('tr');
 
 describe('ClaimsListPage', () => {
   beforeEach(() => vi.clearAllMocks());
-
-  it('marca las ofertas en carrera y los abiertos sin movimiento hace más de 7 días', async () => {
-    await renderListado([
-      reclamo({
-        id: 1,
-        estado: 'EN_EVALUACION',
-        ofertas_en_carrera: 2,
-        fecha_ultimo_movimiento: new Date(Date.now() - 9.5 * DIA).toISOString(),
-      }),
-      reclamo({ id: 2, estado: 'PENDIENTE_REVISION', fecha_ultimo_movimiento: haceDias(6.5) }),
-      reclamo({ id: 3, estado: 'FINALIZADO', fecha_ultimo_movimiento: haceDias(30) }),
-    ]);
-
-    expect(within(fila('REC-00000001')).getByText('2 ofertas')).toBeInTheDocument();
-    expect(within(fila('REC-00000001')).getByText('10 días sin movimiento')).toBeInTheDocument();
-    expect(within(fila('REC-00000002')).queryByText(/sin movimiento/)).not.toBeInTheDocument();
-    expect(within(fila('REC-00000003')).queryByText(/sin movimiento/)).not.toBeInTheDocument();
-  });
 
   it('acorta el nombre de la escuela y muestra la fecha relativa', async () => {
     await renderListado([reclamo({ id: 1, estado: 'PENDIENTE_REVISION' })]);

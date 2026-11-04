@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router';
 import {
   ActionIcon,
   Alert,
-  Badge,
   Button,
   Container,
   Group,
@@ -37,8 +36,7 @@ import { MisPedidosInspeccion } from './PedidosInspeccion';
 import { PriorityBadge } from './PriorityBadge';
 import { StatusBadge } from './StatusBadge';
 import { StatusFilterPopover } from './StatusFilterPopover';
-import { DIAS_ESTANCADO, colorAntiguedad } from './antiguedad';
-import { ESTADOS, estadosFinales } from './estados';
+import { ESTADOS } from './estados';
 
 const opcionesPrioridad = [
   { value: '', label: 'Todas' },
@@ -72,14 +70,6 @@ function busquedaDeParams(searchParams) {
   return searchParams.get('busqueda') ?? '';
 }
 
-const DIA_MS = 24 * 60 * 60 * 1000;
-
-function diasEstancado(reclamo, ahora) {
-  if (estadosFinales.includes(reclamo.estado)) return null;
-  const transcurrido = ahora - new Date(reclamo.fecha_ultimo_movimiento);
-  return transcurrido > DIAS_ESTANCADO * DIA_MS ? Math.ceil(transcurrido / DIA_MS) : null;
-}
-
 function IdReclamo({ reclamo }) {
   return (
     <Group gap={6} wrap="nowrap">
@@ -106,25 +96,6 @@ function IdReclamo({ reclamo }) {
         </Tooltip>
       )}
     </Group>
-  );
-}
-
-function SenalesReclamo({ reclamo, ahora }) {
-  const ofertas = reclamo.ofertas_en_carrera;
-  const dias = diasEstancado(reclamo, ahora);
-  return (
-    <>
-      {ofertas > 0 && (
-        <Badge size="xs" variant="outline" color="blue" tt="none">
-          {ofertas === 1 ? '1 oferta' : `${ofertas} ofertas`}
-        </Badge>
-      )}
-      {dias && (
-        <Badge size="xs" variant="light" color={colorAntiguedad(dias)} tt="none">
-          {dias} días sin movimiento
-        </Badge>
-      )}
-    </>
   );
 }
 
@@ -392,7 +363,6 @@ export function ClaimsListPage() {
                 <>
                   <StatusBadge estado={reclamo.estado} variant="light" />
                   <PriorityBadge prioridad={reclamo.prioridad} fz="sm" />
-                  <SenalesReclamo reclamo={reclamo} ahora={ahora} />
                 </>
               }
               campos={[
@@ -462,12 +432,7 @@ export function ClaimsListPage() {
                     <PriorityBadge prioridad={reclamo.prioridad} fz="sm" />
                   </Table.Td>
                   <Table.Td>
-                    <Stack gap={4} align="flex-start">
-                      <StatusBadge estado={reclamo.estado} variant="light" />
-                      <Group gap={4} wrap="nowrap">
-                        <SenalesReclamo reclamo={reclamo} ahora={ahora} />
-                      </Group>
-                    </Stack>
+                    <StatusBadge estado={reclamo.estado} variant="light" />
                   </Table.Td>
                   <Table.Td>{reclamo.categoria}</Table.Td>
                   <Table.Td>

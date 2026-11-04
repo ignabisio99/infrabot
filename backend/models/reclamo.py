@@ -130,14 +130,6 @@ class Reclamo(Base):
         return estado_admite_presupuesto(self.estado)
 
     @property
-    def fecha_ultimo_movimiento(self) -> datetime:
-        """El último cambio de estado, con el mismo criterio que los estancados del
-        dashboard: los reclamos anteriores al historial cuentan desde su creación."""
-        if self.historial_estados:
-            return self.historial_estados[-1].fecha
-        return self.fecha_creacion
-
-    @property
     def ofertas_en_carrera(self) -> int:
         """Las que todavía esperan una decisión: si el reclamo se cancela, se les avisa."""
         from services.estados_presupuesto import esta_vigente

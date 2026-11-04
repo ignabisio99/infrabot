@@ -4,12 +4,19 @@ import { useNavigate } from 'react-router';
 
 import { TarjetaMovil } from '../../components/TarjetaMovil';
 import { useEsMobile } from '../../hooks/useEsMobile';
-import { colorAntiguedad } from '../claims/antiguedad';
 import { PriorityBadge } from '../claims/PriorityBadge';
 import { StatusBadge } from '../claims/StatusBadge';
 import { nombreCortoEscuela } from '../../utils/escuelas';
 import { formatearIdReclamo } from '../../utils/ids';
 import classes from './Dashboard.module.css';
+
+// Escalones de antigüedad. Un reclamo abierto hace un mes sin que nadie lo toque es un
+// problema distinto a uno que lleva ocho días.
+function colorAntiguedad(dias) {
+  if (dias >= 30) return 'red';
+  if (dias >= 14) return 'orange';
+  return 'gray';
+}
 
 /**
  * Reclamos abiertos sin cambio de estado hace más de `umbral` días, del más viejo al más

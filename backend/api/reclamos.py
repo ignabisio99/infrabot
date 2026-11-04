@@ -78,10 +78,8 @@ router = APIRouter(prefix="/reclamos", tags=["reclamos"])
 def _con_fotos(query):
     return query.options(
         joinedload(Reclamo.fotos).joinedload(FotoReclamo.usuario),
-        # Para `ofertas_en_carrera` y `fecha_ultimo_movimiento`: sin esto, el listado hace
-        # una consulta por reclamo.
+        # Para `ofertas_en_carrera`: sin esto, el listado hace una consulta por reclamo.
         selectinload(Reclamo.presupuestos),
-        selectinload(Reclamo.historial_estados),
     )
 
 
