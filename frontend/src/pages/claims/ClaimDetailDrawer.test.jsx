@@ -110,6 +110,101 @@ describe('ClaimDetailDrawer', () => {
     ).not.toBeInTheDocument();
   });
 
+  function oferta(datos) {
+    return {
+      contratista_id: datos.presupuesto_id,
+      especialidad: 'Plomería',
+      telefono: '+5491147779012',
+      fecha_solicitud: '2026-11-02T10:00:00Z',
+      presupuesto_cargado: true,
+      presupuesto_fecha: '2026-11-03T10:00:00Z',
+      version: 1,
+      ...datos,
+    };
+  }
+
+  async function abrirPresupuestos(reclamo, solicitudes) {
+    obtenerReclamo.mockResolvedValue(reclamo);
+    listarSolicitudesPresupuesto.mockResolvedValue(solicitudes);
+    const resultado = render(<ClaimDetailDrawer reclamoId={reclamo.id} onClose={vi.fn()} />);
+    await resultado.user.click(await screen.findByRole('tab', { name: 'Presupuestos' }));
+    return resultado;
+  }
+
+  it('resume arriba el presupuesto aprobado con contratista y monto', async () => {
+    await abrirPresupuestos(crearReclamo({ estado: 'PENDIENTE_COORDINACION' }), [
+      oferta({
+        presupuesto_id: 8,
+        nombre_empresa: 'Electricidad del Sur',
+        presupuesto_estado: 'RECHAZADO',
+        monto: '3000.00',
+      }),
+      oferta({
+        presupuesto_id: 7,
+        nombre_empresa: 'Plomería Integral',
+        presupuesto_estado: 'APROBADO',
+        monto: '4200.00',
+        version: 2,
+      }),
+    ]);
+
+    expect(screen.getByText('Presupuesto aprobado')).toBeInTheDocument();
+    expect(screen.getByText(/\+54 9 11 4777-9012 · Versión 2/)).toBeInTheDocument();
+    expect(screen.getAllByText('$ 4.200,00')).toHaveLength(2);
+    // La aprobada va primero aunque la rechazada sea más barata, y no se marca "más barata".
+    const empresas = screen.getAllByText(/^(Plomería Integral|Electricidad del Sur)$/);
+    expect(empresas.map((e) => e.textContent)).toEqual([
+      'Plomería Integral',
+      'Plomería Integral',
+      'Electricidad del Sur',
+    ]);
+    expect(screen.queryByText('Más barata')).not.toBeInTheDocument();
+  });
+
+  it('marca la más barata entre las ofertas que siguen en carrera', async () => {
+    await abrirPresupuestos(crearReclamo({ estado: 'EN_EVALUACION' }), [
+      oferta({
+        presupuesto_id: 7,
+        nombre_empresa: 'Cara SA',
+        presupuesto_estado: 'RECIBIDO',
+        monto: '3600',
+      }),
+      oferta({
+        presupuesto_id: 8,
+        nombre_empresa: 'Barata SA',
+        presupuesto_estado: 'RECIBIDO',
+        monto: '3000',
+      }),
+      oferta({
+        presupuesto_id: 9,
+        nombre_empresa: 'Descartada SA',
+        presupuesto_estado: 'RECHAZADO',
+        monto: '100',
+      }),
+    ]);
+
+    const empresas = screen.getAllByText(/^(Cara|Barata|Descartada) SA$/);
+    expect(empresas.map((e) => e.textContent)).toEqual(['Barata SA', 'Cara SA', 'Descartada SA']);
+    expect(screen.getAllByText('Más barata')).toHaveLength(1);
+    expect(screen.getByText('+20% que la más barata')).toBeInTheDocument();
+    expect(screen.queryByText('Presupuesto aprobado')).not.toBeInTheDocument();
+  });
+
+  it('muestra la derivación del bot como aviso y no como información adicional', async () => {
+    obtenerReclamo.mockResolvedValue(
+      crearReclamo({
+        observaciones:
+          'Llamar antes de ir\n[DERIVADO A OPERADOR] confianza de clasificación baja (0.00)',
+      }),
+    );
+    render(<ClaimDetailDrawer reclamoId={1} onClose={vi.fn()} />);
+
+    expect(await screen.findByText('El bot lo derivó a un operador')).toBeInTheDocument();
+    expect(screen.getByText('Confianza de clasificación baja (0.00)')).toBeInTheDocument();
+    expect(screen.getByText('Llamar antes de ir')).toBeInTheDocument();
+    expect(screen.queryByText(/DERIVADO A OPERADOR/)).not.toBeInTheDocument();
+  });
+
   it('al decidir un presupuesto recarga el reclamo y avisa al listado', async () => {
     obtenerReclamo
       .mockResolvedValueOnce(

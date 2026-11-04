@@ -9,6 +9,8 @@ import {
   Loader,
   Modal,
   MultiSelect,
+  Paper,
+  SimpleGrid,
   Stack,
   Text,
   TextInput,
@@ -88,7 +90,7 @@ export function ContractorListsPage() {
   };
 
   return (
-    <Container size="md" px={0}>
+    <Container fluid px={0}>
       <Group justify="space-between" mb="lg">
         <Title order={2}>Listas de contratistas</Title>
         <Button leftSection={<IconPlus size={18} />} onClick={() => setModalAbierto(true)}>
@@ -105,12 +107,27 @@ export function ContractorListsPage() {
       )}
 
       {!cargando && !errorCarga && listas.length === 0 && (
-        <Text c="dimmed">
-          Todavía no hay listas creadas. Creá una para notificar contratistas más rápido.
-        </Text>
+        <Paper withBorder radius="md" p="xl" style={{ borderStyle: 'dashed' }}>
+          <Stack align="center" gap="xs" ta="center">
+            <IconUsersGroup size={32} color="var(--mantine-color-dimmed)" />
+            <Text fw={600}>Todavía no hay listas</Text>
+            <Text size="sm" c="dimmed" maw={420}>
+              Agrupá a los contratistas que convocás juntos (por ejemplo, los electricistas de una
+              zona) y notificalos a todos de una vez al pedir presupuesto.
+            </Text>
+            <Button
+              mt="xs"
+              variant="light"
+              leftSection={<IconPlus size={16} />}
+              onClick={() => setModalAbierto(true)}
+            >
+              Crear la primera lista
+            </Button>
+          </Stack>
+        </Paper>
       )}
 
-      <Stack>
+      <SimpleGrid cols={{ base: 1, lg: 2 }}>
         {listas.map((lista) => (
           <Card key={lista.id} withBorder radius="md">
             <Group justify="space-between" mb="xs">
@@ -145,7 +162,7 @@ export function ContractorListsPage() {
             </Text>
           </Card>
         ))}
-      </Stack>
+      </SimpleGrid>
 
       <Modal
         opened={modalAbierto}

@@ -21,6 +21,13 @@ export function fechaEnRango(fecha, rango) {
   return true;
 }
 
+export const normalizarTexto = (texto) =>
+  (texto || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
 // Acepta "34", "0034", "REC-00000034", etc: se queda solo con los dígitos
 // escritos y busca esa subcadena dentro del ID completo (con ceros a la izquierda).
 export function idCoincideConBusqueda(id, busqueda) {

@@ -10,7 +10,6 @@ import {
   Loader,
   Modal,
   Paper,
-  Rating,
   ScrollArea,
   SegmentedControl,
   Select,
@@ -18,7 +17,12 @@ import {
   Text,
   TextInput,
 } from '@mantine/core';
-import { IconAlertTriangle, IconBrandWhatsapp, IconSearch, IconStarFilled } from '@tabler/icons-react';
+import {
+  IconAlertTriangle,
+  IconBrandWhatsapp,
+  IconSearch,
+  IconStarFilled,
+} from '@tabler/icons-react';
 
 import { listarContratistas } from '../../api/contratistas';
 import {
@@ -27,7 +31,10 @@ import {
   notificarContratistas,
 } from '../../api/listasContratistas';
 import { useEsMobile } from '../../hooks/useEsMobile';
+import { porCalificacion, porNombre } from '../../utils/contratistas';
+import { normalizarTexto } from '../../utils/filtros';
 import { notifyError, notifySuccess } from '../../utils/notifications';
+import { CalificacionContratista } from '../contractors/CalificacionContratista';
 
 function cuandoSeNotifico(fecha) {
   const minutos = Math.floor((Date.now() - new Date(fecha).getTime()) / 60000);
@@ -44,28 +51,11 @@ function cuandoSeNotifico(fecha) {
   return `el ${dia}`;
 }
 
-// Qué tan confiable es el contratista según su calificación (1 a 5, o sin calificar).
-function nivelCalificacion(calificacion) {
-  if (calificacion == null) return { etiqueta: 'Sin calificar', color: 'gray' };
-  if (calificacion >= 5) return { etiqueta: 'Excelente', color: 'teal' };
-  if (calificacion >= 4) return { etiqueta: 'Buena', color: 'teal' };
-  if (calificacion >= 3) return { etiqueta: 'Regular', color: 'yellow' };
-  if (calificacion >= 2) return { etiqueta: 'Mala', color: 'red' };
-  return { etiqueta: 'Muy mala', color: 'red' };
-}
-
-const normalizar = (texto) =>
-  (texto || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
-
 // La especialidad "coincide" con la categoría del reclamo si una contiene a la otra
 // (sin acentos ni mayúsculas), o si el contratista hace de todo.
 function coincideEspecialidad(especialidad, categoria) {
-  const e = normalizar(especialidad);
-  const c = normalizar(categoria);
+  const e = normalizarTexto(especialidad);
+  const c = normalizarTexto(categoria);
   if (!e || !c) return false;
   if (['todo', 'general', 'todos'].includes(e)) return true;
   return e.includes(c) || c.includes(e);
@@ -76,21 +66,6 @@ const ORDENES = [
   { value: 'calificacion', label: 'Mejor calificación' },
   { value: 'nombre', label: 'Nombre (A-Z)' },
 ];
-
-const porCalificacion = (a, b) => (b.calificacion ?? -1) - (a.calificacion ?? -1);
-const porNombre = (a, b) => a.nombre_empresa.localeCompare(b.nombre_empresa, 'es');
-
-function CalificacionContratista({ calificacion }) {
-  const nivel = nivelCalificacion(calificacion);
-  return (
-    <Stack gap={2} align="flex-end" style={{ flex: 'none' }}>
-      <Rating value={calificacion ?? 0} readOnly size="sm" color="yellow" />
-      <Badge size="xs" variant="light" color={nivel.color} tt="none">
-        {calificacion != null ? `${calificacion}/5 · ${nivel.etiqueta}` : nivel.etiqueta}
-      </Badge>
-    </Stack>
-  );
-}
 
 function DatosContratista({ contratista, categoria }) {
   const coincide = coincideEspecialidad(contratista.especialidad, categoria);
@@ -104,7 +79,13 @@ function DatosContratista({ contratista, categoria }) {
           {contratista.especialidad}
         </Badge>
         {coincide && (
-          <Badge size="xs" variant="light" color="teal" tt="none" leftSection={<IconStarFilled size={9} />}>
+          <Badge
+            size="xs"
+            variant="light"
+            color="teal"
+            tt="none"
+            leftSection={<IconStarFilled size={9} />}
+          >
             Coincide con el reclamo
           </Badge>
         )}
@@ -160,16 +141,17 @@ export function NotifyContractorsModal({ reclamoId, categoria, opened, onClose }
   const activos = useMemo(() => contratistas.filter((c) => !c.fecha_baja), [contratistas]);
 
   const visibles = useMemo(() => {
-    const termino = normalizar(busqueda);
+    const termino = normalizarTexto(busqueda);
     const filtrados = activos.filter(
       (c) =>
         !termino ||
-        normalizar(c.nombre_empresa).includes(termino) ||
-        normalizar(c.especialidad).includes(termino),
+        normalizarTexto(c.nombre_empresa).includes(termino) ||
+        normalizarTexto(c.especialidad).includes(termino),
     );
     const copia = [...filtrados];
     if (orden === 'nombre') return copia.sort(porNombre);
-    if (orden === 'calificacion') return copia.sort((a, b) => porCalificacion(a, b) || porNombre(a, b));
+    if (orden === 'calificacion')
+      return copia.sort((a, b) => porCalificacion(a, b) || porNombre(a, b));
     // Recomendados: primero los de la especialidad del reclamo, después por calificación.
     return copia.sort((a, b) => {
       const ca = coincideEspecialidad(a.especialidad, categoria) ? 1 : 0;
@@ -431,7 +413,11 @@ export function NotifyContractorsModal({ reclamoId, categoria, opened, onClose }
                   <Text size="sm" c="dimmed">
                     Se va a notificar a:
                   </Text>
-                  <ScrollArea.Autosize mah={esMobile ? undefined : 320} offsetScrollbars type="auto">
+                  <ScrollArea.Autosize
+                    mah={esMobile ? undefined : 320}
+                    offsetScrollbars
+                    type="auto"
+                  >
                     <Stack gap="xs">
                       {activosDe(listaSeleccionada)
                         .slice()

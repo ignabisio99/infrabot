@@ -14,7 +14,8 @@ export function avisarNotificacionesCambiaron() {
   window.dispatchEvent(new Event(EVENTO_NOTIFICACIONES));
 }
 
-export function NotificationBell() {
+// `onConteo` recibe cada conteo nuevo, para que el menú lateral use el mismo refresco.
+export function NotificationBell({ onConteo }) {
   const navigate = useNavigate();
   const [abierto, setAbierto] = useState(false);
   const [noLeidas, setNoLeidas] = useState(0);
@@ -27,9 +28,10 @@ export function NotificationBell() {
         setNoLeidas(data.no_leidas || 0);
         setVersiones(data.versiones_por_decidir || 0);
         if (data.mensaje) setMensaje(data.mensaje);
+        onConteo?.(data);
       })
       .catch(() => setNoLeidas(0));
-  }, []);
+  }, [onConteo]);
 
   useEffect(() => {
     refrescarConteo();

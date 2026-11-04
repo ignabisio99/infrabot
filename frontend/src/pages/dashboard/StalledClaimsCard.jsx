@@ -6,6 +6,7 @@ import { TarjetaMovil } from '../../components/TarjetaMovil';
 import { useEsMobile } from '../../hooks/useEsMobile';
 import { PriorityBadge } from '../claims/PriorityBadge';
 import { StatusBadge } from '../claims/StatusBadge';
+import { nombreCortoEscuela } from '../../utils/escuelas';
 import { formatearIdReclamo } from '../../utils/ids';
 import classes from './Dashboard.module.css';
 
@@ -25,7 +26,9 @@ export function StalledClaimsCard({ reclamos, total, umbral }) {
   const navigate = useNavigate();
   const esMobile = useEsMobile();
   const hayMas = total > reclamos.length;
-  const abrir = (reclamo) => navigate(`/reclamos?busqueda=${formatearIdReclamo(reclamo.id)}`);
+  // Filtra el listado por el reclamo y además abre su detalle.
+  const abrir = (reclamo) =>
+    navigate(`/reclamos?busqueda=${formatearIdReclamo(reclamo.id)}&abrir=${reclamo.id}`);
 
   return (
     <Card withBorder radius="md" padding="lg">
@@ -48,7 +51,7 @@ export function StalledClaimsCard({ reclamos, total, umbral }) {
             <TarjetaMovil
               key={reclamo.id}
               onClick={() => abrir(reclamo)}
-              titulo={`${formatearIdReclamo(reclamo.id)} · ${reclamo.nombre_escuela}`}
+              titulo={`${formatearIdReclamo(reclamo.id)} · ${nombreCortoEscuela(reclamo.nombre_escuela)}`}
               badges={
                 <>
                   <StatusBadge estado={reclamo.estado} variant="light" />
@@ -85,7 +88,9 @@ export function StalledClaimsCard({ reclamos, total, umbral }) {
                       {formatearIdReclamo(reclamo.id)}
                     </Text>
                   </Table.Td>
-                  <Table.Td>{reclamo.nombre_escuela}</Table.Td>
+                  <Table.Td title={reclamo.nombre_escuela}>
+                    {nombreCortoEscuela(reclamo.nombre_escuela)}
+                  </Table.Td>
                   <Table.Td>
                     <StatusBadge estado={reclamo.estado} variant="light" />
                   </Table.Td>

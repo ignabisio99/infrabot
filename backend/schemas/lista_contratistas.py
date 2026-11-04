@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -82,6 +83,7 @@ class SolicitudPresupuestoOut(BaseModel):
     presupuesto_id: int | None = None
     presupuesto_estado: str | None = None
     presupuesto_fecha: datetime | None = None
+    monto: Decimal | None = None
     version: int = 0
 
 

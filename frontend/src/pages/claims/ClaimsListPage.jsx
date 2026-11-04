@@ -15,16 +15,19 @@ import {
   Text,
   TextInput,
   Title,
+  Tooltip,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
-import { IconExchange, IconEye } from '@tabler/icons-react';
+import { IconBrandWhatsapp, IconExchange, IconEye, IconRobot } from '@tabler/icons-react';
 
 import { RowActionsMenu } from '../../components/RowActionsMenu';
 import { TarjetaMovil } from '../../components/TarjetaMovil';
 import { useEsMobile } from '../../hooks/useEsMobile';
 import { eliminarReclamo, listarMisPedidosInspeccion, listarReclamos } from '../../api/reclamos';
 import { esInspector } from '../../utils/auth';
+import { capitalizarMayusculas, nombreCortoEscuela } from '../../utils/escuelas';
 import { fechaEnRango, idCoincideConBusqueda } from '../../utils/filtros';
+import { fechaRelativa, formatoFechaHoraCorta } from '../../utils/formatters';
 import { formatearIdReclamo } from '../../utils/ids';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 import { ChangeStatusModal } from './ChangeStatusModal';
@@ -65,6 +68,45 @@ function categoriaDeParams(searchParams) {
 
 function busquedaDeParams(searchParams) {
   return searchParams.get('busqueda') ?? '';
+}
+
+function IdReclamo({ reclamo }) {
+  return (
+    <Group gap={6} wrap="nowrap">
+      <Text ff="monospace" size="sm" style={{ whiteSpace: 'nowrap' }}>
+        {formatearIdReclamo(reclamo.id)}
+      </Text>
+      {reclamo.alta_whatsapp && (
+        <Tooltip label="Creado desde WhatsApp" withArrow>
+          <IconBrandWhatsapp
+            size={15}
+            color="var(--mantine-color-teal-6)"
+            aria-label="Creado desde WhatsApp"
+          />
+        </Tooltip>
+      )}
+      {/* El flag queda prendido para siempre: sólo importa mientras nadie lo revisó. */}
+      {reclamo.requiere_revision && reclamo.estado === 'PENDIENTE_REVISION' && (
+        <Tooltip label="El bot lo derivó a un operador" withArrow>
+          <IconRobot
+            size={15}
+            color="var(--mantine-color-yellow-7)"
+            aria-label="El bot lo derivó a un operador"
+          />
+        </Tooltip>
+      )}
+    </Group>
+  );
+}
+
+function FechaReclamo({ fecha, ahora }) {
+  return (
+    <Tooltip label={formatoFechaHoraCorta(fecha)} withArrow>
+      <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
+        {fechaRelativa(fecha, ahora)}
+      </Text>
+    </Tooltip>
+  );
 }
 
 // `?abrir=34` abre el detalle de ese reclamo al entrar.
@@ -195,6 +237,7 @@ export function ClaimsListPage() {
 
   const soloLectura = esInspector();
   const esMobile = useEsMobile();
+  const [ahora] = useState(() => new Date());
 
   // Inspector: reclamos en los que le pidieron información. Se recarga al cerrar el
   // detalle, porque comentar o subir una foto ahí atiende el pedido.
@@ -312,7 +355,7 @@ export function ClaimsListPage() {
                   <Text span ff="monospace" size="sm" fw={600}>
                     {formatearIdReclamo(reclamo.id)}
                   </Text>{' '}
-                  · {reclamo.nombre_escuela}
+                  · {nombreCortoEscuela(reclamo.nombre_escuela)}
                 </>
               }
               acciones={accionesReclamo(reclamo)}
@@ -323,7 +366,7 @@ export function ClaimsListPage() {
                 </>
               }
               campos={[
-                { etiqueta: 'Ubicación', valor: reclamo.ubicacion },
+                { etiqueta: 'Ubicación', valor: capitalizarMayusculas(reclamo.ubicacion) },
                 { etiqueta: 'Categoría', valor: reclamo.categoria },
                 {
                   etiqueta: 'Descripción',
@@ -335,7 +378,7 @@ export function ClaimsListPage() {
                 },
                 {
                   etiqueta: 'Fecha',
-                  valor: new Date(reclamo.fecha_creacion).toLocaleString('es-AR'),
+                  valor: `${fechaRelativa(reclamo.fecha_creacion, ahora)} (${formatoFechaHoraCorta(reclamo.fecha_creacion)})`,
                 },
               ]}
             />
@@ -373,17 +416,23 @@ export function ClaimsListPage() {
                     </ActionIcon>
                   </Table.Td>
                   <Table.Td>
-                    <Text ff="monospace">{formatearIdReclamo(reclamo.id)}</Text>
+                    <IdReclamo reclamo={reclamo} />
                   </Table.Td>
-                  <Table.Td>{reclamo.nombre_escuela}</Table.Td>
-                  <Table.Td>{reclamo.ubicacion}</Table.Td>
+                  <Table.Td>
+                    <Text size="sm" lineClamp={2} maw={260} title={reclamo.nombre_escuela}>
+                      {nombreCortoEscuela(reclamo.nombre_escuela)}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm" lineClamp={2} maw={200}>
+                      {capitalizarMayusculas(reclamo.ubicacion)}
+                    </Text>
+                  </Table.Td>
                   <Table.Td>
                     <PriorityBadge prioridad={reclamo.prioridad} fz="sm" />
                   </Table.Td>
                   <Table.Td>
-                    <Group gap={6} wrap="nowrap">
-                      <StatusBadge estado={reclamo.estado} variant="light" />
-                    </Group>
+                    <StatusBadge estado={reclamo.estado} variant="light" />
                   </Table.Td>
                   <Table.Td>{reclamo.categoria}</Table.Td>
                   <Table.Td>
@@ -391,7 +440,9 @@ export function ClaimsListPage() {
                       {reclamo.descripcion}
                     </Text>
                   </Table.Td>
-                  <Table.Td>{new Date(reclamo.fecha_creacion).toLocaleString('es-AR')}</Table.Td>
+                  <Table.Td>
+                    <FechaReclamo fecha={reclamo.fecha_creacion} ahora={ahora} />
+                  </Table.Td>
                   <Table.Td>{accionesReclamo(reclamo)}</Table.Td>
                 </Table.Tr>
               ))}

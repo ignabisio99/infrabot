@@ -7,12 +7,14 @@ import {
   Container,
   Group,
   Loader,
+  SimpleGrid,
   Stack,
   Text,
   Title,
 } from '@mantine/core';
-import { IconAlertCircle, IconCheck, IconUserCheck, IconUserX, IconX } from '@tabler/icons-react';
+import { IconAlertCircle, IconCheck, IconUserCheck, IconUserX } from '@tabler/icons-react';
 import { API_URL } from '../../api/apiClient';
+import { formatearTelefono } from '../../utils/telefonos';
 
 export function UsersApprovalPage() {
   const [usuarios, setUsuarios] = useState([]);
@@ -20,23 +22,15 @@ export function UsersApprovalPage() {
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState(null);
 
-  const fetchPendientes = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const response = await fetch(`${API_URL}/auth/pendientes`, { credentials: 'include' });
-      if (!response.ok) throw new Error('Error al obtener usuarios pendientes');
-      const data = await response.json();
-      setUsuarios(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchPendientes();
+    fetch(`${API_URL}/auth/pendientes`, { credentials: 'include' })
+      .then((response) => {
+        if (!response.ok) throw new Error('Error al obtener usuarios pendientes');
+        return response.json();
+      })
+      .then(setUsuarios)
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
   }, []);
 
   const handleAprobar = async (id) => {
@@ -73,7 +67,7 @@ export function UsersApprovalPage() {
 
   if (loading) {
     return (
-      <Container>
+      <Container fluid px={0}>
         <Stack align="center" mt="xl">
           <Loader color="#1fa7b3" />
           <Text>Cargando solicitudes...</Text>
@@ -83,7 +77,7 @@ export function UsersApprovalPage() {
   }
 
   return (
-    <Container size="md">
+    <Container fluid px={0}>
       <Title order={2} mb="lg">
         Solicitudes de registro pendientes
       </Title>
@@ -99,7 +93,7 @@ export function UsersApprovalPage() {
           No hay solicitudes pendientes de aprobación.
         </Alert>
       ) : (
-        <Stack>
+        <SimpleGrid cols={{ base: 1, lg: 2 }}>
           {usuarios.map((usuario) => (
             <Card key={usuario.id} shadow="sm" padding="lg" radius="md" withBorder>
               <Group justify="space-between" wrap="wrap">
@@ -117,7 +111,7 @@ export function UsersApprovalPage() {
                   </Text>
                   {usuario.telefono && (
                     <Text size="sm" c="dimmed">
-                      Tel: {usuario.telefono}
+                      Tel: {formatearTelefono(usuario.telefono)}
                     </Text>
                   )}
                   {usuario.direccion && (
@@ -162,7 +156,7 @@ export function UsersApprovalPage() {
               </Group>
             </Card>
           ))}
-        </Stack>
+        </SimpleGrid>
       )}
     </Container>
   );

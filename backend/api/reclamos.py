@@ -1,6 +1,7 @@
 import logging
 import os
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -768,6 +769,9 @@ def listar_solicitudes_presupuesto(
                     presupuesto_id=presupuesto.id,
                     presupuesto_estado=presupuesto.estado.value,
                     presupuesto_fecha=presupuesto.fecha,
+                    monto=sum(
+                        (i.cantidad * i.costo_unitario for i in presupuesto.items), Decimal("0")
+                    ),
                     version=presupuesto.version,
                 )
             )

@@ -464,6 +464,8 @@ def test_solicitudes_del_reclamo_muestran_tambien_las_ofertas_rechazadas(
         (primera["id"], "RECHAZADO"),
     ]
     assert all(f["presupuesto_fecha"] for f in de_ficha)
+    # ITEMS: 2 x 1000
+    assert [float(f["monto"]) for f in de_ficha] == [2000, 2000]
     [sin_oferta] = [f for f in filas if f["contratista_id"] == pendiente.id]
     assert sin_oferta["presupuesto_cargado"] is False
 
@@ -616,6 +618,22 @@ def test_sin_seleccionar_puede_volver_a_ofertar_si_se_reabre_la_convocatoria(
     [solicitud] = client.get("/contratistas/mis-solicitudes").json()
     assert solicitud["presupuesto_estado"] == "NO_SELECCIONADO"
     assert solicitud["puede_ofertar"] is True
+
+
+def test_el_conteo_dice_cuantos_reclamos_tienen_ofertas_para_comparar(
+    client, loguear_contratista, crear_reclamo
+):
+    reclamo = crear_reclamo(estado=EstadoReclamo.PENDIENTE_PRESUPUESTO)
+    ficha = loguear_contratista()
+    presupuesto = _cargar(client, reclamo, ficha).json()
+
+    conteo = client.get("/notificaciones/conteo").json()
+    assert conteo["reclamos_en_evaluacion"] == 1
+    assert conteo["no_leidas"] == 0
+
+    _rechazar(client, presupuesto["id"])
+
+    assert client.get("/notificaciones/conteo").json()["reclamos_en_evaluacion"] == 0
 
 
 def test_la_campanita_cuenta_las_versiones_corregidas_hasta_que_se_decide(
