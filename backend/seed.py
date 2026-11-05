@@ -13,6 +13,7 @@ poner al día una base que quedó desfasada porque un modelo cambió. Deja un ad
 desarrollo listo para entrar (ver ADMIN_EMAIL / ADMIN_PASSWORD).
 """
 
+import json
 import logging
 import random
 import sys
@@ -55,9 +56,16 @@ from models import (
     Usuario,
     Visita,
 )
+from models.estimacion_preliminar import EstimacionPreliminar
+from models.recomendacion_ia import TipoRecomendacionIA
 from models.recordatorio_contratista import RecordatorioContratista
 from models.rol_mano_obra import asegurar_roles_iniciales
 from services import coordinacion_visita, estados_presupuesto, estados_reclamo
+from services.ai import auditoria as auditoria_ia
+from services.ai import estimacion as estimacion_ia
+from services.ai import historicos
+from services.ai import registro as registro_ia
+from services.ai.contexto_reclamo import texto_para_ia
 from services.referencias_costo import cargar_referencias_si_faltan, sincronizar_desde_csv
 
 # Usuario administrador para poder entrar a la app en un entorno recién creado.
@@ -744,6 +752,7 @@ class _Contexto:
     ahora: datetime
     escuelas: list
     telefonos: dict
+    estimaciones: dict
     proxima_escuela: int = 0
 
     def escuela(self):
@@ -793,7 +802,7 @@ def _paso(ctx, reclamo, estado, fecha, motivo=None, origen=OrigenCambioEstado.MA
     return evento
 
 
-def _nuevo_reclamo(ctx, categoria, creado):
+def _nuevo_reclamo(ctx, categoria, creado, dudosa=False):
     rng = ctx.rng
     datos = CATALOGO[categoria]
     institucion = ctx.escuela()
@@ -803,7 +812,9 @@ def _nuevo_reclamo(ctx, categoria, creado):
         ubicacion=" ".join((institucion.domicilio or "").split()),
         prioridad=rng.choice(datos["prioridades"]),
         categoria=categoria,
-        descripcion=rng.choice(datos["problemas"]).format(lugar=rng.choice(LUGARES)),
+        descripcion=rng.choice(datos["problemas"])
+        .format(lugar=rng.choice(LUGARES))
+        .replace(" de el ", " del "),
         observaciones=rng.choice(OBSERVACIONES),
         # El número simulado ("sim...") nunca sale a Meta, aunque haya token cargado.
         telefono_creador=ctx.telefonos.setdefault(
@@ -817,6 +828,7 @@ def _nuevo_reclamo(ctx, categoria, creado):
     inicial = estados_reclamo.registrar_estado_inicial(ctx.db, reclamo)
     inicial.fecha = creado
     ctx.db.flush()
+    ctx.estimaciones[reclamo.id] = _simular_ia_reclamo(ctx.db, rng, reclamo, creado, dudosa)
     return reclamo
 
 
@@ -878,6 +890,10 @@ def _recibir_ofertas(ctx, reclamo, convocados, fechas):
             estado=estados_presupuesto.ESTADO_INICIAL,
             fecha=fecha,
         )
+        # Las ofertas giran alrededor de lo que estimó la IA, como en la realidad.
+        estimado = ctx.estimaciones.get(reclamo.id)
+        if estimado:
+            _ajustar_total(presupuesto, estimado * Decimal(str(_proporcion_oferta(rng))))
         ctx.db.add(presupuesto)
         estados_presupuesto.registrar_estado_inicial(ctx.db, presupuesto).fecha = fecha
         presupuestos.append(presupuesto)
@@ -920,8 +936,18 @@ def _hasta_aprobacion(ctx, categoria, aprobado):
         ganador = rng.choice(presupuestos)
     perdedores = [p for p in presupuestos if p is not ganador]
 
+    # Una oferta muy por encima de lo estimado no se aprueba sin renegociarla: la
+    # ganadora queda, como mucho, en zona de revisión.
+    estimado = ctx.estimaciones.get(reclamo.id)
+    if estimado and _monto(ganador) > estimado * Decimal("1.18"):
+        _ajustar_total(ganador, estimado * Decimal(str(rng.uniform(0.92, 1.15))))
+
     if perdedores and rng.random() < 0.2:
         rechazado = perdedores.pop()
+        # Se rechaza por cara: la auditoría la marca para rechazar.
+        estimado = ctx.estimaciones.get(reclamo.id)
+        if estimado:
+            _ajustar_total(rechazado, estimado * Decimal(str(rng.uniform(1.3, 1.5))))
         estados_presupuesto.cambiar_estado(
             db, rechazado, EstadoPresupuesto.RECHAZADO,
             motivo="El monto supera ampliamente la referencia de costos.",
@@ -1070,8 +1096,9 @@ def _reclamos_sin_visita(ctx):
     ahora = ctx.ahora
 
     # Recién cargados, esperando que alguien los revise.
-    for _ in range(8):
-        _nuevo_reclamo(ctx, _categoria(rng), _hace(ctx, 0, 3, 7, 22))
+    # La mitad quedó marcada por la IA para que la confirme un operador.
+    for i in range(8):
+        _nuevo_reclamo(ctx, _categoria(rng), _hace(ctx, 0, 3, 7, 22), dudosa=i % 2 == 0)
 
     # Validados, con el pedido de cotización hecho y sin ofertas todavía.
     for _ in range(7):
@@ -1150,6 +1177,359 @@ def _reclamos_sin_visita(ctx):
         _paso(ctx, reclamo, EstadoReclamo.CANCELADO, cancelado, motivo=rng.choice(MOTIVOS_CANCELACION))
 
 
+# ---------------------------------------------------------------------------------------
+# Análisis de IA simulado
+#
+# En la app la clasificación y la estimación corren al cargar el reclamo, y la auditoría
+# al llegar cada presupuesto. Correr el LLM de verdad desde el seed serían cientos de
+# llamadas, dependería de la red y la clasificación podría cambiarle la categoría a un
+# reclamo ya armado. Acá se guarda lo mismo que guardaría el motor, en las mismas tablas
+# y con los mismos campos que leen las pantallas, con textos redactados a partir del
+# reclamo y de los ítems de cada oferta.
+#
+# Los números no son inventados: las referencias se buscan con la misma función de la
+# app (`historicos.buscar_referencias`) sobre `data/referencias_costo.csv`, la
+# confianza y la validación salen de las funciones del servicio de estimación, y la
+# recomendación de la auditoría se calcula con los umbrales reales.
+# ---------------------------------------------------------------------------------------
+
+PROVEEDOR_IA = "gemini"
+
+AREA_POR_CATEGORIA = {
+    "Electricidad": "la instalación eléctrica",
+    "Plomería": "la instalación sanitaria (agua y desagües)",
+    "Gas": "la instalación de gas",
+    "Techos": "la cubierta y los desagües pluviales",
+    "Pintura": "terminaciones y pintura",
+    "Pisos": "pisos y solados",
+    "Aberturas": "puertas, ventanas y cerramientos",
+    "Albañilería": "mampostería y revoques",
+    "Carpintería": "carpintería y mobiliario fijo",
+    "Infraestructura": "instalaciones generales del edificio",
+}
+
+RIESGO_ALTA = {
+    "Electricidad": "hay riesgo eléctrico para alumnos y personal, y puede dejar aulas sin luz.",
+    "Gas": "una falla en la instalación de gas es un riesgo de seguridad: hay que atenderla primero.",
+    "Techos": "el agua puede alcanzar la instalación eléctrica y deja el sector sin uso los días de lluvia.",
+    "Plomería": "deja sin un servicio básico a la escuela y puede generar problemas de higiene.",
+    "Aberturas": "compromete la seguridad del edificio o una salida de emergencia.",
+}
+MOTIVO_PRIORIDAD = {
+    PrioridadReclamo.ALTA: "implica un riesgo para las personas o deja sin uso un servicio básico.",
+    PrioridadReclamo.MEDIA: "afecta el uso normal de un sector, pero no representa un riesgo inmediato.",
+    PrioridadReclamo.BAJA: "es un problema de mantenimiento sin riesgo para las personas: se puede programar.",
+}
+
+
+def _pesos(valor) -> str:
+    return "$" + f"{Decimal(valor):,.0f}".replace(",", ".")
+
+
+def _cantidad(valor) -> str:
+    """8 y no 8.00; 2,5 y no 2.50."""
+    numero = Decimal(valor).normalize()
+    return f"{numero:f}".replace(".", ",")
+
+
+def _minuscula(texto: str) -> str:
+    return texto[:1].lower() + texto[1:]
+
+
+def _simular_clasificacion(db, rng, reclamo, fecha, dudosa=False):
+    area = AREA_POR_CATEGORIA.get(reclamo.categoria, "el edificio")
+    if reclamo.prioridad is PrioridadReclamo.ALTA:
+        motivo = RIESGO_ALTA.get(reclamo.categoria, MOTIVO_PRIORIDAD[PrioridadReclamo.ALTA])
+    else:
+        motivo = MOTIVO_PRIORIDAD[reclamo.prioridad]
+    justificacion = f"Problema de {area}. Prioridad {reclamo.prioridad.value.lower()}: {motivo}"
+    razonamiento = (
+        f"La descripción («{reclamo.descripcion.rstrip('.')}») apunta a {area}, "
+        f"que es el rubro {reclamo.categoria}."
+    )
+    if dudosa:
+        confianza = round(rng.uniform(0.42, 0.58), 2)
+        razonamiento += (
+            " El texto es breve y no permite descartar otro rubro: lo dejo para que lo "
+            "confirme un operador antes de pedir presupuestos."
+        )
+        reclamo.requiere_revision = True
+    else:
+        confianza = round(rng.uniform(0.78, 0.96), 2)
+        if reclamo.observaciones:
+            razonamiento += f" La nota de la escuela («{reclamo.observaciones.rstrip('.')}») lo confirma."
+    registro_ia.registrar(
+        db,
+        tipo=TipoRecomendacionIA.CLASIFICACION,
+        payload={
+            "categoria": reclamo.categoria,
+            "prioridad": reclamo.prioridad.value,
+            "justificacion": justificacion,
+            "razonamiento": razonamiento,
+            "aplicada": True,
+            "orquestado": True,
+        },
+        reclamo_id=reclamo.id,
+        proveedor=PROVEEDOR_IA,
+        confianza=confianza,
+        requiere_revision=dudosa,
+    ).fecha = fecha
+
+
+def _simular_estimacion(db, rng, reclamo, fecha):
+    """Guarda la estimación y devuelve el total, o None si no hay precedentes."""
+    refs = historicos.buscar_referencias(
+        db, categoria=reclamo.categoria, descripcion=texto_para_ia(reclamo)
+    )
+    if not refs:
+        return None
+
+    promedio = estimacion_ia._promedio_ponderado(refs)
+    total = Decimal(round(float(promedio) * rng.uniform(0.94, 1.08), -3))
+    parte_mano_obra = Decimal(str(round(rng.uniform(0.42, 0.58), 2)))
+    parte_otros = Decimal(str(round(rng.uniform(0.04, 0.08), 2)))
+    mano_obra = (total * parte_mano_obra).quantize(Decimal("0.01"))
+    otros = (total * parte_otros).quantize(Decimal("0.01"))
+    materiales = total - mano_obra - otros
+    requiere_revision, validacion = estimacion_ia._validar_desvio(total, refs)
+    confianza = historicos.confianza_por_precedentes(refs)
+
+    mas_parecida = refs[0]
+    cantidad = f"{len(refs)} trabajos similares" if len(refs) > 1 else "un trabajo similar"
+    if total >= promedio:
+        ajuste = rng.choice(
+            [
+                "lo llevé un poco arriba por la prioridad y el acceso al sector",
+                "sumé un margen por posibles terminaciones que no se ven en la descripción",
+            ]
+        )
+    else:
+        ajuste = "quedó apenas por debajo porque el trabajo parece acotado a un solo sector"
+    plantillas = CATALOGO.get(reclamo.categoria, {}).get("items", [])
+    if plantillas:
+        materiales_tipicos = " y ".join(_minuscula(p[1]) for p in rng.sample(plantillas[1:], 2))
+        detalle_mano_obra = f" ({_minuscula(plantillas[0][1])})"
+        texto_materiales = f" y el resto en materiales como {materiales_tipicos}"
+    else:
+        detalle_mano_obra = texto_materiales = ""
+    justificacion = (
+        f"Tomé {cantidad} de {reclamo.categoria}. El más parecido es «{mas_parecida.descripcion}» "
+        f"({_pesos(mas_parecida.monto_ajustado)}, similitud {round(mas_parecida.similitud * 100)}%). "
+        f"El promedio ponderado de los precedentes da {_pesos(promedio)}; {ajuste}. "
+        f"Estimo {round(parte_mano_obra * 100)}% de mano de obra{detalle_mano_obra}{texto_materiales}."
+    )
+
+    meta_inflacion = mas_parecida.meta_inflacion or {}
+    estimacion = EstimacionPreliminar(
+        reclamo_id=reclamo.id,
+        materiales=materiales,
+        mano_obra=mano_obra,
+        otros=otros,
+        total=total,
+        confianza=confianza,
+        detalle=json.dumps(
+            {
+                "justificacion": justificacion,
+                "referencias_ids": [r.id for r in refs],
+                "referencias": [
+                    {
+                        "id": r.id,
+                        "descripcion": r.descripcion,
+                        "monto_ajustado_ars": float(r.monto_ajustado),
+                        "monto_original_ars": float(r.monto_original),
+                        "similitud": r.similitud,
+                        "fecha_referencia": r.fecha_referencia,
+                    }
+                    for r in refs
+                ],
+                "confianza_por_precedentes": confianza,
+                "factor_inflacion": meta_inflacion.get("factor"),
+                "serie_ipc": meta_inflacion.get("serie_ipc"),
+                "fuente_inflacion": meta_inflacion.get("fuente_inflacion"),
+                "meta_inflacion": meta_inflacion,
+                "validacion": validacion,
+            },
+            ensure_ascii=False,
+        ),
+        proveedor=PROVEEDOR_IA,
+        requiere_revision=requiere_revision,
+        fecha=fecha,
+    )
+    db.add(estimacion)
+    db.flush()
+    registro_ia.registrar(
+        db,
+        tipo=TipoRecomendacionIA.ESTIMACION,
+        payload={
+            "estimacion_id": estimacion.id,
+            "materiales": float(materiales),
+            "mano_obra": float(mano_obra),
+            "otros": float(otros),
+            "total": float(total),
+            "validacion": validacion,
+        },
+        reclamo_id=reclamo.id,
+        proveedor=PROVEEDOR_IA,
+        confianza=confianza,
+        requiere_revision=requiere_revision,
+    ).fecha = fecha
+    return total
+
+
+def _simular_ia_reclamo(db, rng, reclamo, creado, dudosa=False):
+    """Lo que corre al cargar el reclamo. Devuelve el total estimado (o None)."""
+    # Unos minutos después de la carga, salvo que eso sea en el futuro.
+    ahora = reloj.ahora()
+    _simular_clasificacion(db, rng, reclamo, min(creado + timedelta(minutes=1), ahora), dudosa)
+    return _simular_estimacion(
+        db, rng, reclamo, min(creado + timedelta(minutes=rng.randint(2, 4)), ahora)
+    )
+
+
+def _ajustar_total(presupuesto, objetivo):
+    """Escala los precios unitarios para que la oferta sume (casi) `objetivo`."""
+    actual = _monto(presupuesto)
+    if not actual:
+        return
+    factor = Decimal(objetivo) / Decimal(actual)
+    for item in presupuesto.items:
+        # Redondeado a la centena, como cotiza una persona.
+        centenas = (Decimal(item.costo_unitario) * factor / 100).quantize(Decimal("1"))
+        item.costo_unitario = max(Decimal(100), centenas * 100)
+
+
+def _proporcion_oferta(rng):
+    """Cuánto cotiza un contratista respecto de la estimación: casi siempre cerca."""
+    tramo = rng.choices(
+        [(0.80, 0.98), (0.98, 1.05), (1.05, 1.20), (1.20, 1.45)],
+        weights=[40, 30, 20, 10],
+    )[0]
+    return rng.uniform(*tramo)
+
+
+def _rango_tarifa(categoria, descripcion):
+    for tipo, desc, _unidad, _cmin, _cmax, costo_min, costo_max in CATALOGO.get(categoria, {}).get("items", []):
+        if desc == descripcion:
+            return costo_min, costo_max
+    return None
+
+
+def _notas_auditoria(rng, presupuesto, total, total_est, recomendacion, desvio_abs, desvio_pct):
+    items = list(presupuesto.items)
+    subtotal = {id(i): Decimal(i.cantidad) * Decimal(i.costo_unitario) for i in items}
+    mayor = max(items, key=lambda i: subtotal[id(i)])
+    participacion = round(subtotal[id(mayor)] / total * 100)
+    unidad = mayor.unidad if mayor.unidad != "unidad" else "u."
+    frase_mayor = (
+        f"El ítem de mayor peso es «{mayor.descripcion}»: {participacion}% del total "
+        f"({_cantidad(mayor.cantidad)} {unidad} a {_pesos(mayor.costo_unitario)})"
+    )
+
+    mano_obra = next((i for i in items if i.tipo is TipoItemPresupuesto.MANO_OBRA), None)
+    if mano_obra is None:
+        frase_mano_obra = "No discrimina la mano de obra: conviene pedirla por separado"
+    else:
+        tarifa = Decimal(mano_obra.costo_unitario)
+        rango = _rango_tarifa(presupuesto.reclamo.categoria, mano_obra.descripcion)
+        base = f"Cotiza {_cantidad(mano_obra.cantidad)} {mano_obra.unidad} de {_minuscula(mano_obra.descripcion)} a {_pesos(tarifa)}"
+        if rango is None:
+            frase_mano_obra = base
+        elif tarifa > rango[1]:
+            frase_mano_obra = f"{base}, por encima de lo habitual para el rubro (hasta {_pesos(rango[1])})"
+        elif tarifa < rango[0]:
+            frase_mano_obra = f"{base}, una tarifa por debajo del promedio del rubro"
+        else:
+            frase_mano_obra = f"{base}, dentro del rango de mercado"
+
+    porcentaje = f"{abs(desvio_pct) * 100:.1f}".replace(".", ",")
+    pedido = (
+        "la cantidad de horas"
+        if mayor.tipo is TipoItemPresupuesto.MANO_OBRA
+        else f"la cantidad y el precio de {_minuscula(mayor.descripcion)}"
+    )
+    if recomendacion is auditoria_ia.RecomendacionAuditoria.APROBAR and desvio_pct < Decimal("-0.35"):
+        cierre = (
+            "Es llamativamente bajo para este trabajo: antes de aprobar conviene confirmar que "
+            "incluya todos los materiales y la mano de obra completa."
+        )
+    elif recomendacion is auditoria_ia.RecomendacionAuditoria.APROBAR and desvio_abs <= 0:
+        cierre = rng.choice(
+            [
+                "No veo ítems faltantes para el trabajo descripto: se puede aprobar.",
+                "Cubre lo que pide el reclamo y es favorable respecto de la estimación.",
+            ]
+        )
+    if recomendacion is auditoria_ia.RecomendacionAuditoria.APROBAR and desvio_abs <= 0:
+        return (
+            f"El total ({_pesos(total)}) queda {porcentaje}% por debajo de la estimación "
+            f"preliminar ({_pesos(total_est)}). {frase_mano_obra}. {frase_mayor}. {cierre}"
+        )
+    if recomendacion is auditoria_ia.RecomendacionAuditoria.APROBAR:
+        return (
+            f"Supera la estimación en apenas {porcentaje}% ({_pesos(desvio_abs)}), dentro del "
+            f"margen aceptable. {frase_mano_obra}. {frase_mayor}. Se puede aprobar."
+        )
+    if recomendacion is auditoria_ia.RecomendacionAuditoria.REVISAR:
+        return (
+            f"Supera la estimación en {porcentaje}% ({_pesos(desvio_abs)}). {frase_mayor}, y ahí se "
+            f"concentra la diferencia. {frase_mano_obra}. Antes de aprobar conviene pedirle al "
+            f"contratista que justifique {pedido}."
+        )
+    return (
+        f"El total ({_pesos(total)}) supera la estimación en {porcentaje}%, por encima del umbral "
+        f"de revisión del {auditoria_ia.UMBRAL_REVISAR * 100:.0f}%. {frase_mayor}. {frase_mano_obra}. "
+        "No recomiendo aprobarlo sin una nueva cotización o una justificación técnica."
+    )
+
+
+def _simular_auditoria(db, rng, presupuesto, total_est, fecha):
+    total = _monto(presupuesto).quantize(Decimal("0.01"))
+    total_est = Decimal(total_est).quantize(Decimal("0.01"))
+    recomendacion, desvio_abs, desvio_pct = auditoria_ia._recomendacion_por_desvio(
+        total, total_est, auditoria_ia.UMBRAL_APROBAR, auditoria_ia.UMBRAL_REVISAR
+    )
+    notas = _notas_auditoria(rng, presupuesto, total, total_est, recomendacion, desvio_abs, desvio_pct)
+    # Mismo payload que `auditoria.persistir_informe`, que es lo que lee la pantalla.
+    registro_ia.registrar(
+        db,
+        tipo=TipoRecomendacionIA.AUDITORIA,
+        payload={
+            "recomendacion": recomendacion.value,
+            "total_presupuesto": float(total),
+            "total_estimacion": float(total_est),
+            "desvio_absoluto": float(desvio_abs),
+            "desvio_porcentual": float(desvio_pct),
+            "notas_tecnicas": notas,
+            "sin_estimacion": False,
+            "sin_precedentes": False,
+        },
+        reclamo_id=presupuesto.reclamo_id,
+        presupuesto_id=presupuesto.id,
+        proveedor=PROVEEDOR_IA,
+        requiere_revision=recomendacion is not auditoria_ia.RecomendacionAuditoria.APROBAR,
+    ).fecha = fecha
+
+
+def _auditar_presupuestos(db, rng, estimaciones):
+    """Una auditoría por presupuesto, unos minutos después de que llegó."""
+    db.flush()
+    for reclamo_id, total_est in estimaciones.items():
+        if total_est is None:
+            continue
+        for presupuesto in db.query(Presupuesto).filter_by(reclamo_id=reclamo_id).order_by(Presupuesto.id):
+            fecha = min(presupuesto.fecha + timedelta(minutes=rng.randint(2, 6)), reloj.ahora())
+            _simular_auditoria(db, rng, presupuesto, total_est, fecha)
+
+
+def simular_ia_ejemplos(db, reclamos):
+    """La misma IA simulada para los reclamos de RECLAMOS, que no pasan por el generador."""
+    rng = random.Random(99)
+    estimaciones = {}
+    for reclamo in reclamos:
+        estimaciones[reclamo.id] = _simular_ia_reclamo(db, rng, reclamo, reclamo.fecha_creacion)
+    _auditar_presupuestos(db, rng, estimaciones)
+
+
 def _dias_de_visita(ahora):
     """Del primer día del mes pasado al último del mes que viene."""
     mes_pasado = (ahora.replace(day=1) - timedelta(days=1)).replace(day=1)
@@ -1167,7 +1547,7 @@ def _seed_reclamos_historicos(db, contratistas):
     rng = random.Random(2026)
     escuelas = db.query(Institucion).order_by(Institucion.id).all()
     rng.shuffle(escuelas)
-    ctx = _Contexto(db=db, rng=rng, contratistas=contratistas, ahora=ahora, escuelas=escuelas, telefonos={})
+    ctx = _Contexto(db=db, rng=rng, contratistas=contratistas, ahora=ahora, escuelas=escuelas, telefonos={}, estimaciones={})
 
     for dia in _dias_de_visita(ahora):
         if dia.weekday() == 5:
@@ -1180,6 +1560,7 @@ def _seed_reclamos_historicos(db, contratistas):
             _reclamo_con_visita(ctx, _categoria(rng), _a_las(dia, hora, minuto))
 
     _reclamos_sin_visita(ctx)
+    _auditar_presupuestos(db, rng, ctx.estimaciones)
     db.flush()
 
 
@@ -1199,7 +1580,8 @@ def seed(db):
     db.flush()
 
     crear_cuentas_de_contratistas(db, contratistas, emails)
-    crear_reclamos(db, contratistas)
+    reclamos = crear_reclamos(db, contratistas)
+    simular_ia_ejemplos(db, reclamos)
     _seed_reclamos_historicos(db, contratistas)
 
     creadas_refs = cargar_referencias_si_faltan(db)
