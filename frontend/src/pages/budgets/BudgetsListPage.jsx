@@ -9,6 +9,7 @@ import {
   Container,
   Group,
   Loader,
+  Pagination,
   Stack,
   Table,
   Text,
@@ -37,6 +38,9 @@ import { DecideBudgetModal } from './DecideBudgetModal';
 import { ESTADOS, estaVigente, etiquetaPorEstado } from './estados';
 
 const COLUMNAS = 7;
+// Se pagina por reclamo y no por oferta, para no partir las ofertas de un reclamo en dos
+// páginas.
+const RECLAMOS_POR_PAGINA = 10;
 
 // Ofertas anteriores del mismo contratista en el mismo reclamo, por id de presupuesto.
 // Tras un rechazo puede mandar otra, y sin esto las dos filas parecen no tener relación.
@@ -97,7 +101,12 @@ function Monto({ presupuesto, barata }) {
   );
 }
 
-function EncabezadoReclamo({ reclamo, cantidad, onVer }) {
+function textoCantidadOfertas(cantidad, total) {
+  if (cantidad < total) return `${cantidad} de ${total} ofertas`;
+  return cantidad === 1 ? '1 oferta' : `${cantidad} ofertas`;
+}
+
+function EncabezadoReclamo({ reclamo, cantidad, total, onVer }) {
   return (
     <Group justify="space-between" wrap="nowrap" gap="sm">
       <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
@@ -109,7 +118,7 @@ function EncabezadoReclamo({ reclamo, cantidad, onVer }) {
         </Text>
         <StatusBadge estado={reclamo.estado} variant="light" size="sm" />
         <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
-          {cantidad === 1 ? '1 oferta' : `${cantidad} ofertas`}
+          {textoCantidadOfertas(cantidad, total)}
         </Text>
       </Group>
       <Button
@@ -134,10 +143,18 @@ export function BudgetsListPage() {
   const [presupuestoADecidir, setPresupuestoADecidir] = useState(null);
   const ofertasAnteriores = useMemo(() => ofertasAnterioresPorId(presupuestos), [presupuestos]);
   const masBaratas = useMemo(() => masBarataPorReclamo(presupuestos), [presupuestos]);
+  // Contra el total sin filtrar: con un filtro puesto, el encabezado avisa que el reclamo
+  // tiene más ofertas que las que se ven.
+  const totalOfertas = useMemo(() => {
+    const totales = new Map();
+    for (const p of presupuestos) totales.set(p.reclamo.id, (totales.get(p.reclamo.id) ?? 0) + 1);
+    return totales;
+  }, [presupuestos]);
 
   const [busquedaReclamo, setBusquedaReclamo] = useState('');
   const [estadosFiltro, setEstadosFiltro] = useState([]);
   const [rangoFechas, setRangoFechas] = useState([null, null]);
+  const [pagina, setPagina] = useState(1);
 
   const presupuestosFiltrados = useMemo(
     () =>
@@ -152,6 +169,22 @@ export function BudgetsListPage() {
   );
 
   const grupos = useMemo(() => agruparPorReclamo(presupuestosFiltrados), [presupuestosFiltrados]);
+
+  const filtroActual = `${busquedaReclamo}|${estadosFiltro}|${rangoFechas[0]}|${rangoFechas[1]}`;
+  const [filtroPrevio, setFiltroPrevio] = useState(filtroActual);
+  if (filtroActual !== filtroPrevio) {
+    setFiltroPrevio(filtroActual);
+    setPagina(1);
+  }
+
+  const totalPaginas = Math.ceil(grupos.length / RECLAMOS_POR_PAGINA);
+  // Decidir una oferta con un filtro de estado puesto la saca del listado: si era lo único
+  // de la última página, sin esto quedaría una página vacía.
+  const paginaVisible = Math.min(pagina, Math.max(totalPaginas, 1));
+  const gruposPagina = grupos.slice(
+    (paginaVisible - 1) * RECLAMOS_POR_PAGINA,
+    paginaVisible * RECLAMOS_POR_PAGINA,
+  );
   const verReclamo = (id) => navigate(`/reclamos?abrir=${id}`);
 
   const hayFiltrosActivos =
@@ -330,11 +363,12 @@ export function BudgetsListPage() {
 
       {!cargando && presupuestosFiltrados.length > 0 && esMobile && (
         <Stack gap="lg">
-          {grupos.map(({ reclamo, ofertas }) => (
+          {gruposPagina.map(({ reclamo, ofertas }) => (
             <Stack key={reclamo.id} gap="xs">
               <EncabezadoReclamo
                 reclamo={reclamo}
                 cantidad={ofertas.length}
+                total={totalOfertas.get(reclamo.id)}
                 onVer={() => verReclamo(reclamo.id)}
               />
               {ofertas.map((presupuesto) => {
@@ -391,13 +425,14 @@ export function BudgetsListPage() {
                 <Table.Th />
               </Table.Tr>
             </Table.Thead>
-            {grupos.map(({ reclamo, ofertas }) => (
+            {gruposPagina.map(({ reclamo, ofertas }) => (
               <Table.Tbody key={reclamo.id}>
                 <Table.Tr bg="var(--mantine-color-gray-0)">
                   <Table.Td colSpan={COLUMNAS}>
                     <EncabezadoReclamo
                       reclamo={reclamo}
                       cantidad={ofertas.length}
+                      total={totalOfertas.get(reclamo.id)}
                       onVer={() => verReclamo(reclamo.id)}
                     />
                   </Table.Td>
@@ -454,6 +489,12 @@ export function BudgetsListPage() {
             ))}
           </Table>
         </Table.ScrollContainer>
+      )}
+
+      {!cargando && totalPaginas > 1 && (
+        <Group justify="center" mt="md">
+          <Pagination total={totalPaginas} value={paginaVisible} onChange={setPagina} />
+        </Group>
       )}
 
       <BudgetItemsModal

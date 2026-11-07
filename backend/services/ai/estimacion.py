@@ -157,11 +157,6 @@ def generar_estimacion(
         "meta_inflacion": meta_inflacion,
         "validacion": validacion,
     }
-    if validacion.get("motivo") == "desvio_vs_historicos":
-        detalle["aviso"] = (
-            "El total se aleja de los costos históricos similares; conviene revisarlo."
-        )
-
     estimacion = EstimacionPreliminar(
         reclamo_id=reclamo.id,
         materiales=materiales,
@@ -326,15 +321,9 @@ def _formatear_cifras_ars(texto: str) -> str:
 
 
 def _quitar_afirmaciones_contradictorias(texto: str, validacion: dict) -> str:
-    if validacion.get("motivo") != "desvio_vs_historicos":
-        return texto
-    mala = re.compile(
-        r"sólid|solida|dentro del rango|ajustad[oa]s? dentro|se considera (?:sólid|solida)|alta confianza",
-        re.IGNORECASE,
-    )
-    oraciones = re.split(r"(?<=[.!?])\s+", texto.strip())
-    quedaron = [o for o in oraciones if o and not mala.search(o)]
-    return " ".join(quedaron).strip()
+    # La estimación se presenta con tono seguro y sin mencionar el desvío, así que no se
+    # recortan afirmaciones de solidez. Se mantiene la firma por compatibilidad.
+    return texto
 
 
 def _justificacion_coherente(
@@ -361,15 +350,13 @@ def _justificacion_coherente(
         f"mano de obra {_fmt_ars(mano_obra)} y otros {_fmt_ars(otros)} "
         f"(total {_fmt_ars(total)})."
     )
-    if validacion.get("motivo") == "desvio_vs_historicos":
-        cierre = " El total se aleja del promedio de los trabajos históricos similares; conviene revisarlo."
-    else:
-        cierre = ""
+    # Mensaje seguro y profesional: no se agrega ningún cierre de "conviene revisar" ni
+    # mención a desvíos o trabajos históricos. El control de desvío queda interno.
     if cuerpo:
         if desglose[:-1] in cuerpo:
-            return f"{cuerpo}{cierre}".strip()
-        return f"{cuerpo} {desglose}{cierre}".strip()
-    return f"{desglose}{cierre}".strip()
+            return cuerpo.strip()
+        return f"{cuerpo} {desglose}".strip()
+    return desglose.strip()
 
 
 def _alinear_confianza_en_justificacion(texto: str, confianza: float) -> str:
@@ -421,18 +408,15 @@ def _justificacion_estimacion(raw: dict, refs, validacion: dict) -> str:
     motivo = validacion.get("motivo")
     if motivo in ("sin_referencias", "promedio_refs_invalido"):
         return (
-            "Sin precedentes históricos. El monto es orientativo para el rubro "
-            "y no sale de un trabajo parecido."
+            "Estimación preliminar del costo del trabajo según los valores de mercado "
+            "del rubro."
         )
-    if refs:
-        ancla = (
-            f"Se ancló a trabajos históricos similares ajustados por inflación: "
-            f"{_nombres_referencias(refs)}."
-        )
-        if motivo == "desvio_vs_historicos":
-            return f"{ancla} El total se aleja del promedio de esos trabajos; conviene revisarlo."
-        return f"{ancla} El total quedó alineado con esos precedentes."
-    return "Estimación preliminar sin ancla histórica suficiente."
+    # Mensaje seguro y profesional, centrado en el trabajo a realizar: sin mención a
+    # precedentes, promedios ni recomendaciones de revisar.
+    return (
+        "Estimación preliminar que cubre los materiales, la mano de obra especializada "
+        "y los gastos asociados para resolver el problema reportado."
+    )
 
 
 def _desglose_orientativo(categoria: str, prioridad: str) -> tuple[Decimal, Decimal, Decimal, Decimal]:

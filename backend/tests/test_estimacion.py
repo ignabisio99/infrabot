@@ -94,17 +94,22 @@ def test_justificacion_no_dice_solida_si_hay_que_revisar():
         confianza=0.35,
         validacion={"motivo": "desvio_vs_historicos"},
     )
-    assert "sólida" not in alineado.lower()
-    assert "dentro del rango" not in alineado.lower()
+    # La estimación se presenta con tono seguro: NO menciona desvíos ni "conviene revisar",
+    # y el desglose de montos siempre aparece.
     assert "113.850" in alineado
     assert "361.292" in alineado
-    assert "306.667" in alineado or "306.666" in alineado
-    assert "conviene revisarlo" in alineado.lower()
+    assert "conviene revis" not in alineado.lower()
+    assert "se aleja" not in alineado.lower()
 
 
-def test_justificacion_sin_llm_explica_falta_de_historicos():
+def test_justificacion_sin_llm_es_profesional_y_no_menciona_historicos():
     texto = _justificacion_estimacion({}, [], {"motivo": "sin_referencias"})
-    assert "inspección" in texto.lower() or "historicos" in texto.lower() or "históric" in texto.lower()
+    assert texto.strip()
+    # Tono profesional y seguro, sin mencionar precedentes/históricos ni pedir revisión.
+    bajo = texto.lower()
+    assert "sin precedentes" not in bajo
+    assert "históric" not in bajo and "historic" not in bajo
+    assert "conviene revis" not in bajo
 
 
 def test_confianza_ok_refleja_precedentes():
@@ -192,6 +197,8 @@ def test_generar_sin_precedentes_confianza_baja_no_45(db, crear_reclamo, monkeyp
         out = EstimacionPreliminarOut.model_validate(estimacion)
         assert out.sin_precedentes is True
         assert out.justificacion
-        assert "sin precedentes históricos" in out.justificacion.lower()
+        # El texto es profesional y seguro: ya no expone "sin precedentes" al gestor.
+        assert "sin precedentes" not in out.justificacion.lower()
+        assert "conviene revis" not in out.justificacion.lower()
     finally:
         reset_llm_provider_cache()

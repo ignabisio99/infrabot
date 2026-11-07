@@ -56,3 +56,290 @@ Infraestructura,Muro de ladrillo hueco de 12 cm en paño de 8 m² (mano de obra 
 Infraestructura,Placa antihumedad en paño de 8 m² (mano de obra a 13500/m²),108000,2026-10-22,m2,appmaestro:mo-2026-10
 Infraestructura,Tabique de Durlock en paño de 10 m² (mano de obra a 21100/m² + placa STD 12.5 mm a 12844/m²),339440,2026-10-22,m2,appmaestro:mo+mat-2026-10
 Infraestructura,Cielorraso suspendido de Durlock en paño de 10 m² (mano de obra a 20930/m²),209300,2026-10-22,m2,appmaestro:mo-2026-10
+Electricidad,Saltan las térmicas del aula varias veces por día: recambio de térmicas y revisión del circuito,292000,2026-03-12,trabajo,seed_csv
+Electricidad,Saltaban las térmicas del comedor: se separó el circuito de cocina y se cambió la llave,276000,2026-07-02,trabajo,seed_csv
+Electricidad,Tomacorrientes quemados en aula: reemplazo de tomas y cableado del tramo dañado,322500,2026-04-20,trabajo,seed_csv
+Electricidad,No funcionan las luminarias del pasillo: recambio por paneles LED y revisión de la línea,269000,2026-05-08,trabajo,seed_csv
+Electricidad,"Cables a la vista en caja de paso: cierre de cajas, empalmes y tapas nuevas",312000,2026-02-25,trabajo,seed_csv
+Electricidad,Disyuntor del tablero seccional no corta al probarlo: reemplazo del diferencial,296000,2026-06-15,trabajo,seed_csv
+Electricidad,"Olor a quemado en el tablero: ajuste de bornes, reemplazo de térmicas y diferencial",267500,2026-08-04,trabajo,seed_csv
+Electricidad,Se quemaron tubos y balasto del aula: reemplazo por paneles LED,309000,2026-09-10,trabajo,seed_csv
+Plomería,Pérdida de agua debajo de las bachas del baño: cambio de sifón y conexiones,178000,2026-03-18,trabajo,seed_csv
+Plomería,"Inodoros tapados en los baños, desbordaban: destapación y recambio de tramo de cloaca",203000,2026-05-27,trabajo,seed_csv
+Plomería,Sin presión de agua en planta alta: reemplazo de llave de paso y tramo de cañería,180000,2026-04-09,trabajo,seed_csv
+Plomería,Canilla de servicio gotea y no cierra: cambio de canilla y llave de paso,181500,2026-06-03,trabajo,seed_csv
+Plomería,Humedad en la pared del baño por caño roto: reparación de cañería termofusión,202000,2026-07-21,trabajo,seed_csv
+Plomería,"Tanque de reserva rebalsa, no corta el flotante: reemplazo de flotante",227000,2026-08-12,trabajo,seed_csv
+Plomería,Mochila del inodoro descarga sin parar: cambio de mecanismo de mochila,183500,2026-02-19,trabajo,seed_csv
+Gas,"Olor a gas en la cocina: búsqueda de pérdida, reparación de cañería y prueba de hermeticidad",237500,2026-04-14,trabajo,seed_csv
+Gas,La estufa del aula se apaga sola: cambio de termocupla y limpieza de piloto,269000,2026-06-23,trabajo,seed_csv
+Gas,El calefón no enciende: reparación de válvula y cambio de termocupla,294000,2026-05-05,trabajo,seed_csv
+Gas,Pérdida detectada en la prueba de hermeticidad de la cocina: reemplazo de tramo epoxi,265000,2026-08-26,trabajo,seed_csv
+Gas,"Rejilla de ventilación obstruida, observada en la inspección: colocación de rejillas reglamentarias",251000,2026-03-30,trabajo,seed_csv
+Techos,Goteras en el aula cada vez que llueve: membrana asfáltica en el sector afectado,993000,2026-03-05,trabajo,seed_csv
+Techos,Membrana del techo levantada por el viento: recambio de membrana con aluminio,750500,2026-09-01,trabajo,seed_csv
+Techos,Canaleta tapada y desbordando sobre el patio: limpieza y recambio de canaleta,962000,2026-05-19,trabajo,seed_csv
+Techos,Mancha de humedad en el cielorraso: impermeabilización del techo y reparación,814000,2026-07-08,trabajo,seed_csv
+Techos,Chapas sueltas en el techo del gimnasio: fijación y recambio de chapas,776000,2026-06-11,trabajo,seed_csv
+Pintura,"Paredes del aula descascaradas por humedad: enduido, fijador y látex",622500,2026-04-28,trabajo,seed_csv
+Pintura,"Pintura de las rejas oxidada y saltada: lijado, antióxido y esmalte sintético",662500,2026-02-12,trabajo,seed_csv
+Pintura,Pintadas en las paredes del frente: fijador y repintado con látex,769500,2026-08-18,trabajo,seed_csv
+Pintura,Repintar el aula después del arreglo de la filtración,635500,2026-06-29,trabajo,seed_csv
+Pisos,Baldosas levantadas en el patio: retiro y colocación de cerámico antideslizante,521000,2026-03-24,trabajo,seed_csv
+Pisos,Piso hundido cerca de la puerta: contrapiso nuevo y cerámicos,530000,2026-07-15,trabajo,seed_csv
+Pisos,Escalón roto con el borde suelto: reconstrucción del escalón,489000,2026-05-13,trabajo,seed_csv
+Pisos,Cerámicos rotos en el pasillo: reemplazo de cerámicos y pastina,516000,2026-09-07,trabajo,seed_csv
+Aberturas,"La puerta del aula no cierra, se arrastra contra el piso: ajuste y bisagras reforzadas",301500,2026-04-02,trabajo,seed_csv
+Aberturas,Vidrio roto en la ventana del aula: colocación de vidrio laminado,301500,2026-06-17,trabajo,seed_csv
+Aberturas,"Cerradura trabada, no se podía abrir con llave: cambio de cerradura de seguridad",316500,2026-02-27,trabajo,seed_csv
+Aberturas,Barral antipánico de la salida de emergencia no funciona: reemplazo de barral,366000,2026-08-06,trabajo,seed_csv
+Aberturas,"Ventana descuadrada, no se podía cerrar: escuadrado de hoja y bisagras",339500,2026-05-22,trabajo,seed_csv
+Albañilería,"Grieta en la pared del aula: picado, malla y revoque nuevo",713000,2026-03-10,trabajo,seed_csv
+Albañilería,"Revoque desprendido en el pasillo, cayeron pedazos: picado y revoque",774500,2026-07-28,trabajo,seed_csv
+Albañilería,Muro del cerco perimetral inclinado: demolición parcial y levantamiento de muro,744500,2026-05-30,trabajo,seed_csv
+Albañilería,Mampostería floja alrededor del marco de la puerta: amurado y revoque,710000,2026-09-03,trabajo,seed_csv
+Infraestructura,Rampa de acceso con la baranda suelta: soldadura y fijación de baranda,471000,2026-04-16,trabajo,seed_csv
+Infraestructura,"Portón de entrada vencido, no cerraba con candado: refuerzo y soldadura de bisagras",458500,2026-06-08,trabajo,seed_csv
+Infraestructura,Bomba de agua hace ruido y corta sola: reparación de bomba y automático,399500,2026-08-20,trabajo,seed_csv
+Infraestructura,Mástil de la bandera oxidado en la base: refuerzo con caño estructural y pintura,442500,2026-02-23,trabajo,seed_csv
+Infraestructura,Tapa de cámara séptica rota en el patio: tapa de hormigón nueva,436000,2026-07-11,trabajo,seed_csv
+Electricidad,Cortocircuito en el tablero principal: reemplazo del tablero,343000,2026-01-28,trabajo,seed_csv
+Electricidad,Saltan las térmicas varias veces por día: cambio de térmicas,329500,2026-08-21,trabajo,seed_csv
+Electricidad,"Tomacorrientes quemados, uno largó chispas: reemplazo de tomas",289000,2026-09-15,trabajo,seed_csv
+Electricidad,No funcionan las luminarias: recambio por paneles LED,353000,2026-03-03,trabajo,seed_csv
+Electricidad,Cables a la vista en la caja de paso: cierre y tapas,273000,2026-07-27,trabajo,seed_csv
+Electricidad,Disyuntor del tablero seccional no corta: cambio de disyuntor,301000,2026-02-10,trabajo,seed_csv
+Electricidad,Olor a quemado en el tablero: ajuste y cambio de térmicas,332500,2026-05-14,trabajo,seed_csv
+Electricidad,Se quemaron los tubos y el balasto: paneles LED nuevos,276500,2026-06-26,trabajo,seed_csv
+Plomería,Pérdida de agua debajo de las bachas: sifón nuevo,206000,2026-08-31,trabajo,seed_csv
+Plomería,"Inodoros tapados, desbordan al usarlos: destapación",178500,2026-09-09,trabajo,seed_csv
+Plomería,Sin presión de agua: cambio de llave de paso,217500,2026-01-22,trabajo,seed_csv
+Plomería,Gotea la canilla de servicio y no cierra: canilla nueva,223500,2026-04-24,trabajo,seed_csv
+Plomería,"Humedad en la pared, caño roto: reparación de cañería",211500,2026-03-27,trabajo,seed_csv
+Plomería,"El tanque de reserva rebalsa, no corta el flotante",230000,2026-06-05,trabajo,seed_csv
+Plomería,Mochila del inodoro descarga sin parar: mecanismo nuevo,195500,2026-09-18,trabajo,seed_csv
+Gas,"Olor a gas, se cerró la llave general: reparación de pérdida",274000,2026-09-04,trabajo,seed_csv
+Gas,"La estufa se apaga sola, falla la termocupla",266500,2026-02-16,trabajo,seed_csv
+Gas,El calefón no enciende: reparación,265500,2026-08-14,trabajo,seed_csv
+Gas,Pérdida en la prueba de hermeticidad: reparación de cañería,255500,2026-01-30,trabajo,seed_csv
+Gas,Rejilla de ventilación obstruida: rejilla nueva,285500,2026-07-06,trabajo,seed_csv
+Techos,Goteras cada vez que llueve: membrana nueva,984500,2026-08-10,trabajo,seed_csv
+Techos,Membrana del techo levantada por el viento,862000,2026-02-04,trabajo,seed_csv
+Techos,Canaleta tapada y desbordando: canaleta nueva,911500,2026-09-22,trabajo,seed_csv
+Techos,"Mancha de humedad en el cielorraso, se está descascarando",754500,2026-04-07,trabajo,seed_csv
+Techos,Chapas sueltas en el techo: fijación,921500,2026-01-19,trabajo,seed_csv
+Pintura,Paredes descascaradas por humedad: pintura,734000,2026-09-24,trabajo,seed_csv
+Pintura,Rejas oxidadas con la pintura saltada: esmalte,807000,2026-06-19,trabajo,seed_csv
+Pintura,Pintadas en las paredes: repintado,771000,2026-03-16,trabajo,seed_csv
+Pintura,Repintar después del arreglo de la filtración,657500,2026-01-26,trabajo,seed_csv
+Pisos,"Baldosas levantadas, un chico se tropezó: recolocación",491000,2026-08-28,trabajo,seed_csv
+Pisos,Piso hundido cerca de la puerta,534500,2026-02-02,trabajo,seed_csv
+Pisos,"Escalón roto, con el borde suelto",436000,2026-09-29,trabajo,seed_csv
+Pisos,Cerámicos rotos: reemplazo,503000,2026-04-30,trabajo,seed_csv
+Aberturas,"La puerta no cierra, se arrastra contra el piso",312500,2026-09-11,trabajo,seed_csv
+Aberturas,Vidrio roto en la ventana: vidrio nuevo,307500,2026-01-15,trabajo,seed_csv
+Aberturas,"Cerradura trabada, no se puede abrir con llave",301500,2026-07-17,trabajo,seed_csv
+Aberturas,Barral antipánico de la salida de emergencia no funciona,375000,2026-03-20,trabajo,seed_csv
+Aberturas,"Ventana descuadrada, no se puede cerrar",308500,2026-09-26,trabajo,seed_csv
+Albañilería,Grieta en la pared: reparación con malla y revoque,698000,2026-08-24,trabajo,seed_csv
+Albañilería,"Revoque desprendido, cayeron pedazos",730500,2026-01-21,trabajo,seed_csv
+Albañilería,Muro del cerco perimetral inclinado,839500,2026-04-27,trabajo,seed_csv
+Albañilería,Mampostería floja alrededor del marco,660000,2026-06-30,trabajo,seed_csv
+Infraestructura,Rampa de acceso con la baranda suelta,426000,2026-09-16,trabajo,seed_csv
+Infraestructura,"Portón de entrada vencido, no cierra con candado",439000,2026-01-29,trabajo,seed_csv
+Infraestructura,Bomba de agua hace ruido y corta sola,482500,2026-04-21,trabajo,seed_csv
+Infraestructura,Mástil de la bandera oxidado en la base,474500,2026-09-30,trabajo,seed_csv
+Infraestructura,Tapa de cámara séptica rota,480000,2026-05-07,trabajo,seed_csv
+Plomería,Pérdida de agua en la canilla del lavatorio del baño de nenas: cambio de canilla,74500,2026-08-30,trabajo,seed_csv
+Plomería,Pérdida de agua en la canilla del lavatorio del baño de varones: cambio de canilla,73000,2026-06-19,trabajo,seed_csv
+Plomería,Pérdida de agua en la canilla del lavatorio del baño de docentes: cambio de canilla,101500,2026-04-08,trabajo,seed_csv
+Plomería,Pérdida de agua en la canilla del lavatorio del baño de planta alta: cambio de canilla,86000,2026-07-02,trabajo,seed_csv
+Plomería,Pérdida de agua en la canilla del lavatorio del baño del jardín: cambio de canilla,94000,2026-05-26,trabajo,seed_csv
+Plomería,Pérdida de agua en la canilla del lavatorio del baño adaptado: cambio de canilla,81500,2026-02-13,trabajo,seed_csv
+Plomería,Pérdida de agua en la canilla del lavatorio del sanitario del patio: cambio de canilla,95500,2026-06-28,trabajo,seed_csv
+Plomería,Gotea la canilla del lavatorio del baño de nenas y no cierra: canilla nueva y ajuste,77000,2026-05-15,trabajo,seed_csv
+Plomería,Gotea la canilla del lavatorio del baño de varones y no cierra: canilla nueva y ajuste,103000,2026-05-15,trabajo,seed_csv
+Plomería,Gotea la canilla del lavatorio del baño de docentes y no cierra: canilla nueva y ajuste,82000,2026-05-01,trabajo,seed_csv
+Plomería,Gotea la canilla del lavatorio del baño de planta alta y no cierra: canilla nueva y ajuste,71500,2026-06-26,trabajo,seed_csv
+Plomería,Gotea la canilla del lavatorio del baño del jardín y no cierra: canilla nueva y ajuste,98500,2026-04-27,trabajo,seed_csv
+Plomería,Gotea la canilla del lavatorio del baño adaptado y no cierra: canilla nueva y ajuste,81000,2026-07-19,trabajo,seed_csv
+Plomería,Gotea la canilla del lavatorio del sanitario del patio y no cierra: canilla nueva y ajuste,71500,2026-09-01,trabajo,seed_csv
+Plomería,Pérdida debajo de la bacha del baño de nenas: cambio de sifón y flexibles,70000,2026-06-15,trabajo,seed_csv
+Plomería,Pérdida debajo de la bacha del baño de varones: cambio de sifón y flexibles,79500,2026-03-09,trabajo,seed_csv
+Plomería,Pérdida debajo de la bacha del baño de docentes: cambio de sifón y flexibles,86000,2026-04-13,trabajo,seed_csv
+Plomería,Pérdida debajo de la bacha del baño de planta alta: cambio de sifón y flexibles,89500,2026-02-05,trabajo,seed_csv
+Plomería,Pérdida debajo de la bacha del baño del jardín: cambio de sifón y flexibles,68000,2026-05-17,trabajo,seed_csv
+Plomería,Pérdida debajo de la bacha del baño adaptado: cambio de sifón y flexibles,76000,2026-05-25,trabajo,seed_csv
+Plomería,Pérdida debajo de la bacha del sanitario del patio: cambio de sifón y flexibles,94500,2026-08-05,trabajo,seed_csv
+Plomería,Sale agua por el sifón de la bacha del baño de nenas: sifón y conexiones nuevas,65500,2026-02-19,trabajo,seed_csv
+Plomería,Sale agua por el sifón de la bacha del baño de varones: sifón y conexiones nuevas,80500,2026-05-24,trabajo,seed_csv
+Plomería,Sale agua por el sifón de la bacha del baño de docentes: sifón y conexiones nuevas,73500,2026-02-14,trabajo,seed_csv
+Plomería,Sale agua por el sifón de la bacha del baño de planta alta: sifón y conexiones nuevas,82000,2026-10-19,trabajo,seed_csv
+Plomería,Sale agua por el sifón de la bacha del baño del jardín: sifón y conexiones nuevas,80000,2026-09-19,trabajo,seed_csv
+Plomería,Sale agua por el sifón de la bacha del baño adaptado: sifón y conexiones nuevas,67000,2026-09-13,trabajo,seed_csv
+Plomería,Sale agua por el sifón de la bacha del sanitario del patio: sifón y conexiones nuevas,59000,2026-01-23,trabajo,seed_csv
+Plomería,Pérdida de agua en el flexible del lavatorio del baño de nenas: reemplazo de flexibles,49000,2026-09-21,trabajo,seed_csv
+Plomería,Pérdida de agua en el flexible del lavatorio del baño de varones: reemplazo de flexibles,68000,2026-10-07,trabajo,seed_csv
+Plomería,Pérdida de agua en el flexible del lavatorio del baño de docentes: reemplazo de flexibles,46000,2026-03-07,trabajo,seed_csv
+Plomería,Pérdida de agua en el flexible del lavatorio del baño de planta alta: reemplazo de flexibles,66500,2026-06-26,trabajo,seed_csv
+Plomería,Pérdida de agua en el flexible del lavatorio del baño del jardín: reemplazo de flexibles,61000,2026-03-12,trabajo,seed_csv
+Plomería,Pérdida de agua en el flexible del lavatorio del baño adaptado: reemplazo de flexibles,46000,2026-06-25,trabajo,seed_csv
+Plomería,Pérdida de agua en el flexible del lavatorio del sanitario del patio: reemplazo de flexibles,67000,2026-09-24,trabajo,seed_csv
+Plomería,La mochila del inodoro del baño de nenas pierde agua constantemente: cambio de mecanismo de descarga,78000,2026-07-20,trabajo,seed_csv
+Plomería,La mochila del inodoro del baño de varones pierde agua constantemente: cambio de mecanismo de descarga,102000,2026-08-29,trabajo,seed_csv
+Plomería,La mochila del inodoro del baño de docentes pierde agua constantemente: cambio de mecanismo de descarga,74000,2026-07-18,trabajo,seed_csv
+Plomería,La mochila del inodoro del baño de planta alta pierde agua constantemente: cambio de mecanismo de descarga,86000,2026-09-06,trabajo,seed_csv
+Plomería,La mochila del inodoro del baño del jardín pierde agua constantemente: cambio de mecanismo de descarga,77000,2026-01-17,trabajo,seed_csv
+Plomería,La mochila del inodoro del baño adaptado pierde agua constantemente: cambio de mecanismo de descarga,86500,2026-05-18,trabajo,seed_csv
+Plomería,La mochila del inodoro del sanitario del patio pierde agua constantemente: cambio de mecanismo de descarga,108500,2026-10-17,trabajo,seed_csv
+Plomería,El inodoro del baño de nenas descarga sin parar: mecanismo de mochila nuevo,67000,2026-07-09,trabajo,seed_csv
+Plomería,El inodoro del baño de varones descarga sin parar: mecanismo de mochila nuevo,93500,2026-05-03,trabajo,seed_csv
+Plomería,El inodoro del baño de docentes descarga sin parar: mecanismo de mochila nuevo,64500,2026-02-20,trabajo,seed_csv
+Plomería,El inodoro del baño de planta alta descarga sin parar: mecanismo de mochila nuevo,74000,2026-08-12,trabajo,seed_csv
+Plomería,El inodoro del baño del jardín descarga sin parar: mecanismo de mochila nuevo,66500,2026-05-15,trabajo,seed_csv
+Plomería,El inodoro del baño adaptado descarga sin parar: mecanismo de mochila nuevo,80000,2026-03-15,trabajo,seed_csv
+Plomería,El inodoro del sanitario del patio descarga sin parar: mecanismo de mochila nuevo,104500,2026-08-12,trabajo,seed_csv
+Plomería,Pérdida de agua en la válvula de descarga del inodoro del baño de nenas: reemplazo de válvula de descarga,207000,2026-07-06,trabajo,seed_csv
+Plomería,Pérdida de agua en la válvula de descarga del inodoro del baño de varones: reemplazo de válvula de descarga,204000,2026-10-02,trabajo,seed_csv
+Plomería,Pérdida de agua en la válvula de descarga del inodoro del baño de docentes: reemplazo de válvula de descarga,221000,2026-09-28,trabajo,seed_csv
+Plomería,Pérdida de agua en la válvula de descarga del inodoro del baño de planta alta: reemplazo de válvula de descarga,266500,2026-04-16,trabajo,seed_csv
+Plomería,Pérdida de agua en la válvula de descarga del inodoro del baño del jardín: reemplazo de válvula de descarga,226500,2026-06-02,trabajo,seed_csv
+Plomería,Pérdida de agua en la válvula de descarga del inodoro del baño adaptado: reemplazo de válvula de descarga,266000,2026-03-23,trabajo,seed_csv
+Plomería,Pérdida de agua en la válvula de descarga del inodoro del sanitario del patio: reemplazo de válvula de descarga,219500,2026-06-09,trabajo,seed_csv
+Plomería,"Pérdida en la base del inodoro del baño de nenas, sale agua al piso: recolocación del inodoro con conexión nueva",134500,2026-07-07,trabajo,seed_csv
+Plomería,"Pérdida en la base del inodoro del baño de varones, sale agua al piso: recolocación del inodoro con conexión nueva",180000,2026-04-14,trabajo,seed_csv
+Plomería,"Pérdida en la base del inodoro del baño de docentes, sale agua al piso: recolocación del inodoro con conexión nueva",163000,2026-05-15,trabajo,seed_csv
+Plomería,"Pérdida en la base del inodoro del baño de planta alta, sale agua al piso: recolocación del inodoro con conexión nueva",168000,2026-05-23,trabajo,seed_csv
+Plomería,"Pérdida en la base del inodoro del baño del jardín, sale agua al piso: recolocación del inodoro con conexión nueva",133500,2026-02-26,trabajo,seed_csv
+Plomería,"Pérdida en la base del inodoro del baño adaptado, sale agua al piso: recolocación del inodoro con conexión nueva",127000,2026-05-14,trabajo,seed_csv
+Plomería,"Pérdida en la base del inodoro del sanitario del patio, sale agua al piso: recolocación del inodoro con conexión nueva",149000,2026-01-12,trabajo,seed_csv
+Plomería,Pérdida de agua en el mingitorio del baño de nenas: cambio de válvula y conexión del mingitorio,138000,2026-03-17,trabajo,seed_csv
+Plomería,Pérdida de agua en el mingitorio del baño de varones: cambio de válvula y conexión del mingitorio,111000,2026-04-23,trabajo,seed_csv
+Plomería,Pérdida de agua en el mingitorio del baño de docentes: cambio de válvula y conexión del mingitorio,128500,2026-05-23,trabajo,seed_csv
+Plomería,Pérdida de agua en el mingitorio del baño de planta alta: cambio de válvula y conexión del mingitorio,142000,2026-03-09,trabajo,seed_csv
+Plomería,Pérdida de agua en el mingitorio del baño del jardín: cambio de válvula y conexión del mingitorio,149500,2026-10-11,trabajo,seed_csv
+Plomería,Pérdida de agua en el mingitorio del baño adaptado: cambio de válvula y conexión del mingitorio,167500,2026-05-13,trabajo,seed_csv
+Plomería,Pérdida de agua en el mingitorio del sanitario del patio: cambio de válvula y conexión del mingitorio,162500,2026-04-16,trabajo,seed_csv
+Plomería,"Caño roto dentro de la pared del baño de nenas, hay humedad: rotura, tramo nuevo de termofusión y revoque",367500,2026-10-03,trabajo,seed_csv
+Plomería,"Caño roto dentro de la pared del baño de varones, hay humedad: rotura, tramo nuevo de termofusión y revoque",314500,2026-04-14,trabajo,seed_csv
+Plomería,"Caño roto dentro de la pared del baño de docentes, hay humedad: rotura, tramo nuevo de termofusión y revoque",252000,2026-04-02,trabajo,seed_csv
+Plomería,"Caño roto dentro de la pared del baño de planta alta, hay humedad: rotura, tramo nuevo de termofusión y revoque",328500,2026-06-24,trabajo,seed_csv
+Plomería,"Caño roto dentro de la pared del baño del jardín, hay humedad: rotura, tramo nuevo de termofusión y revoque",358500,2026-07-18,trabajo,seed_csv
+Plomería,"Caño roto dentro de la pared del baño adaptado, hay humedad: rotura, tramo nuevo de termofusión y revoque",336500,2026-03-14,trabajo,seed_csv
+Plomería,"Caño roto dentro de la pared del sanitario del patio, hay humedad: rotura, tramo nuevo de termofusión y revoque",335000,2026-04-08,trabajo,seed_csv
+Plomería,Pérdida de agua en caño embutido del baño de nenas: reparación del tramo y cierre de pared,222000,2026-08-18,trabajo,seed_csv
+Plomería,Pérdida de agua en caño embutido del baño de varones: reparación del tramo y cierre de pared,350000,2026-09-19,trabajo,seed_csv
+Plomería,Pérdida de agua en caño embutido del baño de docentes: reparación del tramo y cierre de pared,266500,2026-04-03,trabajo,seed_csv
+Plomería,Pérdida de agua en caño embutido del baño de planta alta: reparación del tramo y cierre de pared,327000,2026-02-22,trabajo,seed_csv
+Plomería,Pérdida de agua en caño embutido del baño del jardín: reparación del tramo y cierre de pared,249500,2026-04-12,trabajo,seed_csv
+Plomería,Pérdida de agua en caño embutido del baño adaptado: reparación del tramo y cierre de pared,318500,2026-02-11,trabajo,seed_csv
+Plomería,Pérdida de agua en caño embutido del sanitario del patio: reparación del tramo y cierre de pared,267000,2026-02-25,trabajo,seed_csv
+Plomería,Pérdida en la llave de paso del baño de nenas: cambio de llave de paso esférica,83500,2026-03-20,trabajo,seed_csv
+Plomería,Pérdida en la llave de paso del baño de varones: cambio de llave de paso esférica,110000,2026-09-28,trabajo,seed_csv
+Plomería,Pérdida en la llave de paso del baño de docentes: cambio de llave de paso esférica,81000,2026-02-13,trabajo,seed_csv
+Plomería,Pérdida en la llave de paso del baño de planta alta: cambio de llave de paso esférica,92500,2026-09-19,trabajo,seed_csv
+Plomería,Pérdida en la llave de paso del baño del jardín: cambio de llave de paso esférica,104000,2026-02-04,trabajo,seed_csv
+Plomería,Pérdida en la llave de paso del baño adaptado: cambio de llave de paso esférica,114000,2026-08-25,trabajo,seed_csv
+Plomería,Pérdida en la llave de paso del sanitario del patio: cambio de llave de paso esférica,117000,2026-04-02,trabajo,seed_csv
+Plomería,Pérdida de agua en el piso del baño de nenas por desagüe roto: reparación del desagüe y cerámicos,333000,2026-04-11,trabajo,seed_csv
+Plomería,Pérdida de agua en el piso del baño de varones por desagüe roto: reparación del desagüe y cerámicos,363500,2026-02-21,trabajo,seed_csv
+Plomería,Pérdida de agua en el piso del baño de docentes por desagüe roto: reparación del desagüe y cerámicos,294000,2026-06-05,trabajo,seed_csv
+Plomería,Pérdida de agua en el piso del baño de planta alta por desagüe roto: reparación del desagüe y cerámicos,405000,2026-02-08,trabajo,seed_csv
+Plomería,Pérdida de agua en el piso del baño del jardín por desagüe roto: reparación del desagüe y cerámicos,296000,2026-04-21,trabajo,seed_csv
+Plomería,Pérdida de agua en el piso del baño adaptado por desagüe roto: reparación del desagüe y cerámicos,351000,2026-08-29,trabajo,seed_csv
+Plomería,Pérdida de agua en el piso del sanitario del patio por desagüe roto: reparación del desagüe y cerámicos,388500,2026-04-01,trabajo,seed_csv
+Plomería,"Pérdidas en toda la cañería del baño de nenas, varias canillas y caños: reemplazo completo de la instalación de agua",924000,2026-06-03,trabajo,seed_csv
+Plomería,"Pérdidas en toda la cañería del baño de varones, varias canillas y caños: reemplazo completo de la instalación de agua",951500,2026-01-30,trabajo,seed_csv
+Plomería,"Pérdidas en toda la cañería del baño de docentes, varias canillas y caños: reemplazo completo de la instalación de agua",1064500,2026-07-22,trabajo,seed_csv
+Plomería,"Pérdidas en toda la cañería del baño de planta alta, varias canillas y caños: reemplazo completo de la instalación de agua",1039000,2026-04-12,trabajo,seed_csv
+Plomería,"Pérdidas en toda la cañería del baño del jardín, varias canillas y caños: reemplazo completo de la instalación de agua",869000,2026-05-15,trabajo,seed_csv
+Plomería,"Pérdidas en toda la cañería del baño adaptado, varias canillas y caños: reemplazo completo de la instalación de agua",768500,2026-03-18,trabajo,seed_csv
+Plomería,"Pérdidas en toda la cañería del sanitario del patio, varias canillas y caños: reemplazo completo de la instalación de agua",1136000,2026-05-22,trabajo,seed_csv
+Plomería,Pérdida de agua en la canilla de la pileta de la cocina: cambio de grifería,93500,2026-09-03,trabajo,seed_csv
+Plomería,Pérdida de agua en la canilla de la pileta de la cocina del comedor: cambio de grifería,94500,2026-03-29,trabajo,seed_csv
+Plomería,Pérdida de agua en la canilla de la pileta de la cocina del jardín: cambio de grifería,87500,2026-01-14,trabajo,seed_csv
+Plomería,Pérdida de agua en la canilla de la pileta de la cocina de la preceptoría: cambio de grifería,83000,2026-04-02,trabajo,seed_csv
+Plomería,Gotea la canilla de la pileta de la cocina: grifería nueva,110000,2026-10-19,trabajo,seed_csv
+Plomería,Gotea la canilla de la pileta de la cocina del comedor: grifería nueva,115000,2026-09-25,trabajo,seed_csv
+Plomería,Gotea la canilla de la pileta de la cocina del jardín: grifería nueva,116500,2026-02-22,trabajo,seed_csv
+Plomería,Gotea la canilla de la pileta de la cocina de la preceptoría: grifería nueva,101500,2026-03-25,trabajo,seed_csv
+Plomería,"Pérdida debajo de la mesada de la cocina: reemplazo de sifón, desagüe y flexibles",82500,2026-04-07,trabajo,seed_csv
+Plomería,"Pérdida debajo de la mesada de la cocina del comedor: reemplazo de sifón, desagüe y flexibles",102000,2026-07-11,trabajo,seed_csv
+Plomería,"Pérdida debajo de la mesada de la cocina del jardín: reemplazo de sifón, desagüe y flexibles",106000,2026-04-17,trabajo,seed_csv
+Plomería,"Pérdida debajo de la mesada de la cocina de la preceptoría: reemplazo de sifón, desagüe y flexibles",86000,2026-04-08,trabajo,seed_csv
+Plomería,Caño roto detrás de la mesada de la cocina: reparación del tramo embutido y revoque,338000,2026-08-23,trabajo,seed_csv
+Plomería,Caño roto detrás de la mesada de la cocina del comedor: reparación del tramo embutido y revoque,271500,2026-02-09,trabajo,seed_csv
+Plomería,Caño roto detrás de la mesada de la cocina del jardín: reparación del tramo embutido y revoque,268500,2026-08-27,trabajo,seed_csv
+Plomería,Caño roto detrás de la mesada de la cocina de la preceptoría: reparación del tramo embutido y revoque,284500,2026-08-20,trabajo,seed_csv
+Plomería,Pérdida en la conexión del termotanque de la cocina: cambio de conexiones y válvula de seguridad,112000,2026-03-30,trabajo,seed_csv
+Plomería,Pérdida en la conexión del termotanque de la cocina del comedor: cambio de conexiones y válvula de seguridad,134500,2026-09-18,trabajo,seed_csv
+Plomería,Pérdida en la conexión del termotanque de la cocina del jardín: cambio de conexiones y válvula de seguridad,122000,2026-08-26,trabajo,seed_csv
+Plomería,Pérdida en la conexión del termotanque de la cocina de la preceptoría: cambio de conexiones y válvula de seguridad,148000,2026-07-05,trabajo,seed_csv
+Plomería,El desagüe de la pileta de la cocina pierde y está tapado: destapación y tramo de desagüe nuevo,184000,2026-05-25,trabajo,seed_csv
+Plomería,El desagüe de la pileta de la cocina del comedor pierde y está tapado: destapación y tramo de desagüe nuevo,200000,2026-06-26,trabajo,seed_csv
+Plomería,El desagüe de la pileta de la cocina del jardín pierde y está tapado: destapación y tramo de desagüe nuevo,193000,2026-02-18,trabajo,seed_csv
+Plomería,El desagüe de la pileta de la cocina de la preceptoría pierde y está tapado: destapación y tramo de desagüe nuevo,143500,2026-03-09,trabajo,seed_csv
+Plomería,Pérdida de agua en la llave de paso de la cocina: llave de paso nueva,90000,2026-08-21,trabajo,seed_csv
+Plomería,Pérdida de agua en la llave de paso de la cocina del comedor: llave de paso nueva,74000,2026-09-28,trabajo,seed_csv
+Plomería,Pérdida de agua en la llave de paso de la cocina del jardín: llave de paso nueva,79000,2026-09-09,trabajo,seed_csv
+Plomería,Pérdida de agua en la llave de paso de la cocina de la preceptoría: llave de paso nueva,113500,2026-01-09,trabajo,seed_csv
+Plomería,"Caño enterrado roto en el patio, sale agua del piso: excavación, tramo nuevo y contrapiso",590000,2026-10-01,trabajo,seed_csv
+Plomería,"Caño enterrado roto en el pasillo de planta baja, sale agua del piso: excavación, tramo nuevo y contrapiso",608500,2026-06-08,trabajo,seed_csv
+Plomería,"Caño enterrado roto en el SUM, sale agua del piso: excavación, tramo nuevo y contrapiso",522500,2026-05-24,trabajo,seed_csv
+Plomería,"Caño enterrado roto en el gimnasio, sale agua del piso: excavación, tramo nuevo y contrapiso",476500,2026-06-10,trabajo,seed_csv
+Plomería,"Caño enterrado roto en el patio del jardín, sale agua del piso: excavación, tramo nuevo y contrapiso",454500,2026-07-18,trabajo,seed_csv
+Plomería,"Caño enterrado roto en el hall de entrada, sale agua del piso: excavación, tramo nuevo y contrapiso",397000,2026-10-07,trabajo,seed_csv
+Plomería,"Pérdida de agua bajo el piso del patio: rotura de piso, reparación de caño y reposición",491500,2026-08-14,trabajo,seed_csv
+Plomería,"Pérdida de agua bajo el piso del pasillo de planta baja: rotura de piso, reparación de caño y reposición",443000,2026-07-24,trabajo,seed_csv
+Plomería,"Pérdida de agua bajo el piso del SUM: rotura de piso, reparación de caño y reposición",530500,2026-01-28,trabajo,seed_csv
+Plomería,"Pérdida de agua bajo el piso del gimnasio: rotura de piso, reparación de caño y reposición",573000,2026-09-16,trabajo,seed_csv
+Plomería,"Pérdida de agua bajo el piso del patio del jardín: rotura de piso, reparación de caño y reposición",445000,2026-02-20,trabajo,seed_csv
+Plomería,"Pérdida de agua bajo el piso del hall de entrada: rotura de piso, reparación de caño y reposición",595000,2026-01-06,trabajo,seed_csv
+Plomería,Pérdida de agua en el bebedero del patio: cambio de canilla y conexión del bebedero,110000,2026-09-18,trabajo,seed_csv
+Plomería,Pérdida de agua en el bebedero del pasillo de planta baja: cambio de canilla y conexión del bebedero,103500,2026-03-16,trabajo,seed_csv
+Plomería,Pérdida de agua en el bebedero del SUM: cambio de canilla y conexión del bebedero,110500,2026-02-24,trabajo,seed_csv
+Plomería,Pérdida de agua en el bebedero del gimnasio: cambio de canilla y conexión del bebedero,103500,2026-09-29,trabajo,seed_csv
+Plomería,Pérdida de agua en el bebedero del patio del jardín: cambio de canilla y conexión del bebedero,98000,2026-04-05,trabajo,seed_csv
+Plomería,Pérdida de agua en el bebedero del hall de entrada: cambio de canilla y conexión del bebedero,96000,2026-09-15,trabajo,seed_csv
+Plomería,"Humedad en la pared del patio por caño de agua roto: detección, reparación del caño y revoque",342000,2026-03-06,trabajo,seed_csv
+Plomería,"Humedad en la pared del pasillo de planta baja por caño de agua roto: detección, reparación del caño y revoque",314000,2026-02-25,trabajo,seed_csv
+Plomería,"Humedad en la pared del SUM por caño de agua roto: detección, reparación del caño y revoque",295000,2026-01-18,trabajo,seed_csv
+Plomería,"Humedad en la pared del gimnasio por caño de agua roto: detección, reparación del caño y revoque",297500,2026-01-08,trabajo,seed_csv
+Plomería,"Humedad en la pared del patio del jardín por caño de agua roto: detección, reparación del caño y revoque",351000,2026-03-30,trabajo,seed_csv
+Plomería,"Humedad en la pared del hall de entrada por caño de agua roto: detección, reparación del caño y revoque",365500,2026-08-17,trabajo,seed_csv
+Plomería,Pérdida en la canilla de servicio del patio: cambio de canilla y llave de paso,67500,2026-03-10,trabajo,seed_csv
+Plomería,Pérdida en la canilla de servicio del pasillo de planta baja: cambio de canilla y llave de paso,86000,2026-09-24,trabajo,seed_csv
+Plomería,Pérdida en la canilla de servicio del SUM: cambio de canilla y llave de paso,62000,2026-04-03,trabajo,seed_csv
+Plomería,Pérdida en la canilla de servicio del gimnasio: cambio de canilla y llave de paso,86000,2026-10-12,trabajo,seed_csv
+Plomería,Pérdida en la canilla de servicio del patio del jardín: cambio de canilla y llave de paso,86000,2026-03-03,trabajo,seed_csv
+Plomería,Pérdida en la canilla de servicio del hall de entrada: cambio de canilla y llave de paso,90000,2026-08-30,trabajo,seed_csv
+Plomería,"Pérdida de agua en el tanque de reserva, rebalsa por el flotante: cambio de flotante",89500,2026-08-28,trabajo,seed_csv
+Plomería,"Pérdida de agua en el tanque de la terraza, rebalsa por el flotante: cambio de flotante",89000,2026-10-01,trabajo,seed_csv
+Plomería,"Pérdida de agua en el tanque del jardín, rebalsa por el flotante: cambio de flotante",93000,2026-04-13,trabajo,seed_csv
+Plomería,Pérdida en el colector del tanque de reserva: reemplazo del colector y llaves de paso,516500,2026-07-31,trabajo,seed_csv
+Plomería,Pérdida en el colector del tanque de la terraza: reemplazo del colector y llaves de paso,397000,2026-09-17,trabajo,seed_csv
+Plomería,Pérdida en el colector del tanque del jardín: reemplazo del colector y llaves de paso,479000,2026-07-17,trabajo,seed_csv
+Plomería,El tanque de reserva pierde agua por una fisura: impermeabilización interior del tanque,333500,2026-01-13,trabajo,seed_csv
+Plomería,El tanque de la terraza pierde agua por una fisura: impermeabilización interior del tanque,373500,2026-03-26,trabajo,seed_csv
+Plomería,El tanque del jardín pierde agua por una fisura: impermeabilización interior del tanque,307500,2026-09-30,trabajo,seed_csv
+Plomería,Pérdida en la cañería de bajada del tanque de reserva: reemplazo de la bajada en termofusión,328000,2026-04-23,trabajo,seed_csv
+Plomería,Pérdida en la cañería de bajada del tanque de la terraza: reemplazo de la bajada en termofusión,300500,2026-02-01,trabajo,seed_csv
+Plomería,Pérdida en la cañería de bajada del tanque del jardín: reemplazo de la bajada en termofusión,426000,2026-09-05,trabajo,seed_csv
+Plomería,Pérdida de agua en la conexión de la bomba de la sala de bombas: conexiones y válvula de retención nuevas,193500,2026-09-12,trabajo,seed_csv
+Plomería,Pérdida de agua en la conexión de la bomba de la cisterna: conexiones y válvula de retención nuevas,184500,2026-09-23,trabajo,seed_csv
+Plomería,El inodoro del baño de varones del segundo piso se desborda constantemente: destapación y desobstrucción del inodoro,90000,2026-10-14,trabajo,seed_csv
+Plomería,El inodoro del baño de varones del segundo piso desborda sin parar sin causa clara: visita de diagnóstico y destapación,88000,2026-09-29,trabajo,seed_csv
+Plomería,El inodoro del baño de varones del primer piso se desborda al tirar la cadena: destapación con sonda y limpieza,92000,2026-08-20,trabajo,seed_csv
+Plomería,Inodoro que desborda agua constantemente en baño de alumnos: diagnóstico, destapación y recambio de sifón si hace falta,91500,2026-07-11,trabajo,seed_csv
+Plomería,Se desborda el inodoro del baño de varones y no se sabe la causa: destapación manual y revisión de descarga,87500,2026-06-02,trabajo,seed_csv
+Plomería,Desborde constante del inodoro del baño de varones de planta alta: destapación del sifón y limpieza del área,93000,2026-05-08,trabajo,seed_csv
+Plomería,Tenemos un desborde de agua en el inodoro del baño de varones: destapación y desobstrucción del inodoro,89000,2026-10-06,trabajo,seed_csv
+Plomería,Hay un desborde constante en el inodoro del baño de alumnos y no sabemos la causa: diagnóstico y destapación,90500,2026-09-12,trabajo,seed_csv
+Plomería,El inodoro del baño rebalsa agua cada vez que se usa: destapación con sonda y limpieza del área,88500,2026-08-03,trabajo,seed_csv
+Plomería,El inodoro del baño de varones está tapado y se sale el agua al piso: destapación y desobstrucción,91000,2026-07-15,trabajo,seed_csv
+Plomería,Se sale el agua del inodoro del baño de los alumnos sin parar: visita de diagnóstico, destapación y revisión de descarga,92500,2026-06-21,trabajo,seed_csv
+Plomería,El agua del inodoro no para de correr y se desborda: destapación del sifón y recambio de sifón si hace falta,90000,2026-05-10,trabajo,seed_csv
+Plomería,Inodoro del baño principal que desborda y rebalsa agua al tirar la cadena: destapación manual y limpieza,87000,2026-04-18,trabajo,seed_csv
+Plomería,Tenemos un inodoro tapado que desborda agua en el baño del segundo piso: destapación y desobstrucción del inodoro,93500,2026-03-22,trabajo,seed_csv
+Plomería,El inodoro del baño de mujeres se desborda constantemente sin causa aparente: diagnóstico y destapación,89500,2026-09-27,trabajo,seed_csv
+Plomería,Desborde de agua en el inodoro del baño de planta alta: destapación con sonda manual y limpieza del sector,91500,2026-02-28,trabajo,seed_csv
