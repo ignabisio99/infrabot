@@ -33,6 +33,20 @@ const colorPorRecomendacion = {
   RECHAZAR: 'red',
 };
 
+// Resumen de cantidades agrupadas por unidad. No tiene sentido sumar "3 unidades" con
+// "4 horas" en un solo número: cada unidad mide algo distinto. Devuelve, por ejemplo,
+// "3 unidad · 4 horas". Vacío si no hay ítems.
+function resumenPorUnidad(items) {
+  const porUnidad = new Map();
+  for (const item of items) {
+    const unidad = (item.unidad || 'unidad').trim() || 'unidad';
+    porUnidad.set(unidad, (porUnidad.get(unidad) ?? 0) + Number(item.cantidad));
+  }
+  return Array.from(porUnidad.entries())
+    .map(([unidad, cantidad]) => `${formatoNumero.format(cantidad)} ${unidad}`)
+    .join(' · ');
+}
+
 function GrupoItems({ titulo, items }) {
   const esMobile = useEsMobile();
 
@@ -352,11 +366,8 @@ export function BudgetItemsModal({ presupuesto, onClose, onDecidido, acciones })
 
           <Group justify="space-between" pt="sm">
             <Text size="sm" c="dimmed">
-              {presupuesto.items.length} {presupuesto.items.length === 1 ? 'ítem' : 'ítems'} ·
-              cantidad total:{' '}
-              {formatoNumero.format(
-                presupuesto.items.reduce((acumulado, item) => acumulado + Number(item.cantidad), 0),
-              )}
+              {presupuesto.items.length} {presupuesto.items.length === 1 ? 'ítem' : 'ítems'}
+              {resumenPorUnidad(presupuesto.items) && ` · ${resumenPorUnidad(presupuesto.items)}`}
             </Text>
             <Group>
               {mostrarAuditoria && (
