@@ -116,6 +116,11 @@ def test_el_envio_saca_el_9_tambien_con_mas():
     # AMBA: sin el 9 y con el 15, que es como Meta guarda al destinatario.
     assert _normalizar_numero_ar("+5491122334455") == "54111522334455"
     assert _normalizar_numero_ar("5491122334455") == "54111522334455"
+    # Como lo guarda la base (normalizar_telefono_ar): +54 sin 9.
+    assert _normalizar_numero_ar("+541122334455") == "54111522334455"
+    assert _normalizar_numero_ar("+54 11 2233-4455") == "54111522334455"
+    # Ya en formato Meta: no se toca.
+    assert _normalizar_numero_ar("54111522334455") == "54111522334455"
     # Otras características: solo se saca el 9.
     assert _normalizar_numero_ar("5493514445566") == "543514445566"
     assert _normalizar_numero_ar("sim5491122334455") == "sim5491122334455"

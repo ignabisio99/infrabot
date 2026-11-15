@@ -78,14 +78,19 @@ def _normalizar_numero_ar(phone_number: str) -> str:
     54 11 15 XXXXXXXX (sin el 9, con el 15); si no coincide responde 131030
     ("not in allowed list"). El 15 solo se agrega para AMBA (11), donde la
     característica tiene largo fijo; el resto queda sin el 9.
+
+    Acepta tanto el wa_id (549...) como lo que guarda la base (+54 11 ..., sin 9).
     """
-    if phone_number.startswith("+549"):
-        phone_number = phone_number[1:]
-    if phone_number.startswith("549"):
-        phone_number = "54" + phone_number[3:]
-        if phone_number.startswith("5411") and len(phone_number) == 12:
-            phone_number = "541115" + phone_number[4:]
-    return phone_number
+    if phone_number.lower().startswith("sim"):
+        return phone_number
+    digitos = re.sub(r"\D", "", phone_number)
+    if not digitos.startswith("54"):
+        return phone_number
+    if digitos.startswith("549"):
+        digitos = "54" + digitos[3:]
+    if digitos.startswith("5411") and len(digitos) == 12:
+        digitos = "541115" + digitos[4:]
+    return digitos
 
 
 def _headers() -> dict:
