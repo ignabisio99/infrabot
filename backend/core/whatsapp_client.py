@@ -72,11 +72,19 @@ def limpiar_historial_salientes() -> None:
 
 
 def _normalizar_numero_ar(phone_number: str) -> str:
-    """Convierte números argentinos de formato 549xxx (o +549xxx) a 54xxx (sin el 9)."""
+    """Convierte móviles argentinos 549xxx (o +549xxx) al formato que acepta Meta al enviar.
+
+    Meta recibe el wa_id como 549 11 XXXXXXXX pero guarda el destinatario como
+    54 11 15 XXXXXXXX (sin el 9, con el 15); si no coincide responde 131030
+    ("not in allowed list"). El 15 solo se agrega para AMBA (11), donde la
+    característica tiene largo fijo; el resto queda sin el 9.
+    """
     if phone_number.startswith("+549"):
         phone_number = phone_number[1:]
     if phone_number.startswith("549"):
         phone_number = "54" + phone_number[3:]
+        if phone_number.startswith("5411") and len(phone_number) == 12:
+            phone_number = "541115" + phone_number[4:]
     return phone_number
 
 

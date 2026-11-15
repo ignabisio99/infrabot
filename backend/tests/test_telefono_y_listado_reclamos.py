@@ -113,6 +113,9 @@ def test_el_bot_reconoce_un_reclamo_con_el_telefono_en_otro_formato(db, crear_re
 
 
 def test_el_envio_saca_el_9_tambien_con_mas():
-    assert _normalizar_numero_ar("+5491122334455") == "541122334455"
-    assert _normalizar_numero_ar("5491122334455") == "541122334455"
+    # AMBA: sin el 9 y con el 15, que es como Meta guarda al destinatario.
+    assert _normalizar_numero_ar("+5491122334455") == "54111522334455"
+    assert _normalizar_numero_ar("5491122334455") == "54111522334455"
+    # Otras características: solo se saca el 9.
+    assert _normalizar_numero_ar("5493514445566") == "543514445566"
     assert _normalizar_numero_ar("sim5491122334455") == "sim5491122334455"
