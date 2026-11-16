@@ -17,7 +17,7 @@ import {
   Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { IconCircleCheck, IconInfoCircle, IconMapPin } from '@tabler/icons-react';
+import { IconCircleCheck, IconInfoCircle, IconMapPin, IconWand } from '@tabler/icons-react';
 
 import { API_URL } from '../../api/apiClient';
 import { obtenerReclamo } from '../../api/reclamos';
@@ -27,6 +27,7 @@ import {
   solicitarInformacionReclamo,
 } from '../../api/contratistas';
 import { actualizarPresupuesto, crearPresupuesto } from '../../api/presupuestos';
+import { getUsuarioActual } from '../../utils/auth';
 import { formatearIdReclamo } from '../../utils/ids';
 import { formatoMoneda } from '../../utils/formatters';
 import { notifyError, notifySuccess } from '../../utils/notifications';
@@ -38,6 +39,11 @@ import {
   totalLineas,
   validarLineasPresupuesto,
 } from '../../utils/presupuestoItems';
+import {
+  presupuestoDemoPara,
+  totalDemo,
+  valoresFormularioDemo,
+} from '../../utils/presupuestosDemo';
 import { BudgetLineItems } from '../budgets/BudgetLineItems';
 import { ClaimComments } from './ClaimComments';
 import { PriorityBadge } from './PriorityBadge';
@@ -176,6 +182,22 @@ export function PresupuestarReclamoPage() {
   const ajustando = presupuestoBase?.estado === 'AJUSTES_SOLICITADOS';
 
   const total = totalLineas(form.values.materials, form.values.labor);
+
+  // Demo de la exposición: solo dos contratistas tienen el botón (ver presupuestosDemo.js).
+  const usuario = getUsuarioActual();
+  const demo = presupuestoDemoPara(
+    miFicha?.nombre_empresa,
+    usuario?.nombre_empresa,
+    usuario?.nombre,
+  );
+
+  const completarConDemo = () => {
+    form.setValues(valoresFormularioDemo(demo));
+    form.clearErrors();
+    notifySuccess(
+      `Presupuesto completado (${formatoMoneda.format(totalDemo(demo))}). Revisalo y enviá.`,
+    );
+  };
 
   const handleSubmit = async (values) => {
     if (!miFicha?.id) {
@@ -366,6 +388,32 @@ export function PresupuestarReclamoPage() {
 
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack>
+            {demo && (
+              <Card withBorder radius="md" bg="var(--mantine-color-teal-0)">
+                <Group justify="space-between" gap="md">
+                  <div style={{ flex: '1 1 240px' }}>
+                    <Text fw={600} size="sm">
+                      Carga rápida
+                    </Text>
+                    <Text size="sm" c="dimmed">
+                      {demo.etiqueta} · {formatoMoneda.format(totalDemo(demo))}. Completa el
+                      detalle, las observaciones y todos los ítems.
+                    </Text>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="light"
+                    color="teal"
+                    leftSection={<IconWand size={18} />}
+                    onClick={completarConDemo}
+                    style={{ flexShrink: 0 }}
+                  >
+                    Autocompletar presupuesto
+                  </Button>
+                </Group>
+              </Card>
+            )}
+
             <Textarea
               label="Detalle de la tarea a realizar"
               placeholder="Describí el trabajo que cubre este presupuesto..."
